@@ -2,8 +2,8 @@
 
 ## Phase 1: Project Setup & Foundation
 
-- [ ] Initialize Go project structure
-- [ ] Set up Git repository under intrik8-labs
+- [X] Initialize Go project structure
+- [X] Set up Git repository under intrik8-labs
 - [ ] Create basic README with project vision
 - [ ] Define project directory structure (cmd/, internal/, pkg/)
 - [ ] Set up Go modules and dependencies
