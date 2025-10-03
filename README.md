@@ -167,15 +167,14 @@ artifacts:
 
 ---
 
-## 🏢 Built by Intrik8 Labs
+## 🏢 Built by Jason Scherer
 
-Smidr is developed by [Intrik8 Labs](https://intrik8labs.com), a company focused on solving real problems in embedded systems development and DevOps automation.
+Smidr is developed by Jason Scherer, a software engineer focused on solving real problems in embedded systems development and DevOps automation.
 
 **Team Background:**
 
 - 20+ years in embedded systems and automation
 - Real-world experience with Yocto's pain points
-- Battle-tested in casino gaming and high-reliability systems
 
 ---
 
@@ -194,8 +193,8 @@ Smidr is developed by [Intrik8 Labs](https://intrik8labs.com), a company focused
 We welcome contributions! Smidr is built by embedded developers, for embedded developers.
 
 1. Check our [Contributing Guide](CONTRIBUTING.md)
-2. Look at [open issues](https://github.com/intrik8-labs/smidr/issues)
-3. Join the discussion in [GitHub Discussions](https://github.com/intrik8-labs/smidr/discussions)
+2. Look at [open issues](https://github.com/schereja/smidr/issues)
+3. Join the discussion in [GitHub Discussions](https://github.com/schereja/smidr/discussions)
 
 ---
 
@@ -209,8 +208,7 @@ Smidr is licensed under the [MIT License](LICENSE).
 
 - **Website**: [smidr.dev](https://smidr.dev)
 - **Documentation**: [docs.smidr.dev](https://docs.smidr.dev)
-- **Company**: [Intrik8 Labs](https://intrik8labs.com)
-- **Issues**: [GitHub Issues](https://github.com/intrik8-labs/smidr/issues)
+- **Issues**: [GitHub Issues](https://github.com/schereja/smidr/issues)
 
 ---
 
