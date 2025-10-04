@@ -81,6 +81,8 @@ func (g *Generator) generateLocalConf(confDir string) error {
 	sb.WriteString("DL_DIR = \"${TOPDIR}/../downloads\"\n")
 	sb.WriteString("SSTATE_DIR = \"${TOPDIR}/../sstate-cache\"\n")
 	sb.WriteString("TMP_DIR = \"${TOPDIR}/tmp\"\n")
+	sb.WriteString("TI_COMMON_DEPLOY = \"${TOPDIR}/deploy\"\n")
+	sb.WriteString("DEPLOY_DIR = \"${TI_COMMON_DEPLOY}${@'' if d.getVar('BB_CURRENT_MC') == 'default' else '/${BB_CURRENT_MC}'}\"\n")
 
 	sb.WriteString("\n")
 	sb.WriteString("# Package management\n")
@@ -92,7 +94,7 @@ func (g *Generator) generateLocalConf(confDir string) error {
 
 	sb.WriteString("\n")
 	sb.WriteString("# Additional image features\n")
-	sb.WriteString("USER_CLASSES = \"buildstats image-mklibs image-prelink\"\n")
+	sb.WriteString("USER_CLASSES = \"buildstats\"\n")
 
 	sb.WriteString("\n")
 	sb.WriteString("# Disk space monitoring\n")
@@ -101,16 +103,19 @@ func (g *Generator) generateLocalConf(confDir string) error {
 	sb.WriteString("    STOPTASKS,${DL_DIR},1G,100K \\\n")
 	sb.WriteString("    STOPTASKS,${SSTATE_DIR},1G,100K \\\n")
 	sb.WriteString("    STOPTASKS,/tmp,100M,100K \\\n")
-	sb.WriteString("    ABORT,${TMPDIR},100M,1K \\\n")
-	sb.WriteString("    ABORT,${DL_DIR},100M,1K \\\n")
-	sb.WriteString("    ABORT,${SSTATE_DIR},100M,1K \\\n")
-	sb.WriteString("    ABORT,/tmp,10M,1K\"\n")
+	sb.WriteString("    HALT,${TMPDIR},100M,1K \\\n")
+	sb.WriteString("    HALT,${DL_DIR},100M,1K \\\n")
+	sb.WriteString("    HALT,${SSTATE_DIR},100M,1K \\\n")
+	sb.WriteString("    HALT,/tmp,10M,1K\"\n")
 
 	sb.WriteString("\n")
 	sb.WriteString("# Hash equivalence and shared state\n")
 	sb.WriteString("BB_HASHSERVE = \"auto\"\n")
 	sb.WriteString("BB_SIGNATURE_HANDLER = \"OEEquivHash\"\n")
 	sb.WriteString("\n")
+
+	sb.WriteString("PACKAGECONFIG:append = \" sdl\"\n")
+
 	// Extra packages
 	if len(g.config.Build.ExtraPackages) > 0 {
 		packages := strings.Join(g.config.Build.ExtraPackages, " ")
@@ -120,15 +125,17 @@ func (g *Generator) generateLocalConf(confDir string) error {
 	sb.WriteString("\n")
 	sb.WriteString("# Accept licenses\n")
 	sb.WriteString("LICENSE_FLAGS_ACCEPTED = \"commercial\"\n")
+	sb.WriteString("ACCEPT_FSL_EULA = \"1\"\n")
+	sb.WriteString("\n")
+	sb.WriteString("# Configuration version\n")
+	sb.WriteString("CONF_VERSION = \"2\"\n")
 
 	sb.WriteString("\n")
-
-	// Package Management
-	sb.WriteString("PACKAGE_CLASSES = \"package_rpm\"\n")
-	sb.WriteString("EXTRA_IMAGE_FEATURES = \"debug-tweaks \"\n")
+	sb.WriteString("# Inherit classes\n")
+	sb.WriteString("INHERIT += \"rm_work\"\n")
+	sb.WriteString("INHERIT += \"toradex-mirrors toradex-sanity\"\n")
 
 	sb.WriteString("\n")
-
 	sb.WriteString("# User and hostname configuration\n")
 	sb.WriteString("USER_CLASSES ?= \"buildstats\"\n")
 	sb.WriteString("\n")

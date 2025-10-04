@@ -35,26 +35,37 @@ func configWithExtras() *config.Config {
 }
 
 func TestGenerate_WritesConfFiles(t *testing.T) {
-    t.Parallel()
-    tmp := t.TempDir()
-    g := NewGenerator(minimalConfig(), filepath.Join(tmp, "build"))
-    if err := g.Generate(); err != nil {
-        t.Fatalf("Generate error: %v", err)
-    }
-    confDir := filepath.Join(tmp, "build", "conf")
-    for _, f := range []string{"local.conf", "bblayers.conf"} {
-        p := filepath.Join(confDir, f)
-        if _, err := os.Stat(p); err != nil {
-            t.Fatalf("expected %s to exist: %v", p, err)
-        }
-        b, err := os.ReadFile(p)
-        if err != nil {
-            t.Fatalf("read %s: %v", p, err)
-        }
-        if len(b) == 0 {
-            t.Fatalf("expected %s to be non-empty", p)
-        }
-    }
+	t.Parallel()
+	tmp := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	g := NewGenerator(minimalConfig(), filepath.Join(tmp, "build"))
+	if err := g.Generate(); err != nil {
+		t.Fatalf("Generate error: %v", err)
+	}
+
+	// Check root conf directory
+	rootConfDir := filepath.Join(tmp, "conf")
+	for _, f := range []string{"local.conf", "bblayers.conf"} {
+		p := filepath.Join(rootConfDir, f)
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("expected %s to exist in root conf: %v", p, err)
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("read %s: %v", p, err)
+		}
+		if len(b) == 0 {
+			t.Fatalf("expected %s to be non-empty", p)
+		}
+	}
 }
 
 func TestGenerate_CustomImageRecipeWhenExtraPackages(t *testing.T) {
