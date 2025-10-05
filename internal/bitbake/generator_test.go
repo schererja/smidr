@@ -1,37 +1,37 @@
 package bitbake
 
 import (
-    "os"
-    "path/filepath"
-    "strings"
-    "testing"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
 
-    "github.com/intrik8-labs/smidr/internal/config"
+	"github.com/intrik8-labs/smidr/internal/config"
 )
 
 func minimalConfig() *config.Config {
-    return &config.Config{
-        Name:        "test",
-        Description: "desc",
-        Base: config.BaseConfig{
-            Machine: "verdin-imx8mp",
-            Distro:  "tdx-xwayland",
-        },
-        Layers: []config.Layer{
-            {Name: "meta-a", Path: "./layers/meta-a"},
-            {Name: "meta-b", Git: "https://example.com/meta-b", Branch: "main"},
-        },
-        Build: config.BuildConfig{
-            Image:         "core-image-minimal",
-            ExtraPackages: nil,
-        },
-    }
+	return &config.Config{
+		Name:        "test",
+		Description: "desc",
+		Base: config.BaseConfig{
+			Machine: "verdin-imx8mp",
+			Distro:  "tdx-xwayland",
+		},
+		Layers: []config.Layer{
+			{Name: "meta-a", Path: "./layers/meta-a"},
+			{Name: "meta-b", Git: "https://example.com/meta-b", Branch: "main"},
+		},
+		Build: config.BuildConfig{
+			Image:         "core-image-minimal",
+			ExtraPackages: nil,
+		},
+	}
 }
 
 func configWithExtras() *config.Config {
-    c := minimalConfig()
-    c.Build.ExtraPackages = []string{"vim", "htop"}
-    return c
+	c := minimalConfig()
+	c.Build.ExtraPackages = []string{"vim", "htop"}
+	return c
 }
 
 func TestGenerate_WritesConfFiles(t *testing.T) {
@@ -69,34 +69,32 @@ func TestGenerate_WritesConfFiles(t *testing.T) {
 }
 
 func TestGenerate_CustomImageRecipeWhenExtraPackages(t *testing.T) {
-    t.Parallel()
-    tmp := t.TempDir()
-    g := NewGenerator(configWithExtras(), filepath.Join(tmp, "build"))
-    if err := g.Generate(); err != nil {
-        t.Fatalf("Generate error: %v", err)
-    }
-    recipe := filepath.Join(tmp, "meta-smidr-custom", "recipes-core", "images", "smidr-custom-image.bb")
-    b, err := os.ReadFile(recipe)
-    if err != nil {
-        t.Fatalf("expected recipe at %s: %v", recipe, err)
-    }
-    s := string(b)
-    if !strings.Contains(s, "IMAGE_INSTALL += \"") {
-        t.Fatalf("expected IMAGE_INSTALL block in recipe, got: %s", s)
-    }
+	t.Parallel()
+	tmp := t.TempDir()
+	g := NewGenerator(configWithExtras(), filepath.Join(tmp, "build"))
+	if err := g.Generate(); err != nil {
+		t.Fatalf("Generate error: %v", err)
+	}
+	recipe := filepath.Join(tmp, "meta-smidr-custom", "recipes-core", "images", "smidr-custom-image.bb")
+	b, err := os.ReadFile(recipe)
+	if err != nil {
+		t.Fatalf("expected recipe at %s: %v", recipe, err)
+	}
+	s := string(b)
+	if !strings.Contains(s, "IMAGE_INSTALL += \"") {
+		t.Fatalf("expected IMAGE_INSTALL block in recipe, got: %s", s)
+	}
 }
 
 func TestGetBitBakeCommand(t *testing.T) {
-    t.Parallel()
-    g1 := NewGenerator(minimalConfig(), ".")
-    if cmd := g1.GetBitBakeCommand(); cmd != "bitbake core-image-minimal" {
-        t.Fatalf("unexpected cmd: %q", cmd)
-    }
+	t.Parallel()
+	g1 := NewGenerator(minimalConfig(), ".")
+	if cmd := g1.GetBitBakeCommand(); cmd != "bitbake core-image-minimal" {
+		t.Fatalf("unexpected cmd: %q", cmd)
+	}
 
-    g2 := NewGenerator(configWithExtras(), ".")
-    if cmd := g2.GetBitBakeCommand(); cmd != "bitbake smidr-custom-image" {
-        t.Fatalf("unexpected cmd with extras: %q", cmd)
-    }
+	g2 := NewGenerator(configWithExtras(), ".")
+	if cmd := g2.GetBitBakeCommand(); cmd != "bitbake smidr-custom-image" {
+		t.Fatalf("unexpected cmd with extras: %q", cmd)
+	}
 }
-
-

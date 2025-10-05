@@ -49,31 +49,42 @@ func (f *Fetcher) FetchLayers(cfg *config.Config) ([]FetchResult, error) {
 		return nil, fmt.Errorf("failed to create sources directory: %w", err)
 	}
 
-	var results []FetchResult
-	var wg sync.WaitGroup
-	resultsChan := make(chan FetchResult, len(cfg.Layers))
+	// Track which layers we need to fetch (deduplicate by name)
+	layersToFetch := make(map[string]config.Layer)
 
-	// Fetch base layers (poky, meta-openembedded, etc.)
+	// Add base layers
 	baseLayerNames := getRequiredBaseLayers(cfg.Base.Provider)
 	for _, layerName := range baseLayerNames {
-		wg.Add(1)
-		go func(name string) {
-			defer wg.Done()
-			result := f.fetchBaseLayer(name, cfg)
-			resultsChan <- result
-		}(layerName)
+		repo := getBaseLayerRepository(layerName)
+		branch := getBranchForLayer(layerName, cfg.Base.Version)
+
+		layersToFetch[layerName] = config.Layer{
+			Name:   layerName,
+			Git:    repo,
+			Branch: branch,
+		}
 	}
 
-	// Fetch custom layers from config
+	// Add custom layers from config (may override base layers)
 	for _, layer := range cfg.Layers {
 		if layer.Git != "" {
-			wg.Add(1)
-			go func(l config.Layer) {
-				defer wg.Done()
-				result := f.fetchGitLayer(l)
-				resultsChan <- result
-			}(layer)
+			// Custom layer overrides base layer if same name
+			layersToFetch[layer.Name] = layer
 		}
+	}
+
+	// Fetch all layers in parallel
+	var results []FetchResult
+	var wg sync.WaitGroup
+	resultsChan := make(chan FetchResult, len(layersToFetch))
+
+	for _, layer := range layersToFetch {
+		wg.Add(1)
+		go func(l config.Layer) {
+			defer wg.Done()
+			result := f.fetchGitLayer(l)
+			resultsChan <- result
+		}(layer)
 	}
 
 	// Wait for all fetches to complete
@@ -172,41 +183,90 @@ func (f *Fetcher) fetchGitLayer(layer config.Layer) FetchResult {
 
 	// Check if already exists
 	if f.isGitRepository(layerPath) {
-		f.logger.Debug("Layer %s already exists, updating...", layer.Name)
+		f.logger.Debug("Layer %s already exists, checking status...", layer.Name)
 
 		// Try to update existing repository
 		if err := f.updateGitRepository(layerPath, layer.Branch); err != nil {
-			f.logger.Debug("Failed to update %s, will re-clone: %v", layer.Name, err)
-			// If update fails, remove and re-clone
-			os.RemoveAll(layerPath)
-		} else {
-			return FetchResult{
-				LayerName: layer.Name,
-				Path:      layerPath,
-				Success:   true,
-				Cached:    true,
-			}
+			f.logger.Debug("Failed to update %s: %v", layer.Name, err)
+			// Don't fail - just use existing repository
+		}
+
+		return FetchResult{
+			LayerName: layer.Name,
+			Path:      layerPath,
+			Success:   true,
+			Cached:    true,
 		}
 	}
 
 	// Clone the repository
-	f.logger.Info("Cloning layer %s from %s (branch: %s)", layer.Name, layer.Git, layer.Branch)
-
 	branch := layer.Branch
 	if branch == "" {
 		branch = "master" // Default branch
 	}
 
-	cmd := exec.Command("git", "clone", "--branch", branch, "--depth", "1", layer.Git, layerPath)
-	cmd.Stdout = nil // Suppress output unless in verbose mode
-	cmd.Stderr = nil
+	// Clean up URL (remove trailing .git if present for logging)
+	cleanURL := strings.TrimSuffix(layer.Git, ".git")
+	f.logger.Info("Cloning layer %s from %s (branch: %s)", layer.Name, cleanURL, branch)
+	// Determine if we should use shallow clone
+	useShallow := !strings.Contains(layer.Git, "git.toradex.com")
+
+	// Build git clone command
+	var cmd *exec.Cmd
+	if useShallow {
+		cmd = exec.Command("git", "clone", "--branch", branch, "--depth", "1", layer.Git, layerPath)
+	} else {
+		// Toradex repos don't support shallow clones over HTTP
+		cmd = exec.Command("git", "clone", "--branch", branch, layer.Git, layerPath)
+	}
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		// If clone failed, provide detailed error
+		errorMsg := stderr.String()
+		if errorMsg == "" {
+			errorMsg = err.Error()
+		}
+
+		f.logger.Debug("Git clone failed for %s: %s", layer.Name, errorMsg)
+
+		// Try without branch specification if branch clone failed
+		if strings.Contains(errorMsg, "Remote branch") || strings.Contains(errorMsg, "not found") {
+			f.logger.Debug("Branch %s not found, trying default branch...", branch)
+			// Cleanup failed clone attempt
+			os.RemoveAll(layerPath)
+
+			if useShallow {
+				cmd = exec.Command("git", "clone", "--depth", "1", layer.Git, layerPath)
+			} else {
+				cmd = exec.Command("git", "clone", layer.Git, layerPath)
+			}
+			stderr.Reset()
+			cmd.Stderr = &stderr
+			if err := cmd.Run(); err != nil {
+				return FetchResult{
+					LayerName: layer.Name,
+					Path:      layerPath,
+					Success:   false,
+					Error:     fmt.Errorf("git clone failed: %s", stderr.String()),
+				}
+			}
+
+			// Successfully cloned with default branch
+			return FetchResult{
+				LayerName: layer.Name,
+				Path:      layerPath,
+				Success:   true,
+				Cached:    false,
+			}
+		}
+
 		return FetchResult{
 			LayerName: layer.Name,
 			Path:      layerPath,
 			Success:   false,
-			Error:     fmt.Errorf("git clone failed: %w", err),
+			Error:     fmt.Errorf("git clone failed: %s", errorMsg),
 		}
 	}
 
@@ -290,8 +350,8 @@ func getBaseLayerRepository(layerName string) string {
 	repos := map[string]string{
 		"poky":                    "https://git.yoctoproject.org/poky",
 		"meta-openembedded":       "https://git.openembedded.org/meta-openembedded",
-		"meta-toradex-nxp":        "https://git.toradex.com/meta-toradex-nxp",
-		"meta-toradex-bsp-common": "https://git.toradex.com/meta-toradex-bsp-common",
+		"meta-toradex-nxp":        "https://git.toradex.com/meta-toradex-nxp.git",
+		"meta-toradex-bsp-common": "https://git.toradex.com/meta-toradex-bsp-common.git",
 		"meta-raspberrypi":        "https://git.yoctoproject.org/meta-raspberrypi",
 		"meta-tegra":              "https://github.com/OE4T/meta-tegra",
 	}
@@ -310,10 +370,13 @@ func getBranchForLayer(layerName, version string) string {
 	// If version is specified, try to map it
 	if version != "" {
 		if branch, ok := versionToBranch[version]; ok {
+			// Special handling for Toradex layers
+			if strings.Contains(layerName, "toradex") {
+				return branch + "-6.x.y"
+			}
 			return branch
 		}
 	}
-
 	// Default branches for specific layers
 	defaultBranches := map[string]string{
 		"poky":                    "kirkstone",

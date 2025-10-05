@@ -23,15 +23,19 @@ func NewGenerator(cfg *config.Config, buildDir string) *Generator {
 }
 
 func (g *Generator) Generate() error {
-	confDir := filepath.Join(g.buildDir, "conf")
-	if err := os.MkdirAll(confDir, 0755); err != nil {
+	// Create project root conf directory
+	rootConfDir := "conf"
+	if err := os.MkdirAll(rootConfDir, 0755); err != nil {
 		return err
 	}
-	if err := g.generateLocalConf(confDir); err != nil {
+
+	// Generate local.conf in root conf directory
+	if err := g.generateLocalConf(rootConfDir); err != nil {
 		return err
 	}
-	// Generate bblayers.conf
-	if err := g.generateBBLayersConf(confDir); err != nil {
+
+	// Generate bblayers.conf in root conf directory
+	if err := g.generateBBLayersConf(rootConfDir); err != nil {
 		return fmt.Errorf("failed to generate bblayers.conf: %w", err)
 	}
 
@@ -78,23 +82,56 @@ func (g *Generator) generateLocalConf(confDir string) error {
 
 	sb.WriteString("\n")
 	sb.WriteString("# Shared download and cache directories\n")
-	sb.WriteString("DL_DIR = \"${TOPDIR}/../downloads\"\n")
-	sb.WriteString("SSTATE_DIR = \"${TOPDIR}/../sstate-cache\"\n")
-	sb.WriteString("TMP_DIR = \"${TOPDIR}/tmp\"\n")
-	sb.WriteString("TI_COMMON_DEPLOY = \"${TOPDIR}/deploy\"\n")
+
+	// Use configured directories or defaults
+	dlDir := "${TOPDIR}/../downloads"
+	if g.config.Directories.Downloads != "" {
+		dlDir = g.config.Directories.Downloads
+	}
+	sb.WriteString(fmt.Sprintf("DL_DIR = \"%s\"\n", dlDir))
+
+	sstateDir := "${TOPDIR}/../sstate-cache"
+	if g.config.Directories.SState != "" {
+		sstateDir = g.config.Directories.SState
+	}
+	sb.WriteString(fmt.Sprintf("SSTATE_DIR = \"%s\"\n", sstateDir))
+
+	tmpDir := "${TOPDIR}/tmp"
+	if g.config.Directories.Tmp != "" {
+		tmpDir = g.config.Directories.Tmp
+	}
+	sb.WriteString(fmt.Sprintf("TMP_DIR = \"%s\"\n", tmpDir))
+
+	deployDir := "${TOPDIR}/deploy"
+	if g.config.Directories.Deploy != "" {
+		deployDir = g.config.Directories.Deploy
+	}
+	sb.WriteString(fmt.Sprintf("TI_COMMON_DEPLOY = \"%s\"\n", deployDir))
 	sb.WriteString("DEPLOY_DIR = \"${TI_COMMON_DEPLOY}${@'' if d.getVar('BB_CURRENT_MC') == 'default' else '/${BB_CURRENT_MC}'}\"\n")
 
 	sb.WriteString("\n")
 	sb.WriteString("# Package management\n")
-	sb.WriteString("PACKAGE_CLASSES = \"package_rpm\"\n")
+	packageClasses := "package_rpm"
+	if g.config.Packages.Classes != "" {
+		packageClasses = g.config.Packages.Classes
+	}
+	sb.WriteString(fmt.Sprintf("PACKAGE_CLASSES = \"%s\"\n", packageClasses))
 
 	sb.WriteString("\n")
 	sb.WriteString("# Extra image features\n")
-	sb.WriteString("EXTRA_IMAGE_FEATURES = \"debug-tweaks\"\n")
+	extraFeatures := "debug-tweaks"
+	if len(g.config.Features.ExtraImageFeatures) > 0 {
+		extraFeatures = strings.Join(g.config.Features.ExtraImageFeatures, " ")
+	}
+	sb.WriteString(fmt.Sprintf("EXTRA_IMAGE_FEATURES = \"%s\"\n", extraFeatures))
 
 	sb.WriteString("\n")
 	sb.WriteString("# Additional image features\n")
-	sb.WriteString("USER_CLASSES = \"buildstats\"\n")
+	userClasses := "buildstats"
+	if len(g.config.Features.UserClasses) > 0 {
+		userClasses = strings.Join(g.config.Features.UserClasses, " ")
+	}
+	sb.WriteString(fmt.Sprintf("USER_CLASSES = \"%s\"\n", userClasses))
 
 	sb.WriteString("\n")
 	sb.WriteString("# Disk space monitoring\n")
@@ -110,11 +147,26 @@ func (g *Generator) generateLocalConf(confDir string) error {
 
 	sb.WriteString("\n")
 	sb.WriteString("# Hash equivalence and shared state\n")
-	sb.WriteString("BB_HASHSERVE = \"auto\"\n")
-	sb.WriteString("BB_SIGNATURE_HANDLER = \"OEEquivHash\"\n")
+	if g.config.Advanced.BBHashServe != "" {
+		sb.WriteString(fmt.Sprintf("BB_HASHSERVE = \"%s\"\n", g.config.Advanced.BBHashServe))
+	} else {
+		sb.WriteString("BB_HASHSERVE = \"auto\"\n")
+	}
+
+	if g.config.Advanced.BBSignatureHandler != "" {
+		sb.WriteString(fmt.Sprintf("BB_SIGNATURE_HANDLER = \"%s\"\n", g.config.Advanced.BBSignatureHandler))
+	} else {
+		sb.WriteString("BB_SIGNATURE_HANDLER = \"OEEquivHash\"\n")
+	}
 	sb.WriteString("\n")
 
-	sb.WriteString("PACKAGECONFIG:append = \" sdl\"\n")
+	// QEMU configuration
+	if g.config.Advanced.QemuSDL {
+		sb.WriteString("PACKAGECONFIG:append = \" sdl\"\n")
+	}
+	if g.config.Advanced.QemuGTK {
+		sb.WriteString("PACKAGECONFIG:append = \" gtk+\"\n")
+	}
 
 	// Extra packages
 	if len(g.config.Build.ExtraPackages) > 0 {
@@ -124,16 +176,34 @@ func (g *Generator) generateLocalConf(confDir string) error {
 
 	sb.WriteString("\n")
 	sb.WriteString("# Accept licenses\n")
-	sb.WriteString("LICENSE_FLAGS_ACCEPTED = \"commercial\"\n")
-	sb.WriteString("ACCEPT_FSL_EULA = \"1\"\n")
+	if g.config.Advanced.LicenseFlags != "" {
+		sb.WriteString(fmt.Sprintf("LICENSE_FLAGS_ACCEPTED = \"%s\"\n", g.config.Advanced.LicenseFlags))
+	} else {
+		sb.WriteString("LICENSE_FLAGS_ACCEPTED = \"commercial\"\n")
+	}
+
+	if g.config.Advanced.AcceptFSLEULA {
+		sb.WriteString("ACCEPT_FSL_EULA = \"1\"\n")
+	}
+
 	sb.WriteString("\n")
 	sb.WriteString("# Configuration version\n")
-	sb.WriteString("CONF_VERSION = \"2\"\n")
+	if g.config.Advanced.ConfVersion != "" {
+		sb.WriteString(fmt.Sprintf("CONF_VERSION = \"%s\"\n", g.config.Advanced.ConfVersion))
+	} else {
+		sb.WriteString("CONF_VERSION = \"2\"\n")
+	}
 
 	sb.WriteString("\n")
 	sb.WriteString("# Inherit classes\n")
-	sb.WriteString("INHERIT += \"rm_work\"\n")
-	sb.WriteString("INHERIT += \"toradex-mirrors toradex-sanity\"\n")
+	if len(g.config.Features.InheritClasses) > 0 {
+		for _, inheritClass := range g.config.Features.InheritClasses {
+			sb.WriteString(fmt.Sprintf("INHERIT += \"%s\"\n", inheritClass))
+		}
+	} else {
+		sb.WriteString("INHERIT += \"rm_work\"\n")
+		sb.WriteString("INHERIT += \"toradex-mirrors toradex-sanity\"\n")
+	}
 
 	sb.WriteString("\n")
 	sb.WriteString("# User and hostname configuration\n")

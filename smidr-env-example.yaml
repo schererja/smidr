@@ -1,0 +1,84 @@
+# Smidr Configuration with Environment Variable Substitution
+# This example shows how to use environment variables in your configuration
+
+name: ${PROJECT_NAME:-my-embedded-project}
+description: "Custom embedded Linux image for ${PROJECT_NAME:-my-project}"
+
+# Base system configuration with environment variable defaults
+base:
+  provider: ${PROVIDER:-toradex}
+  machine: ${MACHINE_TYPE:-verdin-imx8mp}
+  distro: ${DISTRO_TYPE:-tdx-xwayland}
+  version: ${YOCTO_VERSION:-6.0.0}
+
+# Layer configuration with dynamic naming
+layers:
+  - name: meta-toradex-bsp-common
+    git: https://git.toradex.com/meta-toradex-bsp-common
+    branch: ${BSP_BRANCH:-kirkstone-6.x.y}
+  - name: meta-${PROJECT_NAME:-mycompany}
+    path: ./layers/meta-${PROJECT_NAME:-mycompany}
+
+# Build configuration with environment-based settings
+build:
+  image: ${BUILD_IMAGE:-core-image-weston}
+  machine: ${BUILD_MACHINE:-${MACHINE_TYPE:-verdin-imx8mp}}
+  extra_packages:
+    - python3
+    - nodejs
+    - vim
+    - ${EXTRA_PACKAGE:-htop}
+  parallel_make: ${PARALLEL_MAKE:-8}
+  bb_number_threads: ${BB_THREADS:-8}
+
+# Directory configuration with custom paths
+directories:
+  downloads: ${CACHE_BASE:-${TOPDIR}/../downloads}
+  sstate: ${CACHE_BASE:-${TOPDIR}/../sstate-cache}
+  tmp: ${BUILD_TMP:-${TOPDIR}/tmp}
+  deploy: ${DEPLOY_DIR:-${TOPDIR}/deploy}
+
+# Package management
+packages:
+  classes: ${PACKAGE_CLASS:-package_rpm}
+
+# Feature configuration
+features:
+  extra_image_features:
+    - debug-tweaks
+    - ${EXTRA_FEATURE:-package-management}
+  user_classes:
+    - buildstats
+  inherit_classes:
+    - rm_work
+    - toradex-mirrors
+    - toradex-sanity
+
+# Advanced configuration
+advanced:
+  bb_hashserve: ${BB_HASHSERVE:-auto}
+  bb_signature_handler: ${BB_SIGNATURE_HANDLER:-OEEquivHash}
+  license_flags: ${LICENSE_FLAGS:-commercial}
+  conf_version: ${CONF_VERSION:-2}
+  disk_monitoring: ${DISK_MONITORING:-true}
+  qemu_sdl: ${QEMU_SDL:-true}
+  qemu_gtk: ${QEMU_GTK:-false}
+  accept_fsl_eula: ${ACCEPT_FSL_EULA:-true}
+
+# Output artifacts
+artifacts:
+  - "*.wic"
+  - "*.tar.bz2"
+  - "*-sdk-*.sh"
+
+# Container configuration with resource limits
+container:
+  base_image: ${CONTAINER_IMAGE:-smidr/yocto-builder:kirkstone}
+  memory: ${CONTAINER_MEMORY:-8g}
+  cpu_count: ${CONTAINER_CPUS:-8}
+
+# Cache configuration with custom locations
+cache:
+  downloads: ${CACHE_DOWNLOADS:-~/.smidr/downloads}
+  sstate: ${CACHE_SSTATE:-~/.smidr/sstate-cache}
+  retention: ${CACHE_RETENTION:-30}
