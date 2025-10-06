@@ -185,6 +185,7 @@ Smidr is developed by Jason Scherer, a software engineer focused on solving real
 - [CLI Commands](docs/cli-reference.md)
 - [Architecture Overview](docs/architecture.md)
 - [Contributing Guide](CONTRIBUTING.md)
+ - [Cache & Source Management](docs/cache.md)
 
 ---
 
