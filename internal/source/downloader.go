@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // Downloader handles downloading source tarballs and files
@@ -27,49 +28,33 @@ func NewDownloader(downloadDir string, logger Logger) *Downloader {
 
 // DownloadFile downloads a file from a URL to the download directory
 func (d *Downloader) DownloadFile(url string) (string, error) {
-	if err := os.MkdirAll(d.downloadDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create download directory: %w", err)
-	}
+	return d.DownloadFileWithMirrors([]string{url}, 3)
+}
 
-	// Generate filename from URL
-	filename := filepath.Base(url)
-	destPath := filepath.Join(d.downloadDir, filename)
-
-	// Check if already downloaded
-	if _, err := os.Stat(destPath); err == nil {
-		d.logger.Info("File %s already cached", filename)
-		return destPath, nil
-	}
-
-	d.logger.Info("Downloading %s", url)
-
-	// Download file
-	resp, err := d.client.Get(url)
+// EvictOldCache removes downloads not accessed within ttl
+func (d *Downloader) EvictOldCache(ttl time.Duration) error {
+	entries, err := os.ReadDir(d.downloadDir)
 	if err != nil {
-		return "", fmt.Errorf("failed to download %s: %w", url, err)
+		return err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to download %s: HTTP %d", url, resp.StatusCode)
+	now := time.Now()
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		filePath := filepath.Join(d.downloadDir, entry.Name())
+		meta, err := readCacheMeta(filePath)
+		if err != nil {
+			// If no meta, skip eviction (could be in use or legacy)
+			continue
+		}
+		if now.Sub(meta.LastAccess) > ttl {
+			d.logger.Info("Evicting download %s (last accessed %s)", entry.Name(), meta.LastAccess.Format(time.RFC3339))
+			_ = os.Remove(filePath)
+			_ = os.Remove(filePath + ".smidr_meta.json")
+		}
 	}
-
-	// Create destination file
-	out, err := os.Create(destPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create file: %w", err)
-	}
-	defer out.Close()
-
-	// Copy data
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		os.Remove(destPath) // Clean up partial download
-		return "", fmt.Errorf("failed to save file: %w", err)
-	}
-
-	d.logger.Info("Successfully downloaded %s", filename)
-	return destPath, nil
+	return nil
 }
 
 // VerifyChecksum verifies the SHA256 checksum of a file
@@ -108,4 +93,65 @@ func (d *Downloader) GetDownloadSize() (int64, error) {
 	})
 
 	return size, err
+}
+
+// DownloadFileWithMirrors downloads a file from a list of URLs (mirrors) with retries and backoff.
+func (d *Downloader) DownloadFileWithMirrors(urls []string, maxRetries int) (string, error) {
+	var lastErr error
+	for _, url := range urls {
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			destPath, err := d.downloadFileOnce(url)
+			if err == nil {
+				return destPath, nil
+			}
+			lastErr = err
+			backoff := time.Duration(1<<attempt) * 100 * time.Millisecond
+			d.logger.Info("Retry %d for %s after error: %v", attempt+1, url, err)
+			time.Sleep(backoff)
+		}
+	}
+	return "", fmt.Errorf("all mirrors failed: %w", lastErr)
+}
+
+// downloadFileOnce attempts to download a file from a single URL once.
+func (d *Downloader) downloadFileOnce(url string) (string, error) {
+	filename := filepath.Base(url)
+	destPath := filepath.Join(d.downloadDir, filename)
+
+	// Check if file exists and is fresh
+	if _, err := os.Stat(destPath); err == nil {
+		meta, err := readCacheMeta(destPath + ".smidr_meta.json")
+		if err == nil {
+			meta.LastAccess = time.Now()
+			_ = writeCacheMeta(destPath + ".smidr_meta.json")
+		}
+		d.logger.Info("Cache hit for %s", filename)
+		return destPath, nil
+	}
+
+	resp, err := d.client.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to download %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to download %s: HTTP %d", url, resp.StatusCode)
+	}
+
+	out, err := os.Create(destPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create file: %w", err)
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		os.Remove(destPath)
+		return "", fmt.Errorf("failed to save file: %w", err)
+	}
+
+	d.logger.Info("Successfully downloaded %s", filename)
+	_ = writeCacheMeta(destPath + ".smidr_meta.json")
+	return destPath, nil
 }
