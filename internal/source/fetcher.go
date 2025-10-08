@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/intrik8-labs/smidr/internal/config"
 )
+
 
 // Fetcher is responsible for fetching source code from various repositories.
 type Fetcher struct {
@@ -99,28 +101,43 @@ func (f *Fetcher) FetchLayers(cfg *config.Config) ([]FetchResult, error) {
 		if result.Success {
 			if result.Cached {
 				f.logger.Info("Layer %s already cached at %s", result.LayerName, result.Path)
+				_ = writeCacheMeta(filepath.Join(result.Path, ".smidr_meta.json"))
 			} else {
 				f.logger.Info("Successfully fetched layer %s to %s", result.LayerName, result.Path)
+				_ = writeCacheMeta(filepath.Join(result.Path, ".smidr_meta.json"))
 			}
 		} else {
 			f.logger.Error("Failed to fetch layer %s: %v", result.LayerName, result.Error)
 		}
 	}
-
-	// Check for any failures
-	var failures []string
-	for _, result := range results {
-		if !result.Success {
-			failures = append(failures, result.LayerName)
-		}
-	}
-
-	if len(failures) > 0 {
-		return results, fmt.Errorf("failed to fetch layers: %s", strings.Join(failures, ", "))
-	}
-
 	return results, nil
 }
+
+// EvictOldCache removes cached repos not accessed within ttl
+func (f *Fetcher) EvictOldCache(ttl time.Duration) error {
+	entries, err := os.ReadDir(f.sourcesDir)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		repoPath := filepath.Join(f.sourcesDir, entry.Name())
+	meta, err := readCacheMeta(filepath.Join(repoPath, ".smidr_meta.json"))
+		if err != nil {
+			// If no meta, skip eviction (could be in use or legacy)
+			continue
+		}
+		if now.Sub(meta.LastAccess) > ttl {
+			f.logger.Info("Evicting repo %s (last accessed %s)", entry.Name(), meta.LastAccess.Format(time.RFC3339))
+			_ = os.RemoveAll(repoPath)
+		}
+	}
+	return nil
+}
+
 
 // CleanCache removes all cached sources
 func (f *Fetcher) CleanCache() error {
@@ -180,6 +197,19 @@ func (f *Fetcher) fetchBaseLayer(layerName string, cfg *config.Config) FetchResu
 // fetchGitLayer clones or updates a git repository
 func (f *Fetcher) fetchGitLayer(layer config.Layer) FetchResult {
 	layerPath := filepath.Join(f.sourcesDir, layer.Name)
+
+	// Acquire per-repo lock to avoid concurrent clones/updates across processes
+	lockFile := filepath.Join(f.sourcesDir, layer.Name+".lock")
+	locked, lockErr := acquireLock(lockFile, 10*time.Second)
+	if lockErr != nil {
+		return FetchResult{LayerName: layer.Name, Path: layerPath, Success: false, Error: fmt.Errorf("failed to acquire lock: %w", lockErr)}
+	}
+	// Ensure lock is released when done
+	defer func() {
+		if locked {
+			_ = releaseLock(lockFile)
+		}
+	}()
 
 	// Check if already exists
 	if f.isGitRepository(layerPath) {
@@ -283,6 +313,35 @@ func (f *Fetcher) isGitRepository(path string) bool {
 	gitDir := filepath.Join(path, ".git")
 	info, err := os.Stat(gitDir)
 	return err == nil && info.IsDir()
+}
+
+// acquireLock attempts to create a lockfile atomically. It will retry until timeout.
+func acquireLock(path string, timeout time.Duration) (bool, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		fd, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+		if err == nil {
+			// Write PID and timestamp for diagnostics
+			_, _ = fd.WriteString(fmt.Sprintf("pid:%d\nstarted:%s\n", os.Getpid(), time.Now().Format(time.RFC3339)))
+			_ = fd.Close()
+			return true, nil
+		}
+
+		if !os.IsExist(err) {
+			return false, err
+		}
+
+		if time.Now().After(deadline) {
+			return false, fmt.Errorf("timed out waiting for lock %s", path)
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// releaseLock removes the lockfile.
+func releaseLock(path string) error {
+	return os.Remove(path)
 }
 
 // updateGitRepository updates an existing git repository

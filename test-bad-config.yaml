@@ -1,0 +1,10 @@
+name: ""
+description: "Bad config test"
+base:
+  machine: "invalid@machine"
+  distro: ""
+layers:
+  - name: "test"
+    git: "https://example.com"
+build:
+  image: "test"

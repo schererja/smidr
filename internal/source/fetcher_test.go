@@ -1,11 +1,13 @@
 package source
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intrik8-labs/smidr/internal/config"
 )
@@ -352,6 +354,85 @@ func TestFetchResult(t *testing.T) {
 	if result.Cached {
 		t.Error("Expected Cached to be false")
 	}
+}
+
+func TestEvictOldCache(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := &MockLogger{}
+	fetcher := NewFetcher(tmpDir, logger)
+
+	// Create two fake repos: one old, one recent
+	oldRepo := filepath.Join(tmpDir, "old-repo")
+	newRepo := filepath.Join(tmpDir, "new-repo")
+	os.MkdirAll(oldRepo, 0755)
+	os.MkdirAll(newRepo, 0755)
+
+	// Write meta: old repo last accessed 48h ago, new repo now
+	oldMeta := CacheMeta{LastAccess: time.Now().Add(-48 * time.Hour)}
+	newMeta := CacheMeta{LastAccess: time.Now()}
+	oldMetaBytes, _ := json.Marshal(oldMeta)
+	newMetaBytes, _ := json.Marshal(newMeta)
+	os.WriteFile(filepath.Join(oldRepo, ".smidr_meta.json"), oldMetaBytes, 0644)
+	os.WriteFile(filepath.Join(newRepo, ".smidr_meta.json"), newMetaBytes, 0644)
+
+	// Run eviction with TTL = 24h
+	err := fetcher.EvictOldCache(24 * time.Hour)
+	if err != nil {
+		t.Fatalf("EvictOldCache failed: %v", err)
+	}
+
+	// Old repo should be gone, new repo should remain
+	if _, err := os.Stat(oldRepo); !os.IsNotExist(err) {
+		t.Errorf("Old repo was not evicted")
+	}
+	if _, err := os.Stat(newRepo); err != nil {
+		t.Errorf("New repo was incorrectly evicted: %v", err)
+	}
+}
+
+func TestPerRepoLocking(t *testing.T) {
+	tmpDir := t.TempDir()
+	_ = &MockLogger{}
+
+	lockFile := filepath.Join(tmpDir, "test-layer.lock")
+
+	// Acquire lock in background (simulate another process)
+	acquired := make(chan struct{})
+	go func() {
+		ok, err := acquireLock(lockFile, 2*time.Second)
+		if err != nil || !ok {
+			t.Logf("background acquire failed: %v", err)
+			close(acquired)
+			return
+		}
+		// Signal that lock is held
+		close(acquired)
+		// Hold the lock briefly
+		time.Sleep(500 * time.Millisecond)
+		_ = releaseLock(lockFile)
+	}()
+
+	// Wait for background goroutine to acquire the lock
+	<-acquired
+
+	// Now attempt to acquire lock with a short timeout; should either wait and then succeed after release
+	start := time.Now()
+	ok, err := acquireLock(lockFile, 3*time.Second)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("failed to acquire lock: %v", err)
+	}
+	if !ok {
+		t.Fatalf("acquireLock returned false")
+	}
+
+	// We should have waited at least some time (background held it for 500ms)
+	if elapsed < 400*time.Millisecond {
+		t.Errorf("expected to wait for lock, but acquired too quickly: %v", elapsed)
+	}
+
+	// Clean up
+	_ = releaseLock(lockFile)
 }
 
 // Benchmark tests

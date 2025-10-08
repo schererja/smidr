@@ -15,7 +15,7 @@ base:
 layers:
   # BSP layers (automatically managed)
   - name: meta-toradex-bsp-common
-    git: https://git.toradex.com/meta-toradex-bsp-common
+    git: https://git.toradex.com/meta-toradex-bsp-common.git
     branch: kirkstone-6.x.y
 
   # Custom layers (your application code)

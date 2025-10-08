@@ -6,35 +6,35 @@
 - [X] Set up Git repository under intrik8-labs
 - [X] Create basic README with project vision
 - [X] Define project directory structure (cmd/, internal/, pkg/)
-- [ ] Set up Go modules and dependencies
+- [X] Set up Go modules and dependencies
 - [X] Create .gitignore for Go projects
 
 ## Phase 2: Configuration System
 
-- [ ] Design YAML configuration schema
-- [ ] Implement config file parser (using go-yaml)
-- [ ] Add config validation logic
-- [ ] Create `smidr init` command to generate template config
-- [ ] Add support for environment variable substitution
-- [ ] Write unit tests for config parsing
+- [X] Design YAML configuration schema
+- [X] Implement config file parser (using go-yaml)
+- [X] Add config validation logic
+- [X] Create `smidr init` command to generate template config
+- [X] Add support for environment variable substitution
+- [X] Write unit tests for config parsing
 
 ## Phase 3: Source Management
 
-- [ ] Implement git repository cloning for layers
-- [ ] Add caching logic for git repositories
-- [ ] Implement source package download system
-- [ ] Create persistent cache directory structure
-- [ ] Add cache invalidation/update logic
-- [ ] Handle download mirrors and fallbacks
+- [X] Implement git repository cloning for layers
+- [X] Add caching logic for git repositories
+- [X] Implement source package download system
+- [X] Create persistent cache directory structure
+- [X] Add cache invalidation/update logic (cache metadata, TTL eviction, per-repo and per-download)
+- [X] Handle download mirrors and fallbacks (mirror/retry logic, tests)
 
 ## Phase 4: Container Orchestration
 
-- [ ] Research Docker/Podman Go SDK integration
-- [ ] Create base container image with Yocto dependencies
-- [ ] Implement container lifecycle management (create/start/stop/destroy)
-- [ ] Add volume mounting for downloads and sstate-cache
-- [ ] Implement layer injection into containers
-- [ ] Add container cleanup on build completion/failure
+- [X] Research Docker/Podman Go SDK integration
+- [X] Create base container image with Yocto dependencies
+- [X] Implement container lifecycle management (create/start/stop/destroy) and add unit tests for container and docker packages
+- [] Add volume mounting for downloads and sstate-cache
+- [] Implement layer injection into containers
+- [] Add container cleanup on build completion/failure
 
 ## Phase 5: Build Execution
 
