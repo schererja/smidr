@@ -135,15 +135,9 @@ func TestSmidrMountsAndLayers(t *testing.T) {
 	t.Logf("Output:\n%s", string(out))
 
 	// Assert markers exist where expected
-	// Only workspace marker should be written (it's container-managed and writable)
-	// However, on CI the workspace might also be bind-mounted and not writable
+	// Workspace marker should be written via docker cp (works regardless of permissions)
 	if _, err := os.Stat(filepath.Join(wsDir, "itest.txt")); err != nil {
-		// Check if this is a permission issue by looking for the error message in output
-		if strings.Contains(string(out), "workspace marker failed") || strings.Contains(string(out), "Permission denied") {
-			t.Logf("Workspace marker failed due to permissions (expected on CI): %v", err)
-		} else {
-			t.Errorf("workspace marker not found: %v", err)
-		}
+		t.Errorf("workspace marker not found: %v", err)
 	}
 
 	// For downloads and sstate, we just verify the directories exist and were mounted

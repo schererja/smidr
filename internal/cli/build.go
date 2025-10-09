@@ -238,15 +238,22 @@ func runBuild(cmd *cobra.Command) error {
 			fmt.Printf("⚠️  Container basic write test failed: %v, output: %s\n", err, string(tmpRes.Stderr))
 		}
 
-		// Test workspace by writing to writable location and attempting copy to mount
+		// Test workspace by writing to writable location and using docker cp to extract
 		if containerConfig.WorkspaceDir != "" {
-			// Create marker in writable space and attempt to copy to mount point (may fail on CI due to permissions)
-			res, err := dm.Exec(cmd.Context(), containerID, []string{"sh", "-c", "echo itest > /tmp/builder-workspace/itest.txt; cp /tmp/builder-workspace/itest.txt /home/builder/work/itest.txt || echo 'Note: workspace copy failed due to permissions (expected on CI)'"}, 5*time.Second)
+			// Create marker in writable space inside container
+			res, err := dm.Exec(cmd.Context(), containerID, []string{"sh", "-c", "echo itest > /tmp/builder-workspace/itest.txt"}, 5*time.Second)
 			if err != nil {
-				fmt.Printf("⚠️  Failed to write workspace marker: %v\n", err)
-			}
-			if res.ExitCode != 0 {
-				fmt.Printf("⚠️  workspace marker command failed: %s\n", string(res.Stderr))
+				fmt.Printf("⚠️  Failed to create workspace marker: %v\n", err)
+			} else if res.ExitCode != 0 {
+				fmt.Printf("⚠️  workspace marker creation failed: %s\n", string(res.Stderr))
+			} else {
+				// Use docker cp to copy the file from container to host mount point
+				// This works even when container user can't write directly to bind-mounted dirs
+				if err := dm.CopyFromContainer(cmd.Context(), containerID, "/tmp/builder-workspace/itest.txt", containerConfig.WorkspaceDir+"/itest.txt"); err != nil {
+					fmt.Printf("⚠️  Failed to copy workspace marker to host: %v\n", err)
+				} else {
+					fmt.Printf("✓ Workspace marker successfully created via docker cp\n")
+				}
 			}
 		}
 

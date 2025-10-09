@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"fmt"
@@ -48,6 +49,36 @@ func (d *DockerManager) PullImage(ctx context.Context, imageName string) error {
 func (d *DockerManager) ImageExists(ctx context.Context, imageName string) bool {
 	_, _, err := d.cli.ImageInspectWithRaw(ctx, imageName)
 	return err == nil
+}
+
+func (d *DockerManager) CopyFromContainer(ctx context.Context, containerID, containerPath, hostPath string) error {
+	reader, _, err := d.cli.CopyFromContainer(ctx, containerID, containerPath)
+	if err != nil {
+		return fmt.Errorf("copy from container %s:%s: %w", containerID, containerPath, err)
+	}
+	defer reader.Close()
+
+	// Create a tar reader to extract the file
+	tarReader := tar.NewReader(reader)
+	_, err = tarReader.Next()
+	if err != nil {
+		return fmt.Errorf("read tar header: %w", err)
+	}
+
+	// Open the destination file
+	outFile, err := os.Create(hostPath)
+	if err != nil {
+		return fmt.Errorf("create destination file %s: %w", hostPath, err)
+	}
+	defer outFile.Close()
+
+	// Copy the file content
+	_, err = io.Copy(outFile, tarReader)
+	if err != nil {
+		return fmt.Errorf("copy file content: %w", err)
+	}
+
+	return nil
 }
 
 func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.ContainerConfig) (string, error) {
