@@ -33,7 +33,7 @@ Smidr reimagines embedded Linux builds using modern container technology:
 - **90%+ space savings**: Turn 360GB of duplicated builds into 40GB of smart cache
 - **Incremental builds**: Only rebuild what actually changed
 
-Note: Smidr defaults the BitBake shared state (sstate) cache to `${WORKDIR}/sstate-cache`. When running builds in containers, Smidr mounts the sstate directory into the container at `/home/builder/sstate-cache` so builds inside containers can use the shared cache transparently.
+Note: Smidr defaults the BitBake shared state (sstate) cache to `${WORKDIR}/sstate-cache` on the host. When running builds in containers, Smidr bind-mounts the host SSTATE directory into the container at `/home/builder/sstate-cache` so containerized builds can use the shared cache transparently.
 
 ### 🛠️ Developer Experience First
 
@@ -187,7 +187,7 @@ Smidr is developed by Jason Scherer, a software engineer focused on solving real
 - [CLI Commands](docs/cli-reference.md)
 - [Architecture Overview](docs/architecture.md)
 - [Contributing Guide](CONTRIBUTING.md)
- - [Cache & Source Management](docs/cache.md)
+- [Cache & Source Management](docs/cache.md)
 
 ---
 

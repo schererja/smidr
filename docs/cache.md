@@ -7,7 +7,7 @@ Key points:
 - Persistent cache locations:
   - `sourcesDir`: git layer clones are stored here.
   - `downloadDir`: downloaded archives and files are stored here.
-  - `sstate-cache`: shared BitBake sstate cache. By default Smidr will set this to `${WORKDIR}/sstate-cache` and, when running builds inside containers, the SSTATE directory is mounted into the container at `/home/builder/sstate-cache`.
+  - `sstate-cache`: shared BitBake sstate cache. By default Smidr will set this to `${WORKDIR}/sstate-cache` on the host. When running builds inside containers, Smidr bind-mounts the host SSTATE directory into the container at `/home/builder/sstate-cache` so containerized builds share the same sstate cache.
 - Metadata:
   - For every cached object, Smidr writes a companion metadata file named `<object>.smidr_meta.json` that contains a `last_access` timestamp.
   - Metadata is used to make eviction decisions and for observability.
