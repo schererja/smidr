@@ -8,6 +8,7 @@ type ContainerConfig struct {
 	Name           string
 	Env            []string
 	Cmd            []string
+	Entrypoint     []string
 	Mounts         []Mount
 	DownloadsDir   string   // Host path to mount as /home/builder/downloads
 	SstateCacheDir string   // Host path to mount as /home/builder/sstate-cache

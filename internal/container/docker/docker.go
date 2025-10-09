@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"fmt"
@@ -42,6 +43,41 @@ func (d *DockerManager) PullImage(ctx context.Context, imageName string) error {
 	}
 	defer out.Close()
 	io.Copy(io.Discard, out)
+	return nil
+}
+
+func (d *DockerManager) ImageExists(ctx context.Context, imageName string) bool {
+	_, _, err := d.cli.ImageInspectWithRaw(ctx, imageName)
+	return err == nil
+}
+
+func (d *DockerManager) CopyFromContainer(ctx context.Context, containerID, containerPath, hostPath string) error {
+	reader, _, err := d.cli.CopyFromContainer(ctx, containerID, containerPath)
+	if err != nil {
+		return fmt.Errorf("copy from container %s:%s: %w", containerID, containerPath, err)
+	}
+	defer reader.Close()
+
+	// Create a tar reader to extract the file
+	tarReader := tar.NewReader(reader)
+	_, err = tarReader.Next()
+	if err != nil {
+		return fmt.Errorf("read tar header: %w", err)
+	}
+
+	// Open the destination file
+	outFile, err := os.Create(hostPath)
+	if err != nil {
+		return fmt.Errorf("create destination file %s: %w", hostPath, err)
+	}
+	defer outFile.Close()
+
+	// Copy the file content
+	_, err = io.Copy(outFile, tarReader)
+	if err != nil {
+		return fmt.Errorf("copy file content: %w", err)
+	}
+
 	return nil
 }
 
@@ -111,10 +147,32 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 		}
 	}
 
+	// Determine Entrypoint/Cmd to use when creating the container.
+	// If the caller specified an explicit Entrypoint, use it. If not, only
+	// default to "/bin/sh -c" when the provided Cmd is a single string
+	// (shell form). If the Cmd is a multi-element slice, we leave Entrypoint
+	// nil so the image's own ENTRYPOINT will be used and Cmd will be applied
+	// as the argv (exec form).
+	var entrypoint strslice.StrSlice
+	var cmd strslice.StrSlice
+	if len(cfg.Entrypoint) > 0 {
+		entrypoint = strslice.StrSlice(cfg.Entrypoint)
+		cmd = strslice.StrSlice(cfg.Cmd)
+	} else if len(cfg.Cmd) == 1 {
+		// single-string command -> execute via shell
+		entrypoint = strslice.StrSlice{"/bin/sh", "-c"}
+		cmd = strslice.StrSlice{cfg.Cmd[0]}
+	} else {
+		// multi-element Cmd -> use image ENTRYPOINT and pass Cmd as argv
+		entrypoint = nil
+		cmd = strslice.StrSlice(cfg.Cmd)
+	}
+
 	resp, err := d.cli.ContainerCreate(ctx, &container.Config{
-		Image: cfg.Image,
-		Env:   cfg.Env,
-		Cmd:   strslice.StrSlice(cfg.Cmd),
+		Image:      cfg.Image,
+		Env:        cfg.Env,
+		Entrypoint: entrypoint,
+		Cmd:        cmd,
 	}, &container.HostConfig{
 		Mounts: mounts,
 	}, &network.NetworkingConfig{}, nil, cfg.Name)
@@ -128,6 +186,33 @@ func (d *DockerManager) StartContainer(ctx context.Context, containerID string) 
 	if err := d.cli.ContainerStart(ctx, containerID, container.StartOptions{}); err != nil {
 		return fmt.Errorf("start container %s: %w", containerID, err)
 	}
+
+	// Create writable workspace for container operations
+	// NOTE: All /home/builder/* paths may be bind-mounted and not writable by container user
+	// Use /tmp for workspace that we know is writable, and create a symlink if needed
+	userCheckRes, err := d.Exec(ctx, containerID, []string{"sh", "-c", "id builder >/dev/null 2>&1"}, 5*time.Second)
+	if err != nil {
+		fmt.Printf("⚠️  Could not check for builder user: %v\n", err)
+	} else if userCheckRes.ExitCode == 0 {
+		// Builder user exists, create workspace in writable location
+		setupRes, err := d.Exec(ctx, containerID, []string{"sh", "-c", "mkdir -p /tmp/builder-workspace && chown builder:builder /tmp/builder-workspace"}, 10*time.Second)
+		if err != nil {
+			fmt.Printf("⚠️  Setup command exec error: %v\n", err)
+		}
+		if setupRes.ExitCode != 0 {
+			fmt.Printf("⚠️  Setup command failed (exit %d): stdout=%s stderr=%s\n", setupRes.ExitCode, string(setupRes.Stdout), string(setupRes.Stderr))
+		}
+	} else {
+		// No builder user, just ensure basic workspace exists in writable location
+		setupRes, err := d.Exec(ctx, containerID, []string{"sh", "-c", "mkdir -p /tmp/workspace"}, 5*time.Second)
+		if err != nil {
+			fmt.Printf("⚠️  Basic workspace setup error: %v\n", err)
+		}
+		if setupRes.ExitCode != 0 {
+			fmt.Printf("⚠️  Basic workspace setup failed: %s\n", string(setupRes.Stderr))
+		}
+	}
+
 	return nil
 }
 

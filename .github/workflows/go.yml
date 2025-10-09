@@ -26,12 +26,11 @@ jobs:
       - name: Test
         run: go test -v ./...
 
-      - name: Check Docker Availability
+      - name: Run Integration Tests
         run: |
           if ! command -v docker &> /dev/null; then
             echo "Docker not found, skipping integration tests."
-            exit 0
+          else
+            echo "Docker found, running integration tests..."
+            go test -v -tags=integration -timeout=5m ./...
           fi
-
-      - name: Run Integration Tests
-        run: go test -v -tags=integration ./...

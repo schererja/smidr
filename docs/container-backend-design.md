@@ -18,15 +18,15 @@ Options considered
 - Pros: mature Go client, widespread, working on Linux/macOS/Windows, can run with Docker Desktop or Docker Engine on Linux.
 - Cons: requires Docker daemon, which may not be present in all environments. Docker Desktop licensing considerations for larger orgs.
 
-2) Podman (REST API / varlink compatibility)
+1. Podman (REST API / varlink compatibility)
 
-- Pros: daemonless mode (rootless), works well in Linux server environments, gaining adoption.
-- Cons: Go SDK less mature; interaction often via CLI or REST socket; portability on macOS requires Podman Desktop.
+    - Pros: daemonless mode (rootless), works well in Linux server environments, gaining adoption.
+    - Cons: Go SDK less mature; interaction often via CLI or REST socket; portability on macOS requires Podman Desktop.
 
-3) containerd (pure runtime)
+1. containerd (pure runtime)
 
-- Pros: lightweight and powerful, used under Docker and container runtimes.
-- Cons: lower-level; building a fully-featured client is more complex.
+    - Pros: lightweight and powerful, used under Docker and container runtimes.
+    - Cons: lower-level; building a fully-featured client is more complex.
 
 Recommendation
 
@@ -84,5 +84,22 @@ Developer notes
 
 - Keep operations idempotent where reasonable (e.g., CreateContainer returns existing container ID if already created with same name).
 - Enforce cleanup in defer paths and provide a force-cleanup command.
+
+## Entrypoint configuration
+
+Smidr now supports configuring the container entrypoint used when creating
+containers. This is useful for images that require a specific process to be
+launched (for example `/bin/bash -l -c`). The YAML key is `container.entrypoint`
+and takes a YAML sequence, for example:
+
+```yaml
+container:
+    entrypoint: ["/bin/bash","-l","-c"]
+```
+
+By default Smidr will use `/bin/sh -c` as a safe fallback so simple single-
+string commands (like `echo 'ready'; sleep 5`) execute reliably across images.
+Tests and CI can override the entrypoint with the `SMIDR_TEST_ENTRYPOINT`
+environment variable (comma-separated) for per-run overrides.
 
 *** End of design doc
