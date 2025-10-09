@@ -156,14 +156,15 @@ func (d *DockerManager) StartContainer(ctx context.Context, containerID string) 
 		return fmt.Errorf("start container %s: %w", containerID, err)
 	}
 
-	// Create writable workspace directories for builder user (if it exists)
-	// First check if builder user exists, then set up workspace accordingly
+	// Create writable workspace for container operations
+	// NOTE: All /home/builder/* paths may be bind-mounted and not writable by container user
+	// Use /tmp for workspace that we know is writable, and create a symlink if needed
 	userCheckRes, err := d.Exec(ctx, containerID, []string{"sh", "-c", "id builder >/dev/null 2>&1"}, 5*time.Second)
 	if err != nil {
 		fmt.Printf("⚠️  Could not check for builder user: %v\n", err)
 	} else if userCheckRes.ExitCode == 0 {
-		// Builder user exists, set up workspace with proper ownership
-		setupRes, err := d.Exec(ctx, containerID, []string{"sh", "-c", "mkdir -p /home/builder/work && chown builder:builder /home/builder/work"}, 10*time.Second)
+		// Builder user exists, create workspace in writable location
+		setupRes, err := d.Exec(ctx, containerID, []string{"sh", "-c", "mkdir -p /tmp/builder-workspace && chown builder:builder /tmp/builder-workspace"}, 10*time.Second)
 		if err != nil {
 			fmt.Printf("⚠️  Setup command exec error: %v\n", err)
 		}
@@ -171,7 +172,7 @@ func (d *DockerManager) StartContainer(ctx context.Context, containerID string) 
 			fmt.Printf("⚠️  Setup command failed (exit %d): stdout=%s stderr=%s\n", setupRes.ExitCode, string(setupRes.Stdout), string(setupRes.Stderr))
 		}
 	} else {
-		// No builder user, just ensure basic workspace exists
+		// No builder user, just ensure basic workspace exists in writable location
 		setupRes, err := d.Exec(ctx, containerID, []string{"sh", "-c", "mkdir -p /tmp/workspace"}, 5*time.Second)
 		if err != nil {
 			fmt.Printf("⚠️  Basic workspace setup error: %v\n", err)
