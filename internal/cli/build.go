@@ -225,6 +225,9 @@ func runBuild(cmd *cobra.Command) error {
 			}
 			if res.ExitCode != 0 {
 				fmt.Printf("⚠️  downloads marker exec failed: stdout=%s stderr=%s\n", string(res.Stdout), string(res.Stderr))
+				// Run debug script to diagnose permission issues
+				debugRes, _ := dm.Exec(cmd.Context(), containerID, []string{"/usr/local/bin/smidr-debug"}, 10*time.Second)
+				fmt.Printf("🔍 Debug info after downloads marker failure:\n%s", string(debugRes.Stdout))
 			}
 		}
 		if containerConfig.WorkspaceDir != "" {
@@ -234,6 +237,11 @@ func runBuild(cmd *cobra.Command) error {
 			}
 			if res.ExitCode != 0 {
 				fmt.Printf("⚠️  workspace marker exec failed: stdout=%s stderr=%s\n", string(res.Stdout), string(res.Stderr))
+				// Run debug script to diagnose permission issues (only if downloads didn't already run it)
+				if containerConfig.DownloadsDir == "" {
+					debugRes, _ := dm.Exec(cmd.Context(), containerID, []string{"/usr/local/bin/smidr-debug"}, 10*time.Second)
+					fmt.Printf("🔍 Debug info after workspace marker failure:\n%s", string(debugRes.Stdout))
+				}
 			}
 		}
 		if containerConfig.SstateCacheDir != "" {
@@ -243,6 +251,11 @@ func runBuild(cmd *cobra.Command) error {
 			}
 			if res.ExitCode != 0 {
 				fmt.Printf("⚠️  sstate marker exec failed: stdout=%s stderr=%s\n", string(res.Stdout), string(res.Stderr))
+				// Run debug script to diagnose permission issues (only if others didn't already run it)
+				if containerConfig.DownloadsDir == "" && containerConfig.WorkspaceDir == "" {
+					debugRes, _ := dm.Exec(cmd.Context(), containerID, []string{"/usr/local/bin/smidr-debug"}, 10*time.Second)
+					fmt.Printf("🔍 Debug info after sstate marker failure:\n%s", string(debugRes.Stdout))
+				}
 			}
 		}
 		// Probe layer visibility if any provided
