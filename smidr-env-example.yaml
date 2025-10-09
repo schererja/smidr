@@ -76,6 +76,9 @@ container:
   base_image: ${CONTAINER_IMAGE:-smidr/yocto-builder:kirkstone}
   memory: ${CONTAINER_MEMORY:-8g}
   cpu_count: ${CONTAINER_CPUS:-8}
+  # Optional: override the container entrypoint (list of args)
+  # Example: entrypoint: ["/bin/bash", "-l", "-c"]
+  entrypoint: ["/bin/bash","-l","-c"]
 
 # Cache configuration with custom locations
 cache:

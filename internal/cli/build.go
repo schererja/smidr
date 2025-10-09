@@ -98,6 +98,7 @@ func runBuild(cmd *cobra.Command) error {
 	testDownloads := os.Getenv("SMIDR_TEST_DOWNLOADS_DIR")
 	testSstate := os.Getenv("SMIDR_TEST_SSTATE_DIR")
 	testWorkspace := os.Getenv("SMIDR_TEST_WORKSPACE_DIR")
+	testImage := os.Getenv("SMIDR_TEST_IMAGE")
 	testLayerDirsCSV := os.Getenv("SMIDR_TEST_LAYER_DIRS") // comma-separated
 	var testLayerDirs []string
 	if testLayerDirsCSV != "" {
@@ -120,10 +121,19 @@ func runBuild(cmd *cobra.Command) error {
 	}
 
 	containerConfig := container.ContainerConfig{
-		Image:          "busybox:latest",                                        // TODO: Use from config or flag
-		Cmd:            []string{"sh", "-c", "echo 'Container ready'; sleep 2"}, // Placeholder
-		DownloadsDir:   cfg.Directories.Source,                                  // Example: mount sources as downloads
-		SstateCacheDir: cfg.Directories.SState,                                  // Wire SSTATE dir from config
+		Image: "busybox:latest", // TODO: Use from config or flag
+		// Use a portable shell invocation. Using ["sh", "-c", "..."] runs the
+		// command under /bin/sh when no ENTRYPOINT is set (busybox), and when an
+		// image *does* set an ENTRYPOINT (for example /bin/bash) Docker will append
+		// these args to the entrypoint; in practice bash will accept 'sh -c ...'
+		// and run the given commands. Keep the container alive briefly so tests
+		// can exec into it.
+		// Provide a single string command; the Docker manager will use /bin/sh -c
+		// as the Entrypoint so this will run consistently regardless of whether
+		// the image defines its own ENTRYPOINT.
+		Cmd:            []string{"echo 'Container ready'; sleep 5"},
+		DownloadsDir:   cfg.Directories.Source, // Example: mount sources as downloads
+		SstateCacheDir: cfg.Directories.SState, // Wire SSTATE dir from config
 		WorkspaceDir:   cfg.Directories.Build,
 		LayerDirs:      cfgLayerDirs,
 		Name:           testName,
@@ -141,6 +151,24 @@ func runBuild(cmd *cobra.Command) error {
 	if len(testLayerDirs) > 0 {
 		containerConfig.LayerDirs = testLayerDirs
 	}
+	// Apply test image override last so tests can build and use a local image (avoids Docker Hub rate limits)
+	if testImage != "" {
+		containerConfig.Image = testImage
+	}
+
+	// Allow tests to override entrypoint (comma-separated)
+	if ep := os.Getenv("SMIDR_TEST_ENTRYPOINT"); ep != "" {
+		parts := strings.Split(ep, ",")
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
+		}
+		containerConfig.Entrypoint = parts
+	}
+
+	// Wire configured entrypoint from smidr.yaml if provided
+	if len(cfg.Container.Entrypoint) > 0 {
+		containerConfig.Entrypoint = cfg.Container.Entrypoint
+	}
 
 	// Step 3: Create DockerManager
 	dm, err := docker.NewDockerManager()
@@ -148,10 +176,14 @@ func runBuild(cmd *cobra.Command) error {
 		return fmt.Errorf("failed to create DockerManager: %w", err)
 	}
 
-	// Step 4: Pull image
-	fmt.Println("🐳 Pulling container image...")
-	if err := dm.PullImage(cmd.Context(), containerConfig.Image); err != nil {
-		return fmt.Errorf("failed to pull image: %w", err)
+	// Step 4: Pull image (skip pulling if a test image override is provided)
+	if testImage == "" {
+		fmt.Println("🐳 Pulling container image...")
+		if err := dm.PullImage(cmd.Context(), containerConfig.Image); err != nil {
+			return fmt.Errorf("failed to pull image: %w", err)
+		}
+	} else {
+		fmt.Printf("🐳 Using prebuilt test image: %s\n", containerConfig.Image)
 	}
 
 	// Step 5: Create container
@@ -187,13 +219,31 @@ func runBuild(cmd *cobra.Command) error {
 	if os.Getenv("SMIDR_TEST_WRITE_MARKERS") == "1" {
 		// Write marker files into mounts to validate wiring
 		if containerConfig.DownloadsDir != "" {
-			_, _ = dm.Exec(cmd.Context(), containerID, []string{"sh", "-c", "echo itest > /home/builder/downloads/itest.txt"}, 5*time.Second)
+			res, err := dm.Exec(cmd.Context(), containerID, []string{"sh", "-c", "echo itest > /home/builder/downloads/itest.txt"}, 5*time.Second)
+			if err != nil {
+				fmt.Printf("⚠️  Failed to write downloads marker: %v\n", err)
+			}
+			if res.ExitCode != 0 {
+				fmt.Printf("⚠️  downloads marker exec failed: stdout=%s stderr=%s\n", string(res.Stdout), string(res.Stderr))
+			}
 		}
 		if containerConfig.WorkspaceDir != "" {
-			_, _ = dm.Exec(cmd.Context(), containerID, []string{"sh", "-c", "echo itest > /home/builder/work/itest.txt"}, 5*time.Second)
+			res, err := dm.Exec(cmd.Context(), containerID, []string{"sh", "-c", "echo itest > /home/builder/work/itest.txt"}, 5*time.Second)
+			if err != nil {
+				fmt.Printf("⚠️  Failed to write workspace marker: %v\n", err)
+			}
+			if res.ExitCode != 0 {
+				fmt.Printf("⚠️  workspace marker exec failed: stdout=%s stderr=%s\n", string(res.Stdout), string(res.Stderr))
+			}
 		}
 		if containerConfig.SstateCacheDir != "" {
-			_, _ = dm.Exec(cmd.Context(), containerID, []string{"sh", "-c", "echo itest > /home/builder/sstate-cache/itest.txt"}, 5*time.Second)
+			res, err := dm.Exec(cmd.Context(), containerID, []string{"sh", "-c", "echo itest > /home/builder/sstate-cache/itest.txt"}, 5*time.Second)
+			if err != nil {
+				fmt.Printf("⚠️  Failed to write sstate marker: %v\n", err)
+			}
+			if res.ExitCode != 0 {
+				fmt.Printf("⚠️  sstate marker exec failed: stdout=%s stderr=%s\n", string(res.Stdout), string(res.Stderr))
+			}
 		}
 		// Probe layer visibility if any provided
 		if len(containerConfig.LayerDirs) > 0 {

@@ -53,9 +53,10 @@ type BuildConfig struct {
 }
 
 type ContainerConfig struct {
-	BaseImage string `yaml:"base_image,omitempty"`
-	Memory    string `yaml:"memory,omitempty"`
-	CPUCount  int    `yaml:"cpu_count,omitempty"`
+	BaseImage  string   `yaml:"base_image,omitempty"`
+	Memory     string   `yaml:"memory,omitempty"`
+	CPUCount   int      `yaml:"cpu_count,omitempty"`
+	Entrypoint []string `yaml:"entrypoint,omitempty"`
 }
 
 type DirectoryConfig struct {
@@ -464,6 +465,16 @@ func (c *ContainerConfig) Validate() error {
 	// Validate CPU count
 	if c.CPUCount < 0 {
 		return ValidationError{Field: "container.cpu_count", Message: "must be non-negative"}
+	}
+
+	// Validate entrypoint parts if provided
+	for i, part := range c.Entrypoint {
+		if strings.TrimSpace(part) == "" {
+			return ValidationError{Field: fmt.Sprintf("container.entrypoint[%d]", i), Message: "entrypoint parts must be non-empty"}
+		}
+		if strings.ContainsAny(part, "\n\r") {
+			return ValidationError{Field: fmt.Sprintf("container.entrypoint[%d]", i), Message: "entrypoint parts must not contain newlines"}
+		}
 	}
 
 	return nil
