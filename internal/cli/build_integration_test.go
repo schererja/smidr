@@ -136,3 +136,55 @@ func TestSmidrMountsAndLayers(t *testing.T) {
 		_ = exec.Command("docker", "rm", "-f", name).Run()
 	}
 }
+
+// TestSmidrSStateMount verifies that the configured SSTATE directory is mounted
+// into the container when provided via config (or test override).
+func TestSmidrSStateMount(t *testing.T) {
+	// Skip if Docker not available
+	cmdCheck := exec.Command("docker", "version")
+	if err := cmdCheck.Run(); err != nil {
+		t.Skip("Docker not available, skipping integration tests.")
+	}
+
+	// Locate project root
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	projectRoot := cwd
+	for {
+		if _, err := os.Stat(filepath.Join(projectRoot, ".git")); err == nil {
+			break
+		}
+		parent := filepath.Dir(projectRoot)
+		if parent == projectRoot {
+			t.Fatalf("Could not find project root (.git directory)")
+		}
+		projectRoot = parent
+	}
+
+	ssDir := t.TempDir()
+	mainPath := filepath.Join(projectRoot, "cmd", "smidr", "main.go")
+	cmd := exec.Command("go", "run", mainPath, "build")
+	name := "smidr-itest-sstate-" + time.Now().Format("20060102-150405")
+	cmd.Env = append(os.Environ(),
+		"SMIDR_TEST_CONTAINER_NAME="+name,
+		"SMIDR_TEST_SSTATE_DIR="+ssDir,
+		"SMIDR_TEST_WRITE_MARKERS=1",
+	)
+	cmd.Dir = projectRoot
+	out, _ := cmd.CombinedOutput()
+	t.Logf("Output:\n%s", string(out))
+
+	// Assert sstate marker exists
+	if _, err := os.Stat(filepath.Join(ssDir, "itest.txt")); err != nil {
+		t.Fatalf("sstate marker not found: %v", err)
+	}
+
+	// Cleanup any remaining container
+	psCmd := exec.Command("docker", "ps", "-a", "--filter", "name="+name, "--format", "{{.ID}}")
+	psOut, _ := psCmd.CombinedOutput()
+	if strings.TrimSpace(string(psOut)) != "" {
+		_ = exec.Command("docker", "rm", "-f", name).Run()
+	}
+}
