@@ -1,6 +1,9 @@
 package container
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // ContainerConfig holds configuration for creating a container
 type ContainerConfig struct {
@@ -33,11 +36,11 @@ type ExecResult struct {
 // This is the main abstraction for container orchestration backends
 // (Docker, Podman, containerd, etc.)
 type ContainerManager interface {
-	PullImage(image string) error
-	CreateContainer(cfg ContainerConfig) (containerID string, err error)
-	StartContainer(containerID string) error
-	StopContainer(containerID string, timeout time.Duration) error
-	RemoveContainer(containerID string, force bool) error
-	Exec(containerID string, cmd []string, timeout time.Duration) (ExecResult, error)
+	PullImage(ctx context.Context, image string) error
+	CreateContainer(ctx context.Context, cfg ContainerConfig) (containerID string, err error)
+	StartContainer(ctx context.Context, containerID string) error
+	StopContainer(ctx context.Context, containerID string, timeout time.Duration) error
+	RemoveContainer(ctx context.Context, containerID string, force bool) error
+	Exec(ctx context.Context, containerID string, cmd []string, timeout time.Duration) (ExecResult, error)
 	// Streamed exec/logging variants can be added
 }

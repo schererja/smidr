@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -226,63 +227,35 @@ func runBuild(cmd *cobra.Command) error {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
-	// Step 8: (Placeholder) Run build logic inside container here
-	fmt.Println("🚀 Build process would start here (not yet implemented)")
-	if os.Getenv("SMIDR_TEST_WRITE_MARKERS") == "1" {
-		// Test container functionality and mount accessibility
-		// Note: On CI, bind-mounted directories may not be writable due to UID mismatches
+	// Step 8: Execute the actual build
+	if os.Getenv("SMIDR_TEST_WRITE_MARKERS") != "1" {
+		// Only run real build if not in test mode
+		fmt.Println("🚀 Starting Yocto build...")
 
-		// First verify basic container functionality
-		tmpRes, err := dm.Exec(cmd.Context(), containerID, []string{"sh", "-c", "echo 'container-functional' > /tmp/test-writable.txt && cat /tmp/test-writable.txt"}, 5*time.Second)
-		if err != nil || tmpRes.ExitCode != 0 {
-			fmt.Printf("⚠️  Container basic write test failed: %v, output: %s\n", err, string(tmpRes.Stderr))
-		}
+		executor := bitbake.NewBuildExecutor(cfg, dm, containerID, containerConfig.WorkspaceDir)
+		buildResult, err := executor.ExecuteBuild(cmd.Context())
 
-		// Test workspace by writing to writable location and using docker cp to extract
-		if containerConfig.WorkspaceDir != "" {
-			// Create marker in writable space inside container
-			res, err := dm.Exec(cmd.Context(), containerID, []string{"sh", "-c", "echo itest > /tmp/builder-workspace/itest.txt"}, 5*time.Second)
-			if err != nil {
-				fmt.Printf("⚠️  Failed to create workspace marker: %v\n", err)
-			} else if res.ExitCode != 0 {
-				fmt.Printf("⚠️  workspace marker creation failed: %s\n", string(res.Stderr))
-			} else {
-				// Use docker cp to copy the file from container to host mount point
-				// This works even when container user can't write directly to bind-mounted dirs
-				if err := dm.CopyFromContainer(cmd.Context(), containerID, "/tmp/builder-workspace/itest.txt", containerConfig.WorkspaceDir+"/itest.txt"); err != nil {
-					fmt.Printf("⚠️  Failed to copy workspace marker to host: %v\n", err)
-				} else {
-					fmt.Printf("✓ Workspace marker successfully created via docker cp\n")
+		if err != nil {
+			fmt.Printf("❌ Build failed: %v\n", err)
+			if buildResult != nil {
+				fmt.Printf("Build took: %v\n", buildResult.Duration)
+				if buildResult.Error != "" {
+					fmt.Printf("Error details: %s\n", buildResult.Error)
+				}
+				if buildResult.Output != "" {
+					fmt.Printf("Build output (last 1000 chars):\n%s\n", getTailString(buildResult.Output, 1000))
 				}
 			}
+			return fmt.Errorf("build execution failed: %w", err)
 		}
 
-		// For downloads and sstate, just test if the directories are accessible
-		// Don't try to write to them due to permission issues with bind mounts
-		if containerConfig.DownloadsDir != "" {
-			res, err := dm.Exec(cmd.Context(), containerID, []string{"sh", "-c", "ls -la /home/builder/downloads | head -5"}, 5*time.Second)
-			if err != nil {
-				fmt.Printf("⚠️  Downloads dir not accessible: %v\n", err)
-			} else {
-				fmt.Printf("✓ Downloads directory accessible with content:\n%s\n", string(res.Stdout))
-			}
-		}
-
-		if containerConfig.SstateCacheDir != "" {
-			res, err := dm.Exec(cmd.Context(), containerID, []string{"sh", "-c", "ls -la /home/builder/sstate-cache | head -5"}, 5*time.Second)
-			if err != nil {
-				fmt.Printf("⚠️  Sstate dir not accessible: %v\n", err)
-			} else {
-				fmt.Printf("✓ Sstate directory accessible with content:\n%s\n", string(res.Stdout))
-			}
-		}
-		// Probe layer visibility if any provided
-		if len(containerConfig.LayerDirs) > 0 {
-			// Attempt to list first layer directory
-			res, _ := dm.Exec(cmd.Context(), containerID, []string{"sh", "-c", "ls -la /home/builder/layers/layer-0 || true"}, 5*time.Second)
-			if len(res.Stdout) > 0 {
-				fmt.Print(string(res.Stdout))
-			}
+		fmt.Printf("✅ Build completed successfully in %v\n", buildResult.Duration)
+		fmt.Printf("Exit code: %d\n", buildResult.ExitCode)
+	} else {
+		// Test mode - run marker validation logic
+		fmt.Println("🚀 Build process running in test mode (SMIDR_TEST_WRITE_MARKERS=1)")
+		if err := runTestMarkerValidation(cmd.Context(), dm, containerID, containerConfig); err != nil {
+			return fmt.Errorf("test marker validation failed: %w", err)
 		}
 	}
 
@@ -293,8 +266,78 @@ func runBuild(cmd *cobra.Command) error {
 	}
 	fmt.Println("✅ Build files generated successfully")
 	fmt.Println("💡 Use 'smidr artifacts list' to view build artifacts once available")
-	// Return a sentinel error to keep current non-zero behavior while still flushing defers
-	return fmt.Errorf("build step not yet implemented")
+
+	return nil // Build completed successfully
+}
+
+// getTailString returns the last n characters of a string
+func getTailString(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[len(s)-n:]
+}
+
+// runTestMarkerValidation runs the test marker validation logic
+func runTestMarkerValidation(ctx context.Context, dm *docker.DockerManager, containerID string, containerConfig container.ContainerConfig) error {
+	// Test container functionality and mount accessibility
+	// Note: On CI, bind-mounted directories may not be writable due to UID mismatches
+
+	// First verify basic container functionality
+	tmpRes, err := dm.Exec(ctx, containerID, []string{"sh", "-c", "echo 'container-functional' > /tmp/test-writable.txt && cat /tmp/test-writable.txt"}, 5*time.Second)
+	if err != nil || tmpRes.ExitCode != 0 {
+		fmt.Printf("⚠️  Container basic write test failed: %v, output: %s\n", err, string(tmpRes.Stderr))
+	}
+
+	// Test workspace by writing to writable location and using docker cp to extract
+	if containerConfig.WorkspaceDir != "" {
+		// Create marker in writable space inside container
+		res, err := dm.Exec(ctx, containerID, []string{"sh", "-c", "echo itest > /tmp/builder-workspace/itest.txt"}, 5*time.Second)
+		if err != nil {
+			fmt.Printf("⚠️  Failed to create workspace marker: %v\n", err)
+		} else if res.ExitCode != 0 {
+			fmt.Printf("⚠️  workspace marker creation failed: %s\n", string(res.Stderr))
+		} else {
+			// Use docker cp to copy the file from container to host mount point
+			// This works even when container user can't write directly to bind-mounted dirs
+			if err := dm.CopyFromContainer(ctx, containerID, "/tmp/builder-workspace/itest.txt", containerConfig.WorkspaceDir+"/itest.txt"); err != nil {
+				fmt.Printf("⚠️  Failed to copy workspace marker to host: %v\n", err)
+			} else {
+				fmt.Printf("✓ Workspace marker successfully created via docker cp\n")
+			}
+		}
+	}
+
+	// For downloads and sstate, just test if the directories are accessible
+	// Don't try to write to them due to permission issues with bind mounts
+	if containerConfig.DownloadsDir != "" {
+		res, err := dm.Exec(ctx, containerID, []string{"sh", "-c", "ls -la /home/builder/downloads | head -5"}, 5*time.Second)
+		if err != nil {
+			fmt.Printf("⚠️  Downloads dir not accessible: %v\n", err)
+		} else {
+			fmt.Printf("✓ Downloads directory accessible with content:\n%s\n", string(res.Stdout))
+		}
+	}
+
+	if containerConfig.SstateCacheDir != "" {
+		res, err := dm.Exec(ctx, containerID, []string{"sh", "-c", "ls -la /home/builder/sstate-cache | head -5"}, 5*time.Second)
+		if err != nil {
+			fmt.Printf("⚠️  Sstate dir not accessible: %v\n", err)
+		} else {
+			fmt.Printf("✓ Sstate directory accessible with content:\n%s\n", string(res.Stdout))
+		}
+	}
+
+	// Probe layer visibility if any provided
+	if len(containerConfig.LayerDirs) > 0 {
+		// Attempt to list first layer directory
+		res, _ := dm.Exec(ctx, containerID, []string{"sh", "-c", "ls -la /home/builder/layers/layer-0 || true"}, 5*time.Second)
+		if len(res.Stdout) > 0 {
+			fmt.Print(string(res.Stdout))
+		}
+	}
+
+	return nil
 }
 
 // setDefaultDirs ensures default directory paths are populated on the config

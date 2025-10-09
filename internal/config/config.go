@@ -87,6 +87,7 @@ type AdvancedConfig struct {
 	QemuSDL            bool   `yaml:"qemu_sdl,omitempty"`
 	QemuGTK            bool   `yaml:"qemu_gtk,omitempty"`
 	AcceptFSLEULA      bool   `yaml:"accept_fsl_eula,omitempty"`
+	BuildTimeout       int    `yaml:"build_timeout,omitempty"` // Build timeout in minutes
 }
 
 type CacheConfig struct {
