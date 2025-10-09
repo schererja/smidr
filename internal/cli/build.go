@@ -182,11 +182,17 @@ func runBuild(cmd *cobra.Command) error {
 		return fmt.Errorf("failed to create DockerManager: %w", err)
 	}
 
-	// Step 4: Pull image (skip pulling if a test image override is provided)
+	// Step 4: Pull image (skip pulling if a test image override is provided or image exists locally)
 	if testImage == "" {
-		fmt.Println("🐳 Pulling container image...")
-		if err := dm.PullImage(cmd.Context(), containerConfig.Image); err != nil {
-			return fmt.Errorf("failed to pull image: %w", err)
+		// Check if image exists locally first
+		if dm.ImageExists(cmd.Context(), containerConfig.Image) {
+			fmt.Printf("🐳 Using local image: %s\n", containerConfig.Image)
+		} else {
+			// Image doesn't exist locally, try to pull it
+			fmt.Println("🐳 Pulling container image...")
+			if err := dm.PullImage(cmd.Context(), containerConfig.Image); err != nil {
+				return fmt.Errorf("failed to pull image: %w", err)
+			}
 		}
 	} else {
 		fmt.Printf("🐳 Using prebuilt test image: %s\n", containerConfig.Image)

@@ -50,7 +50,7 @@ artifacts:
 # Container configuration
 container:
   # Base image for builds (will be created automatically)
-  base_image: "smidr/yocto-builder:kirkstone"
+  base_image: "smidr-local:latest"  # Use our local built image for testing
 
   # Resource limits
   memory: "8g"

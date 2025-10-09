@@ -45,6 +45,11 @@ func (d *DockerManager) PullImage(ctx context.Context, imageName string) error {
 	return nil
 }
 
+func (d *DockerManager) ImageExists(ctx context.Context, imageName string) bool {
+	_, _, err := d.cli.ImageInspectWithRaw(ctx, imageName)
+	return err == nil
+}
+
 func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.ContainerConfig) (string, error) {
 	mounts := []mount.Mount{}
 	for _, m := range cfg.Mounts {
