@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -57,6 +58,10 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 
 	// Add downloads directory mount if specified
 	if cfg.DownloadsDir != "" {
+		// Ensure the host directory exists so Docker can bind mount it
+		if err := os.MkdirAll(cfg.DownloadsDir, 0755); err != nil {
+			return "", fmt.Errorf("failed to create downloads dir %s: %w", cfg.DownloadsDir, err)
+		}
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeBind,
 			Source: cfg.DownloadsDir,
@@ -66,6 +71,9 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 
 	// Add sstate-cache directory mount if specified
 	if cfg.SstateCacheDir != "" {
+		if err := os.MkdirAll(cfg.SstateCacheDir, 0755); err != nil {
+			return "", fmt.Errorf("failed to create sstate cache dir %s: %w", cfg.SstateCacheDir, err)
+		}
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeBind,
 			Source: cfg.SstateCacheDir,
@@ -75,6 +83,9 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 
 	// Add workspace directory mount if specified
 	if cfg.WorkspaceDir != "" {
+		if err := os.MkdirAll(cfg.WorkspaceDir, 0755); err != nil {
+			return "", fmt.Errorf("failed to create workspace dir %s: %w", cfg.WorkspaceDir, err)
+		}
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeBind,
 			Source: cfg.WorkspaceDir,
@@ -85,6 +96,10 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 	// Add layer directories (meta-layers) if specified
 	for i, layerDir := range cfg.LayerDirs {
 		if layerDir != "" {
+			// Ensure layer dir exists on host so bind mount succeeds (read-only)
+			if err := os.MkdirAll(layerDir, 0755); err != nil {
+				return "", fmt.Errorf("failed to create layer dir %s: %w", layerDir, err)
+			}
 			// Mount each layer to /home/builder/layers/layer-N for easy access
 			target := fmt.Sprintf("/home/builder/layers/layer-%d", i)
 			mounts = append(mounts, mount.Mount{
