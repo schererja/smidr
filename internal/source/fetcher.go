@@ -12,7 +12,6 @@ import (
 	"github.com/intrik8-labs/smidr/internal/config"
 )
 
-
 // Fetcher is responsible for fetching source code from various repositories.
 type Fetcher struct {
 	sourcesDir string
@@ -125,7 +124,7 @@ func (f *Fetcher) EvictOldCache(ttl time.Duration) error {
 			continue
 		}
 		repoPath := filepath.Join(f.sourcesDir, entry.Name())
-	meta, err := readCacheMeta(filepath.Join(repoPath, ".smidr_meta.json"))
+		meta, err := readCacheMeta(filepath.Join(repoPath, ".smidr_meta.json"))
 		if err != nil {
 			// If no meta, skip eviction (could be in use or legacy)
 			continue
@@ -137,7 +136,6 @@ func (f *Fetcher) EvictOldCache(ttl time.Duration) error {
 	}
 	return nil
 }
-
 
 // CleanCache removes all cached sources
 func (f *Fetcher) CleanCache() error {
@@ -317,6 +315,13 @@ func (f *Fetcher) isGitRepository(path string) bool {
 
 // acquireLock attempts to create a lockfile atomically. It will retry until timeout.
 func acquireLock(path string, timeout time.Duration) (bool, error) {
+	// Ensure parent directory exists so OpenFile with O_CREATE doesn't fail with ENOENT
+	if dir := filepath.Dir(path); dir != "" {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return false, fmt.Errorf("failed to create lock directory: %w", err)
+		}
+	}
+
 	deadline := time.Now().Add(timeout)
 	for {
 		fd, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
