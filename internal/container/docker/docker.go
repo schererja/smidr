@@ -151,16 +151,29 @@ func (d *DockerManager) StartContainer(ctx context.Context, containerID string) 
 		return fmt.Errorf("start container %s: %w", containerID, err)
 	}
 
-	// Ensure mounted directories exist and have proper permissions for builder user
-	// This is necessary because host directories may be owned by different UIDs
-	setupRes, err := d.Exec(ctx, containerID, []string{"sh", "-c", "mkdir -p /home/builder/downloads /home/builder/sstate-cache /home/builder/work && chown -R builder:builder /home/builder/downloads /home/builder/sstate-cache /home/builder/work"}, 10*time.Second)
+	// Create writable workspace directories for builder user (if it exists)
+	// First check if builder user exists, then set up workspace accordingly
+	userCheckRes, err := d.Exec(ctx, containerID, []string{"sh", "-c", "id builder >/dev/null 2>&1"}, 5*time.Second)
 	if err != nil {
-		// Log the error but don't fail the start - some directories might not exist
-		// and that's okay for containers that don't use all mount points
-		fmt.Printf("⚠️  Setup command exec error: %v\n", err)
-	}
-	if setupRes.ExitCode != 0 {
-		fmt.Printf("⚠️  Setup command failed (exit %d): stdout=%s stderr=%s\n", setupRes.ExitCode, string(setupRes.Stdout), string(setupRes.Stderr))
+		fmt.Printf("⚠️  Could not check for builder user: %v\n", err)
+	} else if userCheckRes.ExitCode == 0 {
+		// Builder user exists, set up workspace with proper ownership
+		setupRes, err := d.Exec(ctx, containerID, []string{"sh", "-c", "mkdir -p /home/builder/work && chown builder:builder /home/builder/work"}, 10*time.Second)
+		if err != nil {
+			fmt.Printf("⚠️  Setup command exec error: %v\n", err)
+		}
+		if setupRes.ExitCode != 0 {
+			fmt.Printf("⚠️  Setup command failed (exit %d): stdout=%s stderr=%s\n", setupRes.ExitCode, string(setupRes.Stdout), string(setupRes.Stderr))
+		}
+	} else {
+		// No builder user, just ensure basic workspace exists
+		setupRes, err := d.Exec(ctx, containerID, []string{"sh", "-c", "mkdir -p /tmp/workspace"}, 5*time.Second)
+		if err != nil {
+			fmt.Printf("⚠️  Basic workspace setup error: %v\n", err)
+		}
+		if setupRes.ExitCode != 0 {
+			fmt.Printf("⚠️  Basic workspace setup failed: %s\n", string(setupRes.Stderr))
+		}
 	}
 
 	return nil
