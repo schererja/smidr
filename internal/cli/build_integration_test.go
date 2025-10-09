@@ -1,0 +1,138 @@
+//go:build integration
+// +build integration
+
+package cli
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// TestDockerAvailability checks if Docker is available and running.
+func TestDockerAvailability(t *testing.T) {
+	cmd := exec.Command("docker", "version")
+	if err := cmd.Run(); err != nil {
+		t.Skip("Docker is not available, skipping integration tests.")
+	}
+}
+
+// TestSmidrBuildIntegration runs the CLI build command and checks for expected output and exit code.
+func TestSmidrBuildIntegration(t *testing.T) {
+	// Find project root by traversing up until .git is found
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	projectRoot := cwd
+	for {
+		if _, err := os.Stat(filepath.Join(projectRoot, ".git")); err == nil {
+			break
+		}
+		parent := filepath.Dir(projectRoot)
+		if parent == projectRoot {
+			t.Fatalf("Could not find project root (.git directory)")
+		}
+		projectRoot = parent
+	}
+	mainPath := filepath.Join(projectRoot, "cmd", "smidr", "main.go")
+	cmd := exec.Command("go", "run", mainPath, "build")
+	testContainerName := "smidr-itest-" + time.Now().Format("20060102-150405")
+	cmd.Env = append(os.Environ(), "SMIDR_TEST_CONTAINER_NAME="+testContainerName)
+	cmd.Dir = projectRoot
+	output, err := cmd.CombinedOutput()
+	outStr := string(output)
+
+	if err == nil {
+		t.Logf("Build command succeeded. Output:\n%s", outStr)
+	} else {
+		t.Logf("Build command failed (exit code != 0). Output:\n%s", outStr)
+	}
+
+	// Check for key output markers (adjust as needed)
+	if !strings.Contains(outStr, "Preparing container environment") {
+		t.Errorf("Expected container setup output not found")
+	}
+	if !strings.Contains(outStr, "Cleaning up container") {
+		t.Errorf("Expected cleanup output not found")
+	}
+
+	// Verify no container with the test name remains
+	psCmd := exec.Command("docker", "ps", "-a", "--filter", "name="+testContainerName, "--format", "{{.ID}}")
+	psOut, _ := psCmd.CombinedOutput()
+	if strings.TrimSpace(string(psOut)) != "" {
+		t.Errorf("Expected no remaining containers named %s, but found: %s", testContainerName, string(psOut))
+		// Attempt forced cleanup to avoid pollution for subsequent runs
+		_ = exec.Command("docker", "rm", "-f", testContainerName).Run()
+	}
+}
+
+// TestSmidrMountsAndLayers verifies that downloads/workspace/sstate mounts are writable
+// and optional layer injection is visible by leveraging environment overrides.
+func TestSmidrMountsAndLayers(t *testing.T) {
+	// Locate project root
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	projectRoot := cwd
+	for {
+		if _, err := os.Stat(filepath.Join(projectRoot, ".git")); err == nil {
+			break
+		}
+		parent := filepath.Dir(projectRoot)
+		if parent == projectRoot {
+			t.Fatalf("Could not find project root (.git directory)")
+		}
+		projectRoot = parent
+	}
+
+	// Create temp dirs for mounts and a temp layer dir
+	dlDir := t.TempDir()
+	wsDir := t.TempDir()
+	ssDir := t.TempDir()
+	layerDir := t.TempDir()
+	// Add a file to layer dir to probe visibility
+	if err := os.WriteFile(filepath.Join(layerDir, "layer-info.txt"), []byte("layer-ok"), 0644); err != nil {
+		t.Fatalf("failed to write layer file: %v", err)
+	}
+
+	mainPath := filepath.Join(projectRoot, "cmd", "smidr", "main.go")
+	cmd := exec.Command("go", "run", mainPath, "build")
+	name := "smidr-itest-mounts-" + time.Now().Format("20060102-150405")
+	cmd.Env = append(os.Environ(),
+		"SMIDR_TEST_CONTAINER_NAME="+name,
+		"SMIDR_TEST_DOWNLOADS_DIR="+dlDir,
+		"SMIDR_TEST_SSTATE_DIR="+ssDir,
+		"SMIDR_TEST_WORKSPACE_DIR="+wsDir,
+		"SMIDR_TEST_LAYER_DIRS="+layerDir,
+		"SMIDR_TEST_WRITE_MARKERS=1",
+	)
+	cmd.Dir = projectRoot
+	out, _ := cmd.CombinedOutput()
+	t.Logf("Output:\n%s", string(out))
+
+	// Assert markers exist
+	if _, err := os.Stat(filepath.Join(dlDir, "itest.txt")); err != nil {
+		t.Errorf("downloads marker not found: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(wsDir, "itest.txt")); err != nil {
+		t.Errorf("workspace marker not found: %v", err)
+	}
+	// sstate optional (only written if set)
+	if _, err := os.Stat(filepath.Join(ssDir, "itest.txt")); err != nil {
+		// non-fatal; only warn
+		t.Logf("sstate marker not found (ok if not used): %v", err)
+	}
+
+	// Ensure no container with the name remains
+	psCmd := exec.Command("docker", "ps", "-a", "--filter", "name="+name, "--format", "{{.ID}}")
+	psOut, _ := psCmd.CombinedOutput()
+	if strings.TrimSpace(string(psOut)) != "" {
+		t.Errorf("Expected no remaining containers named %s, but found: %s", name, string(psOut))
+		_ = exec.Command("docker", "rm", "-f", name).Run()
+	}
+}

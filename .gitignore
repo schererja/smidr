@@ -32,3 +32,24 @@ go.work.sum
 .vscode/
 build/
 meta-smidr-custom/
+
+# macOS junk
+.DS_Store
+
+# Yocto/Smidr generated config and output
+conf/
+confbackup/
+deploy/
+tmp/
+downloads/
+sstate-cache/
+sources/
+
+# Test and coverage artifacts
+integration_test_output.txt
+coverage.out
+
+# Backups and env
+*.bak
+*.swp
+.env.local

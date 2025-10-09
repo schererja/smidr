@@ -3,6 +3,7 @@
 Goal: provide a small, testable abstraction for container lifecycle management used by Smidr to run Yocto builds inside containers. Start with one backend (Docker Engine) and keep the implementation pluggable so other backends (Podman, containerd) can be added later.
 
 Requirements
+
 - Create/start/stop/destroy containers
 - Exec commands inside containers with streaming logs
 - Mount host directories into containers (downloads, sstate-cache, layers)
@@ -13,14 +14,17 @@ Requirements
 Options considered
 
 1) Docker Engine (moby/docker client)
+
 - Pros: mature Go client, widespread, working on Linux/macOS/Windows, can run with Docker Desktop or Docker Engine on Linux.
 - Cons: requires Docker daemon, which may not be present in all environments. Docker Desktop licensing considerations for larger orgs.
 
 2) Podman (REST API / varlink compatibility)
+
 - Pros: daemonless mode (rootless), works well in Linux server environments, gaining adoption.
 - Cons: Go SDK less mature; interaction often via CLI or REST socket; portability on macOS requires Podman Desktop.
 
 3) containerd (pure runtime)
+
 - Pros: lightweight and powerful, used under Docker and container runtimes.
 - Cons: lower-level; building a fully-featured client is more complex.
 
@@ -71,11 +75,13 @@ type ContainerManager interface {
 ```
 
 Implementation plan
+
 - Add `internal/container/docker` package with a `NewDockerManager` constructor.
 - Implement basic lifecycle operations with retries where applicable (image pull). Use context for timeouts.
 - Add unit tests that mock the Docker client where possible (use interfaces); add a small integration test that requires Docker and runs conditionally.
 
 Developer notes
+
 - Keep operations idempotent where reasonable (e.g., CreateContainer returns existing container ID if already created with same name).
 - Enforce cleanup in defer paths and provide a force-cleanup command.
 
