@@ -150,6 +150,15 @@ func (d *DockerManager) StartContainer(ctx context.Context, containerID string) 
 	if err := d.cli.ContainerStart(ctx, containerID, container.StartOptions{}); err != nil {
 		return fmt.Errorf("start container %s: %w", containerID, err)
 	}
+
+	// Fix permissions on mounted directories so the builder user can write to them
+	// This is necessary because host directories may be owned by different UIDs
+	_, err := d.Exec(ctx, containerID, []string{"chown", "-R", "builder:builder", "/home/builder/downloads", "/home/builder/sstate-cache", "/home/builder/work"}, 10*time.Second)
+	if err != nil {
+		// Log the error but don't fail the start - some directories might not exist
+		// and that's okay for containers that don't use all mount points
+	}
+
 	return nil
 }
 
