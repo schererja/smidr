@@ -23,8 +23,9 @@ func NewGenerator(cfg *config.Config, buildDir string) *Generator {
 }
 
 func (g *Generator) Generate() error {
-	// Create project root conf directory
-	rootConfDir := "conf"
+	// Determine project root (parent of buildDir) and create conf directory there
+	projectRoot := filepath.Dir(g.buildDir)
+	rootConfDir := filepath.Join(projectRoot, "conf")
 	if err := os.MkdirAll(rootConfDir, 0755); err != nil {
 		return err
 	}
