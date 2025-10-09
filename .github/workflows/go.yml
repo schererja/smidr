@@ -32,5 +32,5 @@ jobs:
             echo "Docker not found, skipping integration tests."
           else
             echo "Docker found, running integration tests..."
-            go test -v -tags=integration ./...
+            go test -v -tags=integration -timeout=5m ./...
           fi
