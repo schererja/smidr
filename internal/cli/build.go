@@ -64,12 +64,7 @@ func runBuild(cmd *cobra.Command) error {
 	if err != nil {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
-	if cfg.Directories.Source == "" {
-		cfg.Directories.Source = fmt.Sprintf("%s/sources", workDir)
-	}
-	if cfg.Directories.Build == "" {
-		cfg.Directories.Build = fmt.Sprintf("%s/build", workDir)
-	}
+	setDefaultDirs(cfg, workDir)
 
 	// Create logger
 	verbose := viper.GetBool("verbose")
@@ -208,4 +203,19 @@ func runBuild(cmd *cobra.Command) error {
 	fmt.Println("💡 Use 'smidr artifacts list' to view build artifacts once available")
 	// Return a sentinel error to keep current non-zero behavior while still flushing defers
 	return fmt.Errorf("build step not yet implemented")
+}
+
+// setDefaultDirs ensures default directory paths are populated on the config
+// when the user did not provide them. This centralizes defaulting and makes
+// it testable.
+func setDefaultDirs(cfg *config.Config, workDir string) {
+	if cfg.Directories.Source == "" {
+		cfg.Directories.Source = fmt.Sprintf("%s/sources", workDir)
+	}
+	if cfg.Directories.Build == "" {
+		cfg.Directories.Build = fmt.Sprintf("%s/build", workDir)
+	}
+	if cfg.Directories.SState == "" {
+		cfg.Directories.SState = fmt.Sprintf("%s/sstate-cache", workDir)
+	}
 }
