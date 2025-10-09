@@ -153,11 +153,14 @@ func (d *DockerManager) StartContainer(ctx context.Context, containerID string) 
 
 	// Ensure mounted directories exist and have proper permissions for builder user
 	// This is necessary because host directories may be owned by different UIDs
-	setupCmd := "mkdir -p /home/builder/downloads /home/builder/sstate-cache /home/builder/work && chown -R builder:builder /home/builder/downloads /home/builder/sstate-cache /home/builder/work"
-	_, err := d.Exec(ctx, containerID, []string{setupCmd}, 10*time.Second)
+	setupRes, err := d.Exec(ctx, containerID, []string{"sh", "-c", "mkdir -p /home/builder/downloads /home/builder/sstate-cache /home/builder/work && chown -R builder:builder /home/builder/downloads /home/builder/sstate-cache /home/builder/work"}, 10*time.Second)
 	if err != nil {
 		// Log the error but don't fail the start - some directories might not exist
 		// and that's okay for containers that don't use all mount points
+		fmt.Printf("⚠️  Setup command exec error: %v\n", err)
+	}
+	if setupRes.ExitCode != 0 {
+		fmt.Printf("⚠️  Setup command failed (exit %d): stdout=%s stderr=%s\n", setupRes.ExitCode, string(setupRes.Stdout), string(setupRes.Stderr))
 	}
 
 	return nil
