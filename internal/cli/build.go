@@ -108,13 +108,24 @@ func runBuild(cmd *cobra.Command) error {
 			}
 		}
 	}
+	// Prepare layer dirs from config so they are injected into the container by default
+	var cfgLayerDirs []string
+	for _, l := range cfg.Layers {
+		if l.Path != "" {
+			cfgLayerDirs = append(cfgLayerDirs, l.Path)
+		} else {
+			// default to sources/<layer.Name> under the configured sources dir
+			cfgLayerDirs = append(cfgLayerDirs, fmt.Sprintf("%s/%s", cfg.Directories.Source, l.Name))
+		}
+	}
+
 	containerConfig := container.ContainerConfig{
 		Image:          "busybox:latest",                                        // TODO: Use from config or flag
 		Cmd:            []string{"sh", "-c", "echo 'Container ready'; sleep 2"}, // Placeholder
 		DownloadsDir:   cfg.Directories.Source,                                  // Example: mount sources as downloads
 		SstateCacheDir: cfg.Directories.SState,                                  // Wire SSTATE dir from config
 		WorkspaceDir:   cfg.Directories.Build,
-		LayerDirs:      nil, // TODO: wire up if needed
+		LayerDirs:      cfgLayerDirs,
 		Name:           testName,
 	}
 	// Apply test overrides if provided
