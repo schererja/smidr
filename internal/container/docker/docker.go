@@ -111,24 +111,32 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 		}
 	}
 
-	// Ensure commands passed as a single string are executed via a POSIX shell
-	// inside the container. Setting Entrypoint to /bin/sh -c is safe for most
-	// images (busybox, ubuntu, etc.). If an image requires a different entry,
-	// this can later be made configurable.
-	// Use provided Entrypoint when set, otherwise default to /bin/sh -c so
-	// single-string cmds are executed via a POSIX shell inside the container.
-	entrypoint := strslice.StrSlice{}
+	// Determine Entrypoint/Cmd to use when creating the container.
+	// If the caller specified an explicit Entrypoint, use it. If not, only
+	// default to "/bin/sh -c" when the provided Cmd is a single string
+	// (shell form). If the Cmd is a multi-element slice, we leave Entrypoint
+	// nil so the image's own ENTRYPOINT will be used and Cmd will be applied
+	// as the argv (exec form).
+	var entrypoint strslice.StrSlice
+	var cmd strslice.StrSlice
 	if len(cfg.Entrypoint) > 0 {
 		entrypoint = strslice.StrSlice(cfg.Entrypoint)
-	} else {
+		cmd = strslice.StrSlice(cfg.Cmd)
+	} else if len(cfg.Cmd) == 1 {
+		// single-string command -> execute via shell
 		entrypoint = strslice.StrSlice{"/bin/sh", "-c"}
+		cmd = strslice.StrSlice{cfg.Cmd[0]}
+	} else {
+		// multi-element Cmd -> use image ENTRYPOINT and pass Cmd as argv
+		entrypoint = nil
+		cmd = strslice.StrSlice(cfg.Cmd)
 	}
 
 	resp, err := d.cli.ContainerCreate(ctx, &container.Config{
 		Image:      cfg.Image,
 		Env:        cfg.Env,
 		Entrypoint: entrypoint,
-		Cmd:        strslice.StrSlice(cfg.Cmd),
+		Cmd:        cmd,
 	}, &container.HostConfig{
 		Mounts: mounts,
 	}, &network.NetworkingConfig{}, nil, cfg.Name)

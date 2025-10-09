@@ -106,7 +106,7 @@ func TestDockerManager_VolumeMounts(t *testing.T) {
 
 	config := container.ContainerConfig{
 		Image:          "busybox:latest",
-		Cmd:            []string{"sh", "-c", "echo testfile > /home/builder/downloads/hello.txt && echo sstate > /home/builder/sstate-cache/ss.txt && sleep 1"},
+		Cmd:            []string{"echo testfile > /home/builder/downloads/hello.txt && echo sstate > /home/builder/sstate-cache/ss.txt && sleep 1"},
 		DownloadsDir:   downloadsDir,
 		SstateCacheDir: sstateDir,
 	}
@@ -173,7 +173,7 @@ func TestDockerManager_LayerInjection(t *testing.T) {
 
 	config := container.ContainerConfig{
 		Image:        "busybox:latest",
-		Cmd:          []string{"sh", "-c", "ls -la /home/builder/layers/layer-0/ && ls -la /home/builder/layers/layer-1/ && sleep 1"},
+		Cmd:          []string{"ls -la /home/builder/layers/layer-0/ && ls -la /home/builder/layers/layer-1/ && sleep 1"},
 		WorkspaceDir: workspaceDir,
 		LayerDirs:    []string{layer1Dir, layer2Dir},
 	}
