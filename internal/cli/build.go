@@ -117,7 +117,7 @@ func runBuild(cmd *cobra.Command) error {
 		Image:          "busybox:latest",                                        // TODO: Use from config or flag
 		Cmd:            []string{"sh", "-c", "echo 'Container ready'; sleep 2"}, // Placeholder
 		DownloadsDir:   cfg.Directories.Source,                                  // Example: mount sources as downloads
-		SstateCacheDir: "",                                                      // TODO: wire up if needed
+		SstateCacheDir: cfg.Directories.SState,                                  // Wire SSTATE dir from config
 		WorkspaceDir:   cfg.Directories.Build,
 		LayerDirs:      nil, // TODO: wire up if needed
 		Name:           testName,
