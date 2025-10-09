@@ -30,11 +30,19 @@
 ## Phase 4: Container Orchestration
 
 - [X] Research Docker/Podman Go SDK integration
+
 - [X] Create base container image with Yocto dependencies
+
 - [X] Implement container lifecycle management (create/start/stop/destroy) and add unit tests for container and docker packages
-- [] Add volume mounting for downloads and sstate-cache
-- [] Implement layer injection into containers
-- [] Add container cleanup on build completion/failure
+
+- [X] Add volume mounting for downloads and sstate-cache
+  - Implemented in `internal/container/docker/docker.go` (host dir creation and mounts) and validated by `internal/container/docker/docker_test.go`.
+
+- [X] Implement layer injection into containers
+  - Implemented in `internal/container/docker/docker.go` (mounts each configured layer into `/home/builder/layers/layer-N`). CLI wiring and tests live in `internal/cli/build.go` and `internal/cli/build_integration_test.go`.
+
+- [X] Add container cleanup on build completion/failure
+  - Implemented via `StopContainer` and `RemoveContainer` in `internal/container/docker/docker.go` and enforced in the build flow (`internal/cli/build.go` defer cleanup). Integration tests validate cleanup behavior.
 
 ## Phase 5: Build Execution
 
