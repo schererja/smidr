@@ -97,8 +97,8 @@ artifacts:
 
 # Container configuration
 container:
-  # Base image for builds (will be created automatically)
-  base_image: "smidr/yocto-builder:kirkstone"
+  # Base image for builds (using official Yocto project image)
+  base_image: "crops/yocto:ubuntu-22.04-base"
 
   # Resource limits
   memory: "8g"
@@ -106,7 +106,7 @@ container:
 
 # Cache configuration
 cache:
-  # Shared cache locations
+  # Shared cache locations (defaults to ~/.smidr)
   downloads: ~/.smidr/downloads
   sstate: ~/.smidr/sstate-cache
 

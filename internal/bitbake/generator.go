@@ -72,27 +72,33 @@ func (g *Generator) generateLocalConf(confDir string) error {
 	// Build Parallelism
 	threads := g.config.Build.BBNumberThreads
 	if threads <= 0 {
-		threads = 4 // default to 4 threads if not specified
+		threads = 2 // default to 4 threads if not specified
 	}
 	sb.WriteString(fmt.Sprintf("BB_NUMBER_THREADS = \"%d\"\n", threads))
 	parallelMake := g.config.Build.ParallelMake
 	if parallelMake <= 0 {
-		parallelMake = 4 // default to 4 if not specified
+		parallelMake = 2 // default to 4 if not specified
 	}
 	sb.WriteString(fmt.Sprintf("PARALLEL_MAKE = \"-j %d\"\n\n", parallelMake))
 
 	sb.WriteString("\n")
 	sb.WriteString("# Shared download and cache directories\n")
 
-	// Use configured directories or defaults
+	// Use configured directories or defaults. Prefer the global cache.Downloads
+	// when it's set so the generator points BitBake at the same location the
+	// fetcher populates (prevents double-cloning into both downloads and sources).
 	dlDir := "${TOPDIR}/../downloads"
-	if g.config.Directories.Downloads != "" {
+	if g.config.Cache.Downloads != "" {
+		dlDir = g.config.Cache.Downloads
+	} else if g.config.Directories.Downloads != "" {
 		dlDir = g.config.Directories.Downloads
 	}
 	sb.WriteString(fmt.Sprintf("DL_DIR = \"%s\"\n", dlDir))
 
 	sstateDir := "${TOPDIR}/../sstate-cache"
-	if g.config.Directories.SState != "" {
+	if g.config.Cache.SState != "" {
+		sstateDir = g.config.Cache.SState
+	} else if g.config.Directories.SState != "" {
 		sstateDir = g.config.Directories.SState
 	}
 	sb.WriteString(fmt.Sprintf("SSTATE_DIR = \"%s\"\n", sstateDir))
@@ -241,6 +247,13 @@ func (g *Generator) getLayerPath(layer config.Layer) string {
 		return filepath.Join("${TOPDIR}/../layers", layer.Name)
 	}
 	// Git layer - assume all code is cloned into the sources directory
+	// If a global cache downloads path is configured, prefer the downloads
+	// location for upstream base layers (poky, meta-openembedded) so we
+	// reference the same clones the fetcher placed in cache.Downloads. Fall
+	// back to project-relative sources when no cache path is configured.
+	if g.config.Cache.Downloads != "" {
+		return filepath.Join(g.config.Cache.Downloads, layer.Name)
+	}
 	return filepath.Join("${TOPDIR}/../sources", layer.Name)
 }
 

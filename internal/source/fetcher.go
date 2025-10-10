@@ -14,9 +14,10 @@ import (
 
 // Fetcher is responsible for fetching source code from various repositories.
 type Fetcher struct {
-	sourcesDir string
-	logger     Logger
-	mu         sync.Mutex
+	sourcesDir   string
+	downloadsDir string
+	logger       Logger
+	mu           sync.Mutex
 }
 
 type Logger interface {
@@ -34,10 +35,11 @@ type FetchResult struct {
 }
 
 // NewFetcher creates a new Fetcher instance
-func NewFetcher(sourcesDir string, logger Logger) *Fetcher {
+func NewFetcher(sourcesDir string, downloadsDir string, logger Logger) *Fetcher {
 	return &Fetcher{
-		sourcesDir: sourcesDir,
-		logger:     logger,
+		sourcesDir:   sourcesDir,
+		downloadsDir: downloadsDir,
+		logger:       logger,
 	}
 }
 
@@ -50,36 +52,42 @@ func (f *Fetcher) FetchLayers(cfg *config.Config) ([]FetchResult, error) {
 		return nil, fmt.Errorf("failed to create sources directory: %w", err)
 	}
 
-	// Track which layers we need to fetch (deduplicate by name)
-	layersToFetch := make(map[string]config.Layer)
-
-	// Add base layers
-	baseLayerNames := getRequiredBaseLayers(cfg.Base.Provider)
-	for _, layerName := range baseLayerNames {
-		repo := getBaseLayerRepository(layerName)
-		branch := getBranchForLayer(layerName, cfg.Base.Version)
-
-		layersToFetch[layerName] = config.Layer{
-			Name:   layerName,
-			Git:    repo,
-			Branch: branch,
-		}
-	}
-
-	// Add custom layers from config (may override base layers)
+	// Track custom layers (cloned into sourcesDir)
+	customLayers := make(map[string]config.Layer)
 	for _, layer := range cfg.Layers {
 		if layer.Git != "" {
-			// Custom layer overrides base layer if same name
-			layersToFetch[layer.Name] = layer
+			customLayers[layer.Name] = layer
 		}
 	}
 
-	// Fetch all layers in parallel
+	// Prepare list of fetch tasks: base layers will go into downloadsDir,
+	// custom/project layers go into sourcesDir. Base layers are only fetched
+	// if not overridden by a custom layer of the same name.
 	var results []FetchResult
 	var wg sync.WaitGroup
-	resultsChan := make(chan FetchResult, len(layersToFetch))
+	resultsChan := make(chan FetchResult, 32)
 
-	for _, layer := range layersToFetch {
+	// Fetch base layers into downloadsDir
+	baseLayerNames := getRequiredBaseLayers(cfg.Base.Provider)
+	for _, layerName := range baseLayerNames {
+		// If custom layer overrides this base layer, skip fetching base
+		if _, ok := customLayers[layerName]; ok {
+			continue
+		}
+		repo := getBaseLayerRepository(layerName)
+		branch := getBranchForLayer(layerName, cfg.Base.Version)
+		layer := config.Layer{Name: layerName, Git: repo, Branch: branch}
+
+		wg.Add(1)
+		go func(l config.Layer) {
+			defer wg.Done()
+			result := f.fetchGitLayerTo(l, f.downloadsDir)
+			resultsChan <- result
+		}(layer)
+	}
+
+	// Fetch custom/project layers into sourcesDir
+	for _, layer := range customLayers {
 		wg.Add(1)
 		go func(l config.Layer) {
 			defer wg.Done()
@@ -259,6 +267,41 @@ func (f *Fetcher) fetchGitLayer(layer config.Layer) FetchResult {
 
 		f.logger.Debug("Git clone failed for %s: %s", layer.Name, errorMsg)
 
+		// Try alternative repositories if available
+		alternatives := getAlternativeRepository(layer.Name)
+		if len(alternatives) > 0 {
+			f.logger.Info("Primary repository failed, trying alternative sources for %s...", layer.Name)
+			for _, altURL := range alternatives {
+				f.logger.Debug("Trying alternative URL: %s", altURL)
+
+				// Cleanup failed clone attempt
+				os.RemoveAll(layerPath)
+
+				// Try the alternative URL
+				var altCmd *exec.Cmd
+				if useShallow {
+					altCmd = exec.Command("git", "clone", "--branch", branch, "--depth", "1", altURL, layerPath)
+				} else {
+					altCmd = exec.Command("git", "clone", "--branch", branch, altURL, layerPath)
+				}
+
+				var altStderr strings.Builder
+				altCmd.Stderr = &altStderr
+
+				if err := altCmd.Run(); err == nil {
+					f.logger.Info("Successfully cloned %s from alternative source", layer.Name)
+					return FetchResult{
+						LayerName: layer.Name,
+						Path:      layerPath,
+						Success:   true,
+						Cached:    false,
+					}
+				}
+
+				f.logger.Debug("Alternative URL %s also failed: %s", altURL, altStderr.String())
+			}
+		}
+
 		// Try without branch specification if branch clone failed
 		if strings.Contains(errorMsg, "Remote branch") || strings.Contains(errorMsg, "not found") {
 			f.logger.Debug("Branch %s not found, trying default branch...", branch)
@@ -277,7 +320,7 @@ func (f *Fetcher) fetchGitLayer(layer config.Layer) FetchResult {
 					LayerName: layer.Name,
 					Path:      layerPath,
 					Success:   false,
-					Error:     fmt.Errorf("git clone failed: %s", stderr.String()),
+					Error:     fmt.Errorf("git clone failed: %s\n\nTroubleshooting:\n- Check network connectivity to %s\n- If behind a corporate firewall, verify git repository access\n- Repository URL: %s", stderr.String(), cleanURL, layer.Git),
 				}
 			}
 
@@ -294,7 +337,7 @@ func (f *Fetcher) fetchGitLayer(layer config.Layer) FetchResult {
 			LayerName: layer.Name,
 			Path:      layerPath,
 			Success:   false,
-			Error:     fmt.Errorf("git clone failed: %s", errorMsg),
+			Error:     fmt.Errorf("git clone failed: %s\n\nTroubleshooting:\n- Check network connectivity to %s\n- If behind a corporate firewall, verify git repository access\n- Repository URL: %s", errorMsg, cleanURL, layer.Git),
 		}
 	}
 
@@ -304,6 +347,62 @@ func (f *Fetcher) fetchGitLayer(layer config.Layer) FetchResult {
 		Success:   true,
 		Cached:    false,
 	}
+}
+
+// fetchGitLayerTo clones or updates a git repository into a specified baseDir
+func (f *Fetcher) fetchGitLayerTo(layer config.Layer, baseDir string) FetchResult {
+	layerPath := filepath.Join(baseDir, layer.Name)
+
+	// Acquire per-repo lock to avoid concurrent clones/updates across processes
+	lockFile := filepath.Join(baseDir, layer.Name+".lock")
+	locked, lockErr := acquireLock(lockFile, 10*time.Second)
+	if lockErr != nil {
+		return FetchResult{LayerName: layer.Name, Path: layerPath, Success: false, Error: fmt.Errorf("failed to acquire lock: %w", lockErr)}
+	}
+	defer func() {
+		if locked {
+			_ = releaseLock(lockFile)
+		}
+	}()
+
+	// Check if already exists
+	if f.isGitRepository(layerPath) {
+		f.logger.Debug("Layer %s already exists at %s, checking status...", layer.Name, layerPath)
+		if err := f.updateGitRepository(layerPath, layer.Branch); err != nil {
+			f.logger.Debug("Failed to update %s: %v", layer.Name, err)
+		}
+		return FetchResult{LayerName: layer.Name, Path: layerPath, Success: true, Cached: true}
+	}
+
+	// Clone the repository
+	branch := layer.Branch
+	if branch == "" {
+		branch = "master"
+	}
+
+	cleanURL := strings.TrimSuffix(layer.Git, ".git")
+	f.logger.Info("Cloning layer %s from %s (branch: %s) into %s", layer.Name, cleanURL, branch, baseDir)
+	useShallow := !strings.Contains(layer.Git, "git.toradex.com")
+
+	var cmd *exec.Cmd
+	if useShallow {
+		cmd = exec.Command("git", "clone", "--branch", branch, "--depth", "1", layer.Git, layerPath)
+	} else {
+		cmd = exec.Command("git", "clone", "--branch", branch, layer.Git, layerPath)
+	}
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		errorMsg := stderr.String()
+		if errorMsg == "" {
+			errorMsg = err.Error()
+		}
+		f.logger.Debug("Git clone failed for %s: %s", layer.Name, errorMsg)
+		return FetchResult{LayerName: layer.Name, Path: layerPath, Success: false, Error: fmt.Errorf("git clone failed: %s", errorMsg)}
+	}
+
+	return FetchResult{LayerName: layer.Name, Path: layerPath, Success: true, Cached: false}
 }
 
 // isGitRepository checks if a directory is a git repository
@@ -411,6 +510,7 @@ func getRequiredBaseLayers(provider string) []string {
 }
 
 func getBaseLayerRepository(layerName string) string {
+	// Primary repository URLs
 	repos := map[string]string{
 		"poky":                    "https://git.yoctoproject.org/poky",
 		"meta-openembedded":       "https://git.openembedded.org/meta-openembedded",
@@ -421,6 +521,22 @@ func getBaseLayerRepository(layerName string) string {
 	}
 
 	return repos[layerName]
+}
+
+// getAlternativeRepository returns alternative/mirror URLs for layers that might have connectivity issues
+func getAlternativeRepository(layerName string) []string {
+	alternatives := map[string][]string{
+		"meta-toradex-nxp": {
+			"https://git.toradex.com/meta-toradex-nxp.git/", // with trailing slash
+			"https://git.toradex.com/meta-toradex-nxp",      // without .git extension
+		},
+		"meta-toradex-bsp-common": {
+			"https://git.toradex.com/meta-toradex-bsp-common.git/", // with trailing slash
+			"https://git.toradex.com/meta-toradex-bsp-common",      // without .git extension
+		},
+	}
+
+	return alternatives[layerName]
 }
 
 func getBranchForLayer(layerName, version string) string {

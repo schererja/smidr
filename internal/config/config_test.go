@@ -29,7 +29,7 @@ build:
   extra_packages:
     - python3
 container:
-  base_image: "smidr/yocto-builder:kirkstone"
+  base_image: "crops/yocto:ubuntu-22.04-base"
 `)
 
 	if err := os.WriteFile(cfgPath, yaml, 0644); err != nil {

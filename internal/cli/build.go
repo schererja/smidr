@@ -1,11 +1,14 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 
 	bitbake "github.com/intrik8-labs/smidr/internal/bitbake"
 	config "github.com/intrik8-labs/smidr/internal/config"
@@ -71,9 +74,27 @@ func runBuild(cmd *cobra.Command) error {
 	verbose := viper.GetBool("verbose")
 	logger := source.NewConsoleLogger(os.Stdout, verbose)
 
+	// Determine host downloads dir to mount into the container.
+	// Prefer the configured global cache (cfg.Cache.Downloads) so users can
+	// share a single DL_DIR across projects. Fall back to cfg.Directories.Source
+	// only if cache.downloads is not set. Also expand a leading ~ to the user's
+	// home directory so YAML values like "~/.smidr/downloads" work as expected.
+	downloadsDir := ""
+	if cfg.Cache.Downloads != "" {
+		downloadsDir = cfg.Cache.Downloads
+	} else if cfg.Directories.Source != "" {
+		downloadsDir = cfg.Directories.Source
+	}
+	// Expand leading ~ to home dir
+	if downloadsDir != "" && strings.HasPrefix(downloadsDir, "~") {
+		if homedir, err := os.UserHomeDir(); err == nil {
+			downloadsDir = strings.Replace(downloadsDir, "~", homedir, 1)
+		}
+	}
+
 	// Step 1: Fetch layers
 	fmt.Println("📦 Fetching required layers...")
-	fetcher := source.NewFetcher(cfg.Directories.Source, logger)
+	fetcher := source.NewFetcher(cfg.Directories.Source, downloadsDir, logger)
 	results, err := fetcher.FetchLayers(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to fetch layers: %w", err)
@@ -124,7 +145,7 @@ func runBuild(cmd *cobra.Command) error {
 	// Determine container image - use config, test override, or fallback
 	imageToUse := cfg.Container.BaseImage
 	if imageToUse == "" {
-		imageToUse = "busybox:latest" // fallback for minimal testing
+		imageToUse = "crops/yocto:ubuntu-22.04-builder" // fallback to official Yocto build image
 	}
 
 	containerConfig := container.ContainerConfig{
@@ -138,12 +159,15 @@ func runBuild(cmd *cobra.Command) error {
 		// Provide a single string command; the Docker manager will use /bin/sh -c
 		// as the Entrypoint so this will run consistently regardless of whether
 		// the image defines its own ENTRYPOINT.
-		Cmd:            []string{"echo 'Container ready'; sleep 5"},
-		DownloadsDir:   cfg.Directories.Source, // Example: mount sources as downloads
+		// Keep container alive for a long time to allow exec commands and debugging
+		Cmd:            []string{"echo 'Container ready'; sleep 3600"},
+		DownloadsDir:   downloadsDir,           // mount host downloads (DL_DIR) into container
 		SstateCacheDir: cfg.Directories.SState, // Wire SSTATE dir from config
 		WorkspaceDir:   cfg.Directories.Build,
 		LayerDirs:      cfgLayerDirs,
 		Name:           testName,
+		MemoryLimit:    cfg.Container.Memory,
+		CPUCount:       cfg.Container.CPUCount,
 	}
 	// Apply test overrides if provided
 	if testDownloads != "" {
@@ -183,6 +207,69 @@ func runBuild(cmd *cobra.Command) error {
 		return fmt.Errorf("failed to create DockerManager: %w", err)
 	}
 
+	// Validate the resolved downloads directory exists and optionally create it
+	// Default behavior: auto-create when running non-interactively (CI) or when
+	// SMIDR_AUTO_CREATE_DOWNLOADS=1 is set. If running interactively, prompt the
+	// user unless auto-create is enabled.
+	if containerConfig.DownloadsDir != "" {
+		autoCreate := os.Getenv("SMIDR_AUTO_CREATE_DOWNLOADS") == "1"
+		// Detect non-interactive environment by checking if stdin is a terminal
+		if !isatty(os.Stdin.Fd()) {
+			autoCreate = true
+		}
+
+		if fi, err := os.Stat(containerConfig.DownloadsDir); err != nil || !fi.IsDir() {
+			if autoCreate {
+				if err := os.MkdirAll(containerConfig.DownloadsDir, 0755); err != nil {
+					return fmt.Errorf("failed to create downloads dir: %w", err)
+				}
+				fmt.Printf("Created downloads dir: %s\n", containerConfig.DownloadsDir)
+			} else {
+				fmt.Printf("⚠️  Downloads dir %s does not exist. Create it now? (y/N): ", containerConfig.DownloadsDir)
+				reader := bufio.NewReader(os.Stdin)
+				resp, _ := reader.ReadString('\n')
+				resp = strings.TrimSpace(resp)
+				if strings.ToLower(resp) == "y" {
+					if err := os.MkdirAll(containerConfig.DownloadsDir, 0755); err != nil {
+						return fmt.Errorf("failed to create downloads dir: %w", err)
+					}
+					fmt.Printf("Created %s\n", containerConfig.DownloadsDir)
+				} else {
+					fmt.Println("Proceeding without downloads dir. Fetch step may fail.")
+				}
+			}
+		} else {
+			// Directory exists - check if empty
+			f, _ := os.Open(containerConfig.DownloadsDir)
+			names, _ := f.Readdirnames(1)
+			f.Close()
+			if len(names) == 0 {
+				if !autoCreate {
+					fmt.Printf("⚠️  Downloads dir %s exists but is empty. Continue? (y/N): ", containerConfig.DownloadsDir)
+					reader := bufio.NewReader(os.Stdin)
+					resp, _ := reader.ReadString('\n')
+					resp = strings.TrimSpace(resp)
+					if strings.ToLower(resp) != "y" {
+						fmt.Println("Aborting build. Populate the downloads dir or continue with fetch later.")
+						return nil
+					}
+				} else {
+					// autoCreate true -> continue silently
+				}
+			}
+		}
+	}
+
+	// Print resolved host<->container mappings for clarity
+	fmt.Println()
+	fmt.Printf("🔧 Resolved mounts:\n")
+	fmt.Printf("   Host downloads (DL_DIR): %s -> /home/builder/downloads\n", containerConfig.DownloadsDir)
+	fmt.Printf("   Host sstate-cache: %s -> /home/builder/sstate-cache\n", containerConfig.SstateCacheDir)
+	fmt.Printf("   Host workspace: %s -> /home/builder/work\n", containerConfig.WorkspaceDir)
+	if containerConfig.DownloadsDir == cfg.Directories.Source && containerConfig.DownloadsDir != "" {
+		fmt.Println("⚠️  Note: downloads and sources are the same path on host — this can cause confusion. Consider setting cache.downloads and directories.source to distinct paths in smidr.yaml.")
+	}
+
 	// Step 4: Pull image (skip pulling if a test image override is provided or image exists locally)
 	if testImage == "" {
 		// Check if image exists locally first
@@ -200,6 +287,7 @@ func runBuild(cmd *cobra.Command) error {
 	}
 
 	// Step 5: Create container
+	fmt.Printf("🧭 Mounting host downloads dir: %s -> /home/builder/downloads\n", containerConfig.DownloadsDir)
 	fmt.Println("🐳 Creating container...")
 	containerID, err := dm.CreateContainer(cmd.Context(), containerConfig)
 	if err != nil {
@@ -207,7 +295,15 @@ func runBuild(cmd *cobra.Command) error {
 	}
 
 	// Step 6: Ensure cleanup (stop/remove) always runs
+	// But skip cleanup if SMIDR_DEBUG_KEEP_CONTAINER is set
 	defer func() {
+		if os.Getenv("SMIDR_DEBUG_KEEP_CONTAINER") != "" {
+			fmt.Printf("⚠️  DEBUG MODE: Container %s is being kept for inspection\n", containerID)
+			fmt.Printf("    Inspect with: docker inspect %s\n", containerID)
+			fmt.Printf("    Check logs with: docker logs %s\n", containerID)
+			fmt.Printf("    Remove with: docker rm -f %s\n", containerID)
+			return
+		}
 		fmt.Println("🧹 Cleaning up container...")
 		os.Stdout.Sync() // Flush stdout to ensure log is written
 		stopErr := dm.StopContainer(cmd.Context(), containerID, 2*time.Second)
@@ -227,6 +323,16 @@ func runBuild(cmd *cobra.Command) error {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
+	// Print container ID for debugging
+	fmt.Printf("📦 Container ID: %s\n", containerID)
+	fmt.Printf("   Monitor with: docker stats %s\n", containerID)
+
+	// Add a short delay if debugging to allow user to start monitoring
+	if os.Getenv("SMIDR_DEBUG_KEEP_CONTAINER") != "" {
+		fmt.Println("⏳ Pausing 5 seconds for monitoring setup...")
+		time.Sleep(5 * time.Second)
+	}
+
 	// Step 8: Execute the actual build
 	if os.Getenv("SMIDR_TEST_WRITE_MARKERS") != "1" {
 		// Only run real build if not in test mode
@@ -242,8 +348,12 @@ func runBuild(cmd *cobra.Command) error {
 				if buildResult.Error != "" {
 					fmt.Printf("Error details: %s\n", buildResult.Error)
 				}
+				// Show both stdout and stderr for better debugging
 				if buildResult.Output != "" {
-					fmt.Printf("Build output (last 1000 chars):\n%s\n", getTailString(buildResult.Output, 1000))
+					fmt.Printf("Build output (last 3000 chars):\n%s\n", getTailString(buildResult.Output, 3000))
+				}
+				if buildResult.Error != "" && buildResult.Error != buildResult.Output {
+					fmt.Printf("Build error output:\n%s\n", buildResult.Error)
 				}
 			}
 			return fmt.Errorf("build execution failed: %w", err)
@@ -345,12 +455,46 @@ func runTestMarkerValidation(ctx context.Context, dm *docker.DockerManager, cont
 // it testable.
 func setDefaultDirs(cfg *config.Config, workDir string) {
 	if cfg.Directories.Source == "" {
-		cfg.Directories.Source = fmt.Sprintf("%s/sources", workDir)
+		if homedir, err := os.UserHomeDir(); err == nil {
+			cfg.Directories.Source = fmt.Sprintf("%s/.smidr/sources", homedir)
+		} else {
+			cfg.Directories.Source = fmt.Sprintf("%s/sources", workDir)
+		}
 	}
 	if cfg.Directories.Build == "" {
-		cfg.Directories.Build = fmt.Sprintf("%s/build", workDir)
+		if homedir, err := os.UserHomeDir(); err == nil {
+			cfg.Directories.Build = fmt.Sprintf("%s/.smidr/build", homedir)
+		} else {
+			cfg.Directories.Build = fmt.Sprintf("%s/build", workDir)
+		}
 	}
 	if cfg.Directories.SState == "" {
-		cfg.Directories.SState = fmt.Sprintf("%s/sstate-cache", workDir)
+		if homedir, err := os.UserHomeDir(); err == nil {
+			cfg.Directories.SState = fmt.Sprintf("%s/.smidr/sstate-cache", homedir)
+		} else {
+			cfg.Directories.SState = fmt.Sprintf("%s/sstate-cache", workDir)
+		}
 	}
+
+	// Provide sane defaults for global cache locations if not supplied
+	if cfg.Cache.Downloads == "" {
+		if homedir, err := os.UserHomeDir(); err == nil {
+			cfg.Cache.Downloads = fmt.Sprintf("%s/.smidr/downloads", homedir)
+		} else {
+			cfg.Cache.Downloads = fmt.Sprintf("%s/sources", workDir)
+		}
+	}
+	if cfg.Cache.SState == "" {
+		if homedir, err := os.UserHomeDir(); err == nil {
+			cfg.Cache.SState = fmt.Sprintf("%s/.smidr/sstate-cache", homedir)
+		} else {
+			cfg.Cache.SState = fmt.Sprintf("%s/sstate-cache", workDir)
+		}
+	}
+}
+
+// isatty returns true if the given file descriptor is a terminal.
+// Uses golang.org/x/term for cross-platform detection.
+func isatty(fd uintptr) bool {
+	return term.IsTerminal(int(fd))
 }

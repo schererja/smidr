@@ -16,6 +16,7 @@ import (
 	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/docker/go-units"
 
 	smidrContainer "github.com/intrik8-labs/smidr/internal/container"
 )
@@ -83,6 +84,24 @@ func (d *DockerManager) CopyFromContainer(ctx context.Context, containerID, cont
 
 func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.ContainerConfig) (string, error) {
 	mounts := []mount.Mount{}
+	hostConfig := &container.HostConfig{}
+
+	// Set memory limit if specified
+	if cfg.MemoryLimit != "" {
+		memBytes, err := units.RAMInBytes(cfg.MemoryLimit)
+		if err != nil {
+			fmt.Printf("[WARN] Could not parse memory limit %q: %v\n", cfg.MemoryLimit, err)
+		} else {
+			hostConfig.Memory = memBytes
+			fmt.Printf("[INFO] Setting container memory limit: %s (%d bytes)\n", cfg.MemoryLimit, memBytes)
+		}
+	}
+
+	// Set CPU count if specified
+	if cfg.CPUCount > 0 {
+		hostConfig.NanoCPUs = int64(cfg.CPUCount) * 1_000_000_000 // 1 CPU = 1e9
+		fmt.Printf("[INFO] Setting container CPU count: %d\n", cfg.CPUCount)
+	}
 	for _, m := range cfg.Mounts {
 		mounts = append(mounts, mount.Mount{
 			Type:     mount.TypeBind,
@@ -167,15 +186,15 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 		entrypoint = nil
 		cmd = strslice.StrSlice(cfg.Cmd)
 	}
+	// Remove old CpusetCpus logic (now handled by NanoCPUs)
+	hostConfig.Mounts = mounts
 
 	resp, err := d.cli.ContainerCreate(ctx, &container.Config{
 		Image:      cfg.Image,
 		Env:        cfg.Env,
 		Entrypoint: entrypoint,
 		Cmd:        cmd,
-	}, &container.HostConfig{
-		Mounts: mounts,
-	}, &network.NetworkingConfig{}, nil, cfg.Name)
+	}, hostConfig, &network.NetworkingConfig{}, nil, cfg.Name)
 	if err != nil {
 		return "", fmt.Errorf("create container: %w", err)
 	}
@@ -267,4 +286,57 @@ func (d *DockerManager) Exec(ctx context.Context, containerID string, cmd []stri
 		Stderr:   errBytes.Bytes(),
 		ExitCode: inspect.ExitCode,
 	}, nil
+}
+
+// ExecStream runs a command in the container with real-time output streaming to stdout/stderr
+func (d *DockerManager) ExecStream(ctx context.Context, containerID string, cmd []string, timeout time.Duration) (smidrContainer.ExecResult, error) {
+	execCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	execConfig := container.ExecOptions{
+		Cmd:          cmd,
+		AttachStdout: true,
+		AttachStderr: true,
+	}
+
+	execIDResp, err := d.cli.ContainerExecCreate(execCtx, containerID, execConfig)
+	if err != nil {
+		return smidrContainer.ExecResult{}, fmt.Errorf("exec create: %w", err)
+	}
+
+	resp, err := d.cli.ContainerExecAttach(execCtx, execIDResp.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return smidrContainer.ExecResult{}, fmt.Errorf("exec attach: %w", err)
+	}
+	defer resp.Close()
+
+	// Stream output to stdout/stderr in real-time while also collecting it
+	outBytes, errBytes := new(bytes.Buffer), new(bytes.Buffer)
+	outWriter := io.MultiWriter(os.Stdout, outBytes)
+	errWriter := io.MultiWriter(os.Stderr, errBytes)
+
+	_, err = stdcopy.StdCopy(outWriter, errWriter, resp.Reader)
+	if err != nil {
+		return smidrContainer.ExecResult{}, fmt.Errorf("exec output copy: %w", err)
+	}
+
+	inspect, err := d.cli.ContainerExecInspect(execCtx, execIDResp.ID)
+	if err != nil {
+		return smidrContainer.ExecResult{}, fmt.Errorf("exec inspect: %w", err)
+	}
+
+	return smidrContainer.ExecResult{
+		Stdout:   outBytes.Bytes(),
+		Stderr:   errBytes.Bytes(),
+		ExitCode: inspect.ExitCode,
+	}, nil
+}
+
+func parseMemory(mem string) int64 {
+	bytes, err := units.RAMInBytes(mem)
+	if err != nil {
+		// fallback or log error
+		return 0
+	}
+	return bytes
 }

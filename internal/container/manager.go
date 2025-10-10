@@ -17,7 +17,8 @@ type ContainerConfig struct {
 	SstateCacheDir string   // Host path to mount as /home/builder/sstate-cache
 	WorkspaceDir   string   // Host path to mount as /home/builder/work (main workspace)
 	LayerDirs      []string // Host paths to Yocto meta-layers to inject into /home/builder/layers
-	// Resource limits, etc. can be added later
+	MemoryLimit    string   `yaml:"memory"`    // e.g. "2g"
+	CPUCount       int      `yaml:"cpu_count"` // Number of CPUs to allocate
 }
 
 type Mount struct {
@@ -42,5 +43,7 @@ type ContainerManager interface {
 	StopContainer(ctx context.Context, containerID string, timeout time.Duration) error
 	RemoveContainer(ctx context.Context, containerID string, force bool) error
 	Exec(ctx context.Context, containerID string, cmd []string, timeout time.Duration) (ExecResult, error)
-	// Streamed exec/logging variants can be added
+	ExecStream(ctx context.Context, containerID string, cmd []string, timeout time.Duration) (ExecResult, error)
+	ImageExists(ctx context.Context, imageName string) bool
+	CopyFromContainer(ctx context.Context, containerID, containerPath, hostPath string) error
 }

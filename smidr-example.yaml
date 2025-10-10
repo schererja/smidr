@@ -74,7 +74,7 @@ artifacts:
 
 # Container configuration
 container:
-  base_image: "smidr/yocto-builder:kirkstone"
+  base_image: "crops/yocto:ubuntu-22.04-builder"
   memory: "8g"
   cpu_count: 8
 
