@@ -74,23 +74,41 @@ func runBuild(cmd *cobra.Command) error {
 	verbose := viper.GetBool("verbose")
 	logger := source.NewConsoleLogger(os.Stdout, verbose)
 
-	// Determine host downloads dir to mount into the container.
-	// Prefer the configured global cache (cfg.Cache.Downloads) so users can
-	// share a single DL_DIR across projects. Fall back to cfg.Directories.Source
-	// only if cache.downloads is not set. Also expand a leading ~ to the user's
-	// home directory so YAML values like "~/.smidr/downloads" work as expected.
+	// Helper to expand ~ and make absolute
+	expandPath := func(path string) string {
+		if path == "" {
+			return ""
+		}
+		// Expand ~
+		if strings.HasPrefix(path, "~") {
+			if homedir, err := os.UserHomeDir(); err == nil {
+				path = strings.Replace(path, "~", homedir, 1)
+			}
+		}
+		// Make absolute if not already
+		if !strings.HasPrefix(path, "/") {
+			if abs, err := os.Getwd(); err == nil {
+				path = abs + "/" + path
+			}
+		}
+		return path
+	}
+
+	// Expand and resolve all relevant directories
 	downloadsDir := ""
 	if cfg.Cache.Downloads != "" {
 		downloadsDir = cfg.Cache.Downloads
 	} else if cfg.Directories.Source != "" {
 		downloadsDir = cfg.Directories.Source
 	}
-	// Expand leading ~ to home dir
-	if downloadsDir != "" && strings.HasPrefix(downloadsDir, "~") {
-		if homedir, err := os.UserHomeDir(); err == nil {
-			downloadsDir = strings.Replace(downloadsDir, "~", homedir, 1)
-		}
-	}
+	downloadsDir = expandPath(downloadsDir)
+	cfg.Directories.Source = expandPath(cfg.Directories.Source)
+	cfg.Directories.SState = expandPath(cfg.Directories.SState)
+	cfg.Directories.Build = expandPath(cfg.Directories.Build)
+	cfg.Directories.Tmp = expandPath(cfg.Directories.Tmp)
+	cfg.Directories.Deploy = expandPath(cfg.Directories.Deploy)
+	cfg.Cache.SState = expandPath(cfg.Cache.SState)
+	cfg.Cache.Downloads = expandPath(cfg.Cache.Downloads)
 
 	// Step 1: Fetch layers
 	fmt.Println("📦 Fetching required layers...")
@@ -134,12 +152,13 @@ func runBuild(cmd *cobra.Command) error {
 	// Prepare layer dirs from config so they are injected into the container by default
 	var cfgLayerDirs []string
 	for _, l := range cfg.Layers {
+		var layerPath string
 		if l.Path != "" {
-			cfgLayerDirs = append(cfgLayerDirs, l.Path)
+			layerPath = expandPath(l.Path)
 		} else {
-			// default to sources/<layer.Name> under the configured sources dir
-			cfgLayerDirs = append(cfgLayerDirs, fmt.Sprintf("%s/%s", cfg.Directories.Source, l.Name))
+			layerPath = fmt.Sprintf("%s/%s", cfg.Directories.Source, l.Name)
 		}
+		cfgLayerDirs = append(cfgLayerDirs, layerPath)
 	}
 
 	// Determine container image - use config, test override, or fallback
@@ -149,22 +168,13 @@ func runBuild(cmd *cobra.Command) error {
 	}
 
 	containerConfig := container.ContainerConfig{
-		Image: imageToUse,
-		// Use a portable shell invocation. Using ["sh", "-c", "..."] runs the
-		// command under /bin/sh when no ENTRYPOINT is set (busybox), and when an
-		// image *does* set an ENTRYPOINT (for example /bin/bash) Docker will append
-		// these args to the entrypoint; in practice bash will accept 'sh -c ...'
-		// and run the given commands. Keep the container alive briefly so tests
-		// can exec into it.
-		// Provide a single string command; the Docker manager will use /bin/sh -c
-		// as the Entrypoint so this will run consistently regardless of whether
-		// the image defines its own ENTRYPOINT.
-		// Keep container alive for a long time to allow exec commands and debugging
-		Cmd:            []string{"echo 'Container ready'; sleep 3600"},
-		DownloadsDir:   downloadsDir,           // mount host downloads (DL_DIR) into container
-		SstateCacheDir: cfg.Directories.SState, // Wire SSTATE dir from config
+		Image:          imageToUse,
+		Cmd:            []string{"echo 'Container ready'; sleep 86400"}, // 24 hours
+		DownloadsDir:   downloadsDir,                                    // mount host downloads (DL_DIR) into container
+		SstateCacheDir: cfg.Directories.SState,                          // Wire SSTATE dir from config
 		WorkspaceDir:   cfg.Directories.Build,
 		LayerDirs:      cfgLayerDirs,
+		TmpDir:         cfg.Directories.Tmp, // Mount host tmp dir if set
 		Name:           testName,
 		MemoryLimit:    cfg.Container.Memory,
 		CPUCount:       cfg.Container.CPUCount,
@@ -266,6 +276,9 @@ func runBuild(cmd *cobra.Command) error {
 	fmt.Printf("   Host downloads (DL_DIR): %s -> /home/builder/downloads\n", containerConfig.DownloadsDir)
 	fmt.Printf("   Host sstate-cache: %s -> /home/builder/sstate-cache\n", containerConfig.SstateCacheDir)
 	fmt.Printf("   Host workspace: %s -> /home/builder/work\n", containerConfig.WorkspaceDir)
+	if containerConfig.TmpDir != "" {
+		fmt.Printf("   Host tmp: %s -> /home/builder/tmp\n", containerConfig.TmpDir)
+	}
 	if containerConfig.DownloadsDir == cfg.Directories.Source && containerConfig.DownloadsDir != "" {
 		fmt.Println("⚠️  Note: downloads and sources are the same path on host — this can cause confusion. Consider setting cache.downloads and directories.source to distinct paths in smidr.yaml.")
 	}

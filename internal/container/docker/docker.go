@@ -148,6 +148,18 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 		})
 	}
 
+	// Add tmp directory mount if specified
+	if cfg.TmpDir != "" {
+		if err := os.MkdirAll(cfg.TmpDir, 0755); err != nil {
+			return "", fmt.Errorf("failed to create tmp dir %s: %w", cfg.TmpDir, err)
+		}
+		mounts = append(mounts, mount.Mount{
+			Type:   mount.TypeBind,
+			Source: cfg.TmpDir,
+			Target: "/home/builder/tmp",
+		})
+	}
+
 	// Add layer directories (meta-layers) if specified
 	for i, layerDir := range cfg.LayerDirs {
 		if layerDir != "" {
