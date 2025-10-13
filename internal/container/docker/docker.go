@@ -167,8 +167,13 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 			if err := os.MkdirAll(layerDir, 0755); err != nil {
 				return "", fmt.Errorf("failed to create layer dir %s: %w", layerDir, err)
 			}
-			// Mount each layer to /home/builder/layers/layer-N for easy access
-			target := fmt.Sprintf("/home/builder/layers/layer-%d", i)
+			// Mount each layer using its proper name (or layer-N as fallback)
+			var target string
+			if i < len(cfg.LayerNames) && cfg.LayerNames[i] != "" {
+				target = fmt.Sprintf("/home/builder/layers/%s", cfg.LayerNames[i])
+			} else {
+				target = fmt.Sprintf("/home/builder/layers/layer-%d", i)
+			}
 			mounts = append(mounts, mount.Mount{
 				Type:     mount.TypeBind,
 				Source:   layerDir,

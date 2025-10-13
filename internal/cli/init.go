@@ -51,33 +51,47 @@ func generateConfigTemplate(projectName string) string {
 
   name: %s
   description: "Custom embedded Linux image"
-
+  yocto_series: kirkstone
   # Base system configuration
   base:
     provider: toradex
     machine: verdin-imx8mp
-    distro: tdx-xwayland
+    distro: poky
     version: "6.0.0"
 
-  # Layer configuration
-  layers:
-    # BSP layers (automatically managed)
-    - name: meta-toradex-bsp-common
-      git: https://git.toradex.com/meta-toradex-bsp-common
-      branch: kirkstone-6.x.y
 
-    # Custom layers (your application code)
+
+  # Layer configuration
+  # Only 'git' (and optional 'branch') are needed for remote layers. All valid sublayers will be auto-discovered.
+  # Use 'path' only for custom/local layers or to override auto-discovery.
+  layers:
+    - name: poky
+      git: "https://git.yoctoproject.org/poky"
+    - name: meta-freescale
+      git: "https://github.com/Freescale/meta-freescale.git"
+      branch: kirkstone
+    - name: meta-freescale-3rdparty
+      git: "https://github.com/Freescale/meta-freescale-3rdparty.git"
+      branch: kirkstone
+    - name: meta-openembedded
+      git: "https://git.openembedded.org/meta-openembedded"
+    - name: meta-toradex-bsp-common
+      git: "https://git.toradex.com/meta-toradex-bsp-common.git"
+    - name: meta-toradex-nxp
+      git: "https://git.toradex.com/meta-toradex-nxp.git"
+
+    # Custom/local layers (example):
     # - name: meta-mycompany
-    #   path: ./layers/meta-mycompany
+    #   path: meta-mycompany
+    #   git: ../meta-mycompany
     #
     # - name: meta-myapp
-    #   git: https://github.com/mycompany/meta-myapp
-    #   branch: main
+    #   path: meta-myapp
 
-  # Build configuration
+  # Build configuration - use the minimal to start and always start with qemux86-64
   build:
-    image: core-image-weston
-    machine: verdin-imx8mp
+    image: core-image-minimal
+    machine: qemux86-64
 
     # Extra packages to include
     extra_packages:
@@ -98,6 +112,7 @@ func generateConfigTemplate(projectName string) string {
   # Directory configuration (all default to ~/.smidr/*)
   directories:
     downloads: ~/.smidr/downloads
+    layers: ~/.smidr/layers
     sstate: ~/.smidr/sstate-cache
     tmp: ~/.smidr/tmp
     build: ~/.smidr/build

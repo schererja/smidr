@@ -147,36 +147,31 @@ func (e *BuildExecutor) sourceEnvironment(ctx context.Context) error {
 	if result.ExitCode != 0 {
 		// Try to source the environment in a writable directory
 		// The oe-init-build-env script needs to create conf directory, so use /tmp/build
-		// First, check whether the expected oe-init-build-env exists in the downloads dir
-		checkOoCmd := []string{"sh", "-c", "if [ -f /home/builder/downloads/poky/oe-init-build-env ]; then echo present; else echo missing; fi"}
+		// First, check whether the expected oe-init-build-env exists in the layers dir
+		// Debug: List what's actually in the layers directory
+		debugCmd := []string{"sh", "-c", "echo 'DEBUG: Contents of /home/builder/layers:' && ls -la /home/builder/layers/ || echo 'layers dir does not exist'"}
+		debugRes, _ := e.containerMgr.Exec(ctx, e.containerID, debugCmd, 5*time.Second)
+		fmt.Printf("Container layers directory contents:\n%s\n", string(debugRes.Stdout))
+
+		checkOoCmd := []string{"sh", "-c", "if [ -f /home/builder/layers/poky/oe-init-build-env ]; then echo present; else echo missing; fi"}
 		chkRes, _ := e.containerMgr.Exec(ctx, e.containerID, checkOoCmd, 5*time.Second)
 		if strings.Contains(string(chkRes.Stdout), "missing") {
-			// Attempt to bootstrap poky into the downloads dir. This is best-effort
-			// because the host mount may be read-only; in that case the clone will
-			// fail and we should instruct the user to populate the host downloads dir.
-			fmt.Println("⚠️  poky not found in /home/builder/downloads. Attempting to git clone poky...")
-			cloneCmd := []string{"sh", "-c", "git clone --depth 1 https://git.yoctoproject.org/poky /home/builder/downloads/poky"}
-			cloneRes, cloneErr := e.containerMgr.ExecStream(ctx, e.containerID, cloneCmd, 5*time.Minute)
-			if cloneErr != nil || cloneRes.ExitCode != 0 {
-				return fmt.Errorf("build environment not available: poky not found in downloads and automatic clone failed: %v\n\nPlease populate your host downloads directory (smidr.yaml: cache.downloads) with poky and required meta layers (poky, meta-openembedded, etc.) or run smidr with SMIDR_DEBUG_KEEP_CONTAINER=1 and `docker exec -it <container> git clone ...` to clone manually", cloneErr)
-			}
-			fmt.Println("✅ poky cloned into /home/builder/downloads/poky")
+			// Additional debug: check if poky directory exists at all
+			pokyDebugCmd := []string{"sh", "-c", "echo 'DEBUG: Checking poky dir:' && ls -la /home/builder/layers/poky/ || echo 'poky dir does not exist'"}
+			pokyDebugRes, _ := e.containerMgr.Exec(ctx, e.containerID, pokyDebugCmd, 5*time.Second)
+			fmt.Printf("Container poky directory debug:\n%s\n", string(pokyDebugRes.Stdout))
+
+			return fmt.Errorf("build environment not available: poky not found in layers directory. Please ensure layers are properly fetched and mounted")
 		}
 
-		// Check for meta-openembedded (meta-oe etc.) and try to clone if missing
-		checkOE := []string{"sh", "-c", "if [ -d /home/builder/downloads/meta-openembedded/meta-oe ]; then echo present; else echo missing; fi"}
+		// Check for meta-openembedded (meta-oe etc.)
+		checkOE := []string{"sh", "-c", "if [ -d /home/builder/layers/meta-openembedded/meta-oe ]; then echo present; else echo missing; fi"}
 		oeRes, _ := e.containerMgr.Exec(ctx, e.containerID, checkOE, 5*time.Second)
 		if strings.Contains(string(oeRes.Stdout), "missing") {
-			fmt.Println("⚠️  meta-openembedded not found in /home/builder/downloads. Attempting to git clone meta-openembedded...")
-			cloneOECmd := []string{"sh", "-c", "git clone --depth 1 https://github.com/openembedded/meta-openembedded /home/builder/downloads/meta-openembedded"}
-			cloneOERes, cloneOErr := e.containerMgr.ExecStream(ctx, e.containerID, cloneOECmd, 5*time.Minute)
-			if cloneOErr != nil || cloneOERes.ExitCode != 0 {
-				return fmt.Errorf("build environment not available: meta-openembedded not found in downloads and automatic clone failed: %v\n\nPlease populate your host downloads directory (smidr.yaml: cache.downloads) with meta-openembedded and required meta layers or run smidr with SMIDR_DEBUG_KEEP_CONTAINER=1 and `docker exec -it <container> git clone ...` to clone manually", cloneOErr)
-			}
-			fmt.Println("✅ meta-openembedded cloned into /home/builder/downloads/meta-openembedded")
+			return fmt.Errorf("build environment not available: meta-openembedded not found in layers directory. Please ensure layers are properly fetched and mounted")
 		}
 
-		sourceCmd := []string{"sh", "-c", "mkdir -p /tmp/build && cd /tmp/build && source /home/builder/downloads/poky/oe-init-build-env . && which bitbake"}
+		sourceCmd := []string{"sh", "-c", "mkdir -p /tmp/build && cd /tmp/build && source /home/builder/layers/poky/oe-init-build-env . && which bitbake"}
 		result, err = e.containerMgr.Exec(ctx, e.containerID, sourceCmd, 30*time.Second)
 		if err != nil {
 			return fmt.Errorf("failed to source build environment: %w", err)
@@ -227,7 +222,7 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context) (*BuildResult, error
 		echo "=== Checking memory limit ===" && \
 		cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "Cannot read cgroup v1/v2 memory limit" && \
 		echo "=== Sourcing environment ===" && \
-		source /home/builder/downloads/poky/oe-init-build-env . && \
+		source /home/builder/layers/poky/oe-init-build-env . && \
 		echo "=== Updating config ===" && \
 		sed -i 's/^BB_NUMBER_THREADS.*/BB_NUMBER_THREADS = "%d"/' conf/local.conf && \
 		sed -i 's/^PARALLEL_MAKE.*/PARALLEL_MAKE = "-j %d"/' conf/local.conf && \
@@ -246,7 +241,7 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context) (*BuildResult, error
 
 	// Pre-fetch sources to avoid checksum warnings and fail early if fetch fails
 	// Use `bitbake -c fetch` which is broadly supported for image targets.
-	fetchCmd := []string{"sh", "-c", fmt.Sprintf("cd /tmp/build && source /home/builder/downloads/poky/oe-init-build-env . && bitbake -c fetch %s", imageName)}
+	fetchCmd := []string{"sh", "-c", fmt.Sprintf("cd /tmp/build && source /home/builder/layers/poky/oe-init-build-env . && bitbake -c fetch %s", imageName)}
 	fmt.Println("⬇️  Running pre-fetch (bitbake -c fetch) to download sources before build...")
 	fetchResult, fetchErr := e.containerMgr.ExecStream(ctx, e.containerID, fetchCmd, 30*time.Minute)
 	if fetchErr != nil {
@@ -306,15 +301,10 @@ func (e *BuildExecutor) generateLocalConfContent() string {
 	}
 
 	distro := e.config.Base.Distro
-	// Use fallback distro if configured distro requires missing layers
-	if distro == "tdx-xwayland" {
-		// tdx-xwayland requires Toradex-specific setup
-		distro = "poky"
-		fmt.Printf("⚠️  Falling back to %s distro (tdx-xwayland requires additional Toradex setup)\n", distro)
-	}
-
 	if distro != "" {
-		content.WriteString(fmt.Sprintf("DISTRO = \"%s\"\n", distro))
+		content.WriteString(fmt.Sprintf("DISTRO ?= \"%s\"\n", distro))
+	} else {
+		fmt.Printf("[WARN] No DISTRO set in config. Please set base.distro in smidr.yaml.\n")
 	}
 
 	// Parallel build settings with safe defaults
@@ -381,21 +371,64 @@ func (e *BuildExecutor) generateBBLayersConfContent() string {
 
 	content.WriteString("BBLAYERS ?= \" \\\n")
 
-	// Add core layers first (mounted at /home/builder/downloads in container)
-	content.WriteString("  /home/builder/downloads/poky/meta \\\n")
-	content.WriteString("  /home/builder/downloads/poky/meta-poky \\\n")
-	content.WriteString("  /home/builder/downloads/poky/meta-yocto-bsp \\\n")
-
-	// Add OpenEmbedded layers
-	content.WriteString("  /home/builder/downloads/meta-openembedded/meta-oe \\\n")
-	content.WriteString("  /home/builder/downloads/meta-openembedded/meta-python \\\n")
-	content.WriteString("  /home/builder/downloads/meta-openembedded/meta-networking \\\n")
-	content.WriteString("  /home/builder/downloads/meta-openembedded/meta-multimedia \\\n")
-
-	// Add configured layers
-	for i := range e.config.Layers {
-		layerPath := fmt.Sprintf("/home/builder/layers/layer-%d", i)
-		content.WriteString(fmt.Sprintf("  %s \\\n", layerPath))
+	ctx := context.Background()
+	added := make(map[string]bool)
+	// Recursively add all valid sublayers for poky and all other layers
+	for _, layer := range e.config.Layers {
+		repoDir := "/home/builder/layers/" + layer.Name
+		findCmd := []string{"sh", "-c", fmt.Sprintf("find '%s' -type f -name layer.conf | grep '/conf/layer.conf'$", repoDir)}
+		findResult, err := e.containerMgr.Exec(ctx, e.containerID, findCmd, 5*time.Second)
+		if err != nil {
+			fmt.Printf("[WARN] Could not search for conf/layer.conf in %s: %v\n", repoDir, err)
+			continue
+		}
+		fmt.Printf("[DEBUG] find results for %s:\n%s\n", repoDir, string(findResult.Stdout))
+		layerConfs := strings.Split(strings.TrimSpace(string(findResult.Stdout)), "\n")
+		for _, confPath := range layerConfs {
+			if confPath == "" {
+				continue
+			}
+			layerDir := strings.TrimSuffix(confPath, "/conf/layer.conf")
+			catCmd := []string{"sh", "-c", fmt.Sprintf("cat '%s'", confPath)}
+			catResult, err := e.containerMgr.Exec(ctx, e.containerID, catCmd, 2*time.Second)
+			confContent := string(catResult.Stdout)
+			if err != nil || !strings.Contains(confContent, "BBFILE_COLLECTIONS") {
+				continue
+			}
+			compatible := false
+			yoctoSeries := e.config.YoctoSeries
+			if yoctoSeries == "" {
+				compatible = true
+			} else {
+				for _, line := range strings.Split(confContent, "\n") {
+					line = strings.TrimSpace(line)
+					if strings.HasPrefix(line, "LAYERSERIES_COMPAT_") {
+						parts := strings.SplitN(line, "=", 2)
+						if len(parts) == 2 {
+							val := strings.Trim(parts[1], " \"'")
+							for _, series := range strings.Fields(val) {
+								if series == yoctoSeries || strings.HasPrefix(series, yoctoSeries+"-") {
+									compatible = true
+									break
+								}
+							}
+						}
+					}
+					if compatible {
+						break
+					}
+				}
+			}
+			if !compatible {
+				fmt.Printf("[WARN] Layer %s is not compatible with Yocto series '%s'\n", layerDir, yoctoSeries)
+				continue
+			}
+			if !added[layerDir] {
+				fmt.Printf("[INFO] Adding Yocto layer: %s\n", layerDir)
+				content.WriteString(fmt.Sprintf("  %s \\\n", layerDir))
+				added[layerDir] = true
+			}
+		}
 	}
 
 	content.WriteString("  \"\n")

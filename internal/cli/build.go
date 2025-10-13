@@ -79,17 +79,23 @@ func runBuild(cmd *cobra.Command) error {
 		if path == "" {
 			return ""
 		}
-		// Expand ~
+		// Only expand ~ if it is at the start of the path
 		if strings.HasPrefix(path, "~") {
-			if homedir, err := os.UserHomeDir(); err == nil {
-				path = strings.Replace(path, "~", homedir, 1)
+			if len(path) == 1 || path[1] == '/' {
+				homedir, err := os.UserHomeDir()
+				if err != nil {
+					panic("Could not resolve ~ to home directory: " + err.Error())
+				}
+				path = homedir + path[1:]
 			}
 		}
 		// Make absolute if not already
 		if !strings.HasPrefix(path, "/") {
-			if abs, err := os.Getwd(); err == nil {
-				path = abs + "/" + path
+			abs, err := os.Getwd()
+			if err != nil {
+				panic("Could not get working directory: " + err.Error())
 			}
+			path = abs + "/" + path
 		}
 		return path
 	}
@@ -102,6 +108,7 @@ func runBuild(cmd *cobra.Command) error {
 		downloadsDir = cfg.Directories.Source
 	}
 	downloadsDir = expandPath(downloadsDir)
+	cfg.Directories.Layers = expandPath(cfg.Directories.Layers)
 	cfg.Directories.Source = expandPath(cfg.Directories.Source)
 	cfg.Directories.SState = expandPath(cfg.Directories.SState)
 	cfg.Directories.Build = expandPath(cfg.Directories.Build)
@@ -112,7 +119,7 @@ func runBuild(cmd *cobra.Command) error {
 
 	// Step 1: Fetch layers
 	fmt.Println("📦 Fetching required layers...")
-	fetcher := source.NewFetcher(cfg.Directories.Source, downloadsDir, logger)
+	fetcher := source.NewFetcher(cfg.Directories.Layers, downloadsDir, logger)
 	results, err := fetcher.FetchLayers(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to fetch layers: %w", err)
@@ -151,15 +158,70 @@ func runBuild(cmd *cobra.Command) error {
 	}
 	// Prepare layer dirs from config so they are injected into the container by default
 	var cfgLayerDirs []string
+	var cfgLayerNames []string
+	mountedParents := make(map[string]string) // Track which parent directories we've already added for mounting (path -> name)
+
 	for _, l := range cfg.Layers {
 		var layerPath string
 		if l.Path != "" {
-			layerPath = expandPath(l.Path)
+			// If path is relative, make it relative to the layers directory
+			if !strings.HasPrefix(l.Path, "/") && !strings.HasPrefix(l.Path, "~") {
+				layerPath = expandPath(fmt.Sprintf("%s/%s", cfg.Directories.Layers, l.Path))
+			} else {
+				// Absolute path or ~ path - expand as-is
+				layerPath = expandPath(l.Path)
+			}
 		} else {
-			layerPath = fmt.Sprintf("%s/%s", cfg.Directories.Source, l.Name)
+			// Always expand ~ and make absolute for default layers dir
+			layerPath = expandPath(fmt.Sprintf("%s/%s", cfg.Directories.Layers, l.Name))
 		}
-		cfgLayerDirs = append(cfgLayerDirs, layerPath)
+
+		// For mounting, we only want to mount the top-level parent directories
+		// For sublayers like meta-openembedded/meta-oe, we should mount meta-openembedded
+		var mountPath string
+		var mountName string
+		if l.Path != "" && strings.Contains(l.Path, "/") {
+			// This is a sublayer - mount the parent directory instead
+			parentPath := strings.Split(l.Path, "/")[0]
+			mountPath = expandPath(fmt.Sprintf("%s/%s", cfg.Directories.Layers, parentPath))
+			mountName = parentPath
+		} else {
+			// This is a top-level layer - mount it directly
+			mountPath = layerPath
+			mountName = l.Name
+		}
+
+		// Only add unique mount paths
+		if _, exists := mountedParents[mountPath]; !exists {
+			cfgLayerDirs = append(cfgLayerDirs, mountPath)
+			cfgLayerNames = append(cfgLayerNames, mountName)
+			mountedParents[mountPath] = mountName
+		}
 	}
+
+	// Only mount valid Yocto layers (those with conf/layer.conf)
+	var validLayerDirs []string
+	var validLayerNames []string
+	for i, dir := range cfgLayerDirs {
+		// Ensure the layer directory exists before checking for layer.conf
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			logger.Debug("Failed to create layer directory %s: %v", dir, err)
+			continue
+		}
+
+		confPath := fmt.Sprintf("%s/conf/layer.conf", dir)
+		if fi, err := os.Stat(confPath); err == nil && !fi.IsDir() {
+			validLayerDirs = append(validLayerDirs, dir)
+			validLayerNames = append(validLayerNames, cfgLayerNames[i])
+		} else {
+			// Include directory anyway for mounting - layer.conf will be created when fetched
+			validLayerDirs = append(validLayerDirs, dir)
+			validLayerNames = append(validLayerNames, cfgLayerNames[i])
+			logger.Debug("Including layer directory for mounting (conf/layer.conf will be created on fetch): %s", dir)
+		}
+	}
+	cfgLayerDirs = validLayerDirs
+	cfgLayerNames = validLayerNames
 
 	// Determine container image - use config, test override, or fallback
 	imageToUse := cfg.Container.BaseImage
@@ -174,6 +236,7 @@ func runBuild(cmd *cobra.Command) error {
 		SstateCacheDir: cfg.Directories.SState,                          // Wire SSTATE dir from config
 		WorkspaceDir:   cfg.Directories.Build,
 		LayerDirs:      cfgLayerDirs,
+		LayerNames:     cfgLayerNames,
 		TmpDir:         cfg.Directories.Tmp, // Mount host tmp dir if set
 		Name:           testName,
 		MemoryLimit:    cfg.Container.Memory,
@@ -279,6 +342,19 @@ func runBuild(cmd *cobra.Command) error {
 	if containerConfig.TmpDir != "" {
 		fmt.Printf("   Host tmp: %s -> /home/builder/tmp\n", containerConfig.TmpDir)
 	}
+	// Print layers directory mount if set, using real layer names
+	if len(containerConfig.LayerDirs) > 0 {
+		for i, dir := range containerConfig.LayerDirs {
+			// Use the corresponding layer name if available
+			var layerName string
+			if i < len(containerConfig.LayerNames) && containerConfig.LayerNames[i] != "" {
+				layerName = containerConfig.LayerNames[i]
+			} else {
+				layerName = fmt.Sprintf("layer-%d", i)
+			}
+			fmt.Printf("   Host layer %s: %s -> /home/builder/layers/%s\n", layerName, dir, layerName)
+		}
+	}
 	if containerConfig.DownloadsDir == cfg.Directories.Source && containerConfig.DownloadsDir != "" {
 		fmt.Println("⚠️  Note: downloads and sources are the same path on host — this can cause confusion. Consider setting cache.downloads and directories.source to distinct paths in smidr.yaml.")
 	}
@@ -377,17 +453,11 @@ func runBuild(cmd *cobra.Command) error {
 	} else {
 		// Test mode - run marker validation logic
 		fmt.Println("🚀 Build process running in test mode (SMIDR_TEST_WRITE_MARKERS=1)")
-		if err := runTestMarkerValidation(cmd.Context(), dm, containerID, containerConfig); err != nil {
+		if err := runTestMarkerValidation(cmd.Context(), dm, containerID, containerConfig, cfg); err != nil {
 			return fmt.Errorf("test marker validation failed: %w", err)
 		}
 	}
 
-	// Step 9: Generate build files (unchanged)
-	generator := bitbake.NewGenerator(cfg, "./build")
-	if err := generator.Generate(); err != nil {
-		return fmt.Errorf("error generating build files: %w", err)
-	}
-	fmt.Println("✅ Build files generated successfully")
 	fmt.Println("💡 Use 'smidr artifacts list' to view build artifacts once available")
 
 	return nil // Build completed successfully
@@ -402,7 +472,7 @@ func getTailString(s string, n int) string {
 }
 
 // runTestMarkerValidation runs the test marker validation logic
-func runTestMarkerValidation(ctx context.Context, dm *docker.DockerManager, containerID string, containerConfig container.ContainerConfig) error {
+func runTestMarkerValidation(ctx context.Context, dm *docker.DockerManager, containerID string, containerConfig container.ContainerConfig, cfg *config.Config) error {
 	// Test container functionality and mount accessibility
 	// Note: On CI, bind-mounted directories may not be writable due to UID mismatches
 
@@ -451,12 +521,19 @@ func runTestMarkerValidation(ctx context.Context, dm *docker.DockerManager, cont
 		}
 	}
 
-	// Probe layer visibility if any provided
+	// Probe layer visibility if any provided, using real layer names
 	if len(containerConfig.LayerDirs) > 0 {
-		// Attempt to list first layer directory
-		res, _ := dm.Exec(ctx, containerID, []string{"sh", "-c", "ls -la /home/builder/layers/layer-0 || true"}, 5*time.Second)
-		if len(res.Stdout) > 0 {
-			fmt.Print(string(res.Stdout))
+		for i := range containerConfig.LayerDirs {
+			layerName := ""
+			if i < len(cfg.Layers) {
+				layerName = cfg.Layers[i].Name
+			} else {
+				layerName = fmt.Sprintf("layer-%d", i)
+			}
+			res, _ := dm.Exec(ctx, containerID, []string{"sh", "-c", fmt.Sprintf("ls -la /home/builder/layers/%s || true", layerName)}, 5*time.Second)
+			if len(res.Stdout) > 0 {
+				fmt.Printf("Layer %s contents:\n%s\n", layerName, string(res.Stdout))
+			}
 		}
 	}
 

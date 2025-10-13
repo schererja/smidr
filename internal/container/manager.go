@@ -17,6 +17,7 @@ type ContainerConfig struct {
 	SstateCacheDir string   // Host path to mount as /home/builder/sstate-cache
 	WorkspaceDir   string   // Host path to mount as /home/builder/work (main workspace)
 	LayerDirs      []string // Host paths to Yocto meta-layers to inject into /home/builder/layers
+	LayerNames     []string // Names corresponding to LayerDirs for proper mounting
 	MemoryLimit    string   `yaml:"memory"`    // e.g. "2g"
 	CPUCount       int      `yaml:"cpu_count"` // Number of CPUs to allocate
 	TmpDir         string   // Host path to mount as /home/builder/tmp

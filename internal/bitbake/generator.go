@@ -230,10 +230,20 @@ func (g *Generator) generateBBLayersConf(confDir string) error {
 	sb.WriteString(fmt.Sprintf("# Project: %s\n", g.config.Name))
 	sb.WriteString(fmt.Sprintf("# Description: %s\n\n", g.config.Description))
 
+	// Debug: print all layer names before writing bblayers.conf
+	fmt.Println("[DEBUG] Layers to be written to bblayers.conf:")
+	for i, layer := range g.config.Layers {
+		fmt.Printf("  [%d] %q\n", i, layer.Name)
+	}
+
 	sb.WriteString("BBPATH := \"${TOPDIR}\"\n")
 	sb.WriteString("BBFILES ?= \"\"\n")
 	sb.WriteString("BBLAYERS ?= \" \\\n")
 	for _, layer := range g.config.Layers {
+		// Skip poky itself as it's not a layer, just a container for layers
+		if layer.Name == "poky" {
+			continue
+		}
 		layerPath := g.getLayerPath(layer)
 		sb.WriteString(fmt.Sprintf("  %s \\\n", layerPath))
 	}
@@ -243,18 +253,13 @@ func (g *Generator) generateBBLayersConf(confDir string) error {
 }
 
 func (g *Generator) getLayerPath(layer config.Layer) string {
-	if layer.Path != "" {
-		return filepath.Join("${TOPDIR}/../layers", layer.Name)
+	// Use the path field if available, otherwise fall back to name
+	layerSubPath := layer.Path
+	if layerSubPath == "" {
+		layerSubPath = layer.Name
 	}
-	// Git layer - assume all code is cloned into the sources directory
-	// If a global cache downloads path is configured, prefer the downloads
-	// location for upstream base layers (poky, meta-openembedded) so we
-	// reference the same clones the fetcher placed in cache.Downloads. Fall
-	// back to project-relative sources when no cache path is configured.
-	if g.config.Cache.Downloads != "" {
-		return filepath.Join(g.config.Cache.Downloads, layer.Name)
-	}
-	return filepath.Join("${TOPDIR}/../sources", layer.Name)
+	// Always reference the canonical layers directory for all layers
+	return filepath.Join("${TOPDIR}/../layers", layerSubPath)
 }
 
 func (g *Generator) generateCustomImageRecipe() error {
