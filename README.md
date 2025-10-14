@@ -1,5 +1,8 @@
 # ⚒️ Smidr
 
+**WORK IN PROGRESS**
+This project is still a work in project, but after spending a year and half working on yocto and bitbake projects I wanted to make things easier and start to try and make ways to make it a simple process for more people.  Some of the "Nice to haves" will be implemented later on.
+
 **The Digital Forge for Embedded Linux**
 
 Smidr is a modern, container-based build system for embedded Linux that eliminates the pain points of traditional Yocto/BitBake workflows. Built by developers, for developers who are tired of cryptic errors, build state corruption, and massive storage requirements.
