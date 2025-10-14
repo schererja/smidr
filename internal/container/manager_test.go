@@ -26,6 +26,15 @@ func (d *DummyContainerManager) RemoveContainer(ctx context.Context, containerID
 func (d *DummyContainerManager) Exec(ctx context.Context, containerID string, cmd []string, timeout time.Duration) (ExecResult, error) {
 	return ExecResult{Stdout: []byte("ok"), Stderr: nil, ExitCode: 0}, nil
 }
+func (d *DummyContainerManager) ExecStream(ctx context.Context, containerID string, cmd []string, timeout time.Duration) (ExecResult, error) {
+	return ExecResult{Stdout: []byte("ok"), Stderr: nil, ExitCode: 0}, nil
+}
+func (d *DummyContainerManager) ImageExists(ctx context.Context, imageName string) bool {
+	return true
+}
+func (d *DummyContainerManager) CopyFromContainer(ctx context.Context, containerID, containerPath, hostPath string) error {
+	return nil
+}
 
 func TestContainerManagerInterface(t *testing.T) {
 	var cm ContainerManager = &DummyContainerManager{}
