@@ -99,8 +99,27 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 
 	// Set CPU count if specified
 	if cfg.CPUCount > 0 {
-		hostConfig.NanoCPUs = int64(cfg.CPUCount) * 1_000_000_000 // 1 CPU = 1e9
-		fmt.Printf("[INFO] Setting container CPU count: %d\n", cfg.CPUCount)
+		// Get system info to check available CPUs
+		info, err := d.cli.Info(context.Background())
+		if err != nil {
+			// If we can't get system info, proceed with warning
+			fmt.Printf("[WARNING] Could not get system info to validate CPU count: %v\n", err)
+			hostConfig.NanoCPUs = int64(cfg.CPUCount) * 1_000_000_000 // 1 CPU = 1e9
+			fmt.Printf("[INFO] Setting container CPU count: %d (unchecked)\n", cfg.CPUCount)
+		} else {
+			maxCPUs := info.NCPU
+			requestedCPUs := cfg.CPUCount
+
+			// Cap the CPU count to available CPUs
+			if requestedCPUs > maxCPUs {
+				fmt.Printf("[WARNING] Requested CPU count (%d) exceeds available CPUs (%d), using %d CPUs\n",
+					requestedCPUs, maxCPUs, maxCPUs)
+				requestedCPUs = maxCPUs
+			}
+
+			hostConfig.NanoCPUs = int64(requestedCPUs) * 1_000_000_000 // 1 CPU = 1e9
+			fmt.Printf("[INFO] Setting container CPU count: %d\n", requestedCPUs)
+		}
 	}
 	for _, m := range cfg.Mounts {
 		mounts = append(mounts, mount.Mount{
