@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/term"
@@ -49,6 +51,20 @@ func init() {
 }
 
 func runBuild(cmd *cobra.Command) error {
+	// Set up signal handling for graceful cancellation
+	ctx, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
+
+	// Set up signal handler for SIGINT and SIGTERM
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigChan
+		fmt.Printf("\n🛑 Received signal %v, initiating graceful shutdown...\n", sig)
+		cancel()
+	}()
+
 	fmt.Println("🔨 Starting Smidr build...")
 	fmt.Println()
 	configFile := viper.GetString("config")
@@ -363,12 +379,12 @@ func runBuild(cmd *cobra.Command) error {
 	// Step 4: Pull image (skip pulling if a test image override is provided or image exists locally)
 	if testImage == "" {
 		// Check if image exists locally first
-		if dm.ImageExists(cmd.Context(), containerConfig.Image) {
+		if dm.ImageExists(ctx, containerConfig.Image) {
 			fmt.Printf("🐳 Using local image: %s\n", containerConfig.Image)
 		} else {
 			// Image doesn't exist locally, try to pull it
 			fmt.Println("🐳 Pulling container image...")
-			if err := dm.PullImage(cmd.Context(), containerConfig.Image); err != nil {
+			if err := dm.PullImage(ctx, containerConfig.Image); err != nil {
 				return fmt.Errorf("failed to pull image: %w", err)
 			}
 		}
@@ -379,7 +395,7 @@ func runBuild(cmd *cobra.Command) error {
 	// Step 5: Create container
 	fmt.Printf("🧭 Mounting host downloads dir: %s -> /home/builder/downloads\n", containerConfig.DownloadsDir)
 	fmt.Println("🐳 Creating container...")
-	containerID, err := dm.CreateContainer(cmd.Context(), containerConfig)
+	containerID, err := dm.CreateContainer(ctx, containerConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create container: %w", err)
 	}
@@ -396,11 +412,11 @@ func runBuild(cmd *cobra.Command) error {
 		}
 		fmt.Println("🧹 Cleaning up container...")
 		os.Stdout.Sync() // Flush stdout to ensure log is written
-		stopErr := dm.StopContainer(cmd.Context(), containerID, 2*time.Second)
+		stopErr := dm.StopContainer(ctx, containerID, 2*time.Second)
 		if stopErr != nil {
 			fmt.Printf("⚠️  Failed to stop container: %v\n", stopErr)
 		}
-		removeErr := dm.RemoveContainer(cmd.Context(), containerID, true)
+		removeErr := dm.RemoveContainer(ctx, containerID, true)
 		if removeErr != nil {
 			fmt.Printf("⚠️  Failed to remove container: %v\n", removeErr)
 		}
@@ -409,7 +425,7 @@ func runBuild(cmd *cobra.Command) error {
 
 	// Step 7: Start container
 	fmt.Println("🐳 Starting container...")
-	if err := dm.StartContainer(cmd.Context(), containerID); err != nil {
+	if err := dm.StartContainer(ctx, containerID); err != nil {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
@@ -427,11 +443,21 @@ func runBuild(cmd *cobra.Command) error {
 	if os.Getenv("SMIDR_TEST_WRITE_MARKERS") != "1" {
 		// Only run real build if not in test mode
 		fmt.Println("🚀 Starting Yocto build...")
+		fmt.Println("💡 Use Ctrl+C to gracefully cancel the build at any time")
 
 		executor := bitbake.NewBuildExecutor(cfg, dm, containerID, containerConfig.WorkspaceDir)
-		buildResult, err := executor.ExecuteBuild(cmd.Context())
+		buildResult, err := executor.ExecuteBuild(ctx)
 
 		if err != nil {
+			// Check if the error was due to context cancellation (signal handling)
+			if ctx.Err() == context.Canceled {
+				fmt.Printf("🛑 Build was cancelled by user signal\n")
+				if buildResult != nil {
+					fmt.Printf("Build was running for: %v before cancellation\n", buildResult.Duration)
+				}
+				return fmt.Errorf("build cancelled by user")
+			}
+
 			fmt.Printf("❌ Build failed: %v\n", err)
 			if buildResult != nil {
 				fmt.Printf("Build took: %v\n", buildResult.Duration)
@@ -454,7 +480,7 @@ func runBuild(cmd *cobra.Command) error {
 	} else {
 		// Test mode - run marker validation logic
 		fmt.Println("🚀 Build process running in test mode (SMIDR_TEST_WRITE_MARKERS=1)")
-		if err := runTestMarkerValidation(cmd.Context(), dm, containerID, containerConfig, cfg); err != nil {
+		if err := runTestMarkerValidation(ctx, dm, containerID, containerConfig, cfg); err != nil {
 			return fmt.Errorf("test marker validation failed: %w", err)
 		}
 	}
