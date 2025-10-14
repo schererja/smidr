@@ -225,8 +225,8 @@ func TestFetchGitLayer_MockGit(t *testing.T) {
 			t.Skipf("Failed to create repo dir: %v", err)
 		}
 
-		// Initialize the repo
-		if err := exec.Command("git", "init", sourceRepo).Run(); err != nil {
+		// Initialize the repo with main branch
+		if err := exec.Command("git", "init", "-b", "main", sourceRepo).Run(); err != nil {
 			t.Skipf("Failed to init git repo: %v", err)
 		}
 
