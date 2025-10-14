@@ -22,6 +22,7 @@ type Config struct {
 	Artifacts   []string        `yaml:"artifacts,omitempty"`
 	Container   ContainerConfig `yaml:"container,omitempty"`
 	Cache       CacheConfig     `yaml:"cache,omitempty"`
+	YoctoSeries string          `yaml:"yocto_series,omitempty"` // e.g. "kirkstone", "dunfell"
 }
 
 type BaseConfig struct {
@@ -66,6 +67,7 @@ type DirectoryConfig struct {
 	Deploy    string `yaml:"deploy,omitempty"`
 	Source    string `yaml:"source,omitempty"`
 	Build     string `yaml:"build,omitempty"`
+	Layers    string `yaml:"layers,omitempty"`
 }
 
 type PackageConfig struct {
@@ -87,6 +89,7 @@ type AdvancedConfig struct {
 	QemuSDL            bool   `yaml:"qemu_sdl,omitempty"`
 	QemuGTK            bool   `yaml:"qemu_gtk,omitempty"`
 	AcceptFSLEULA      bool   `yaml:"accept_fsl_eula,omitempty"`
+	BuildTimeout       int    `yaml:"build_timeout,omitempty"` // Build timeout in minutes
 }
 
 type CacheConfig struct {

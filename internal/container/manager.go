@@ -1,6 +1,9 @@
 package container
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // ContainerConfig holds configuration for creating a container
 type ContainerConfig struct {
@@ -12,9 +15,13 @@ type ContainerConfig struct {
 	Mounts         []Mount
 	DownloadsDir   string   // Host path to mount as /home/builder/downloads
 	SstateCacheDir string   // Host path to mount as /home/builder/sstate-cache
+	BuildDir       string   // Host path to mount as /home/builder/build (persistent Yocto build dir)
 	WorkspaceDir   string   // Host path to mount as /home/builder/work (main workspace)
 	LayerDirs      []string // Host paths to Yocto meta-layers to inject into /home/builder/layers
-	// Resource limits, etc. can be added later
+	LayerNames     []string // Names corresponding to LayerDirs for proper mounting
+	MemoryLimit    string   `yaml:"memory"`    // e.g. "2g"
+	CPUCount       int      `yaml:"cpu_count"` // Number of CPUs to allocate
+	TmpDir         string   // Host path to mount as /home/builder/tmp
 }
 
 type Mount struct {
@@ -33,11 +40,13 @@ type ExecResult struct {
 // This is the main abstraction for container orchestration backends
 // (Docker, Podman, containerd, etc.)
 type ContainerManager interface {
-	PullImage(image string) error
-	CreateContainer(cfg ContainerConfig) (containerID string, err error)
-	StartContainer(containerID string) error
-	StopContainer(containerID string, timeout time.Duration) error
-	RemoveContainer(containerID string, force bool) error
-	Exec(containerID string, cmd []string, timeout time.Duration) (ExecResult, error)
-	// Streamed exec/logging variants can be added
+	PullImage(ctx context.Context, image string) error
+	CreateContainer(ctx context.Context, cfg ContainerConfig) (containerID string, err error)
+	StartContainer(ctx context.Context, containerID string) error
+	StopContainer(ctx context.Context, containerID string, timeout time.Duration) error
+	RemoveContainer(ctx context.Context, containerID string, force bool) error
+	Exec(ctx context.Context, containerID string, cmd []string, timeout time.Duration) (ExecResult, error)
+	ExecStream(ctx context.Context, containerID string, cmd []string, timeout time.Duration) (ExecResult, error)
+	ImageExists(ctx context.Context, imageName string) bool
+	CopyFromContainer(ctx context.Context, containerID, containerPath, hostPath string) error
 }

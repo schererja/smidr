@@ -16,6 +16,7 @@ import (
 	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/docker/go-units"
 
 	smidrContainer "github.com/intrik8-labs/smidr/internal/container"
 )
@@ -83,6 +84,43 @@ func (d *DockerManager) CopyFromContainer(ctx context.Context, containerID, cont
 
 func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.ContainerConfig) (string, error) {
 	mounts := []mount.Mount{}
+	hostConfig := &container.HostConfig{}
+
+	// Set memory limit if specified
+	if cfg.MemoryLimit != "" {
+		memBytes, err := units.RAMInBytes(cfg.MemoryLimit)
+		if err != nil {
+			fmt.Printf("[WARN] Could not parse memory limit %q: %v\n", cfg.MemoryLimit, err)
+		} else {
+			hostConfig.Memory = memBytes
+			fmt.Printf("[INFO] Setting container memory limit: %s (%d bytes)\n", cfg.MemoryLimit, memBytes)
+		}
+	}
+
+	// Set CPU count if specified
+	if cfg.CPUCount > 0 {
+		// Get system info to check available CPUs
+		info, err := d.cli.Info(context.Background())
+		if err != nil {
+			// If we can't get system info, proceed with warning
+			fmt.Printf("[WARNING] Could not get system info to validate CPU count: %v\n", err)
+			hostConfig.NanoCPUs = int64(cfg.CPUCount) * 1_000_000_000 // 1 CPU = 1e9
+			fmt.Printf("[INFO] Setting container CPU count: %d (unchecked)\n", cfg.CPUCount)
+		} else {
+			maxCPUs := info.NCPU
+			requestedCPUs := cfg.CPUCount
+
+			// Cap the CPU count to available CPUs
+			if requestedCPUs > maxCPUs {
+				fmt.Printf("[WARNING] Requested CPU count (%d) exceeds available CPUs (%d), using %d CPUs\n",
+					requestedCPUs, maxCPUs, maxCPUs)
+				requestedCPUs = maxCPUs
+			}
+
+			hostConfig.NanoCPUs = int64(requestedCPUs) * 1_000_000_000 // 1 CPU = 1e9
+			fmt.Printf("[INFO] Setting container CPU count: %d\n", requestedCPUs)
+		}
+	}
 	for _, m := range cfg.Mounts {
 		mounts = append(mounts, mount.Mount{
 			Type:     mount.TypeBind,
@@ -117,15 +155,36 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 		})
 	}
 
-	// Add workspace directory mount if specified
-	if cfg.WorkspaceDir != "" {
-		if err := os.MkdirAll(cfg.WorkspaceDir, 0755); err != nil {
-			return "", fmt.Errorf("failed to create workspace dir %s: %w", cfg.WorkspaceDir, err)
+	// Add build directory mount if specified
+	if cfg.BuildDir != "" {
+		if err := os.MkdirAll(cfg.BuildDir, 0755); err != nil {
+			return "", fmt.Errorf("failed to create build dir %s: %w", cfg.BuildDir, err)
+		}
+		// Try to set ownership to builder user (UID 1000, GID 1000), fallback to chmod 0777 if chown fails
+		chownErr := os.Chown(cfg.BuildDir, 1000, 1000)
+		if chownErr != nil {
+			// Not root or chown failed, fallback to chmod 0777
+			chmodErr := os.Chmod(cfg.BuildDir, 0777)
+			if chmodErr != nil {
+				fmt.Printf("[WARN] Could not set permissions on %s: %v\n", cfg.BuildDir, chmodErr)
+			}
 		}
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeBind,
-			Source: cfg.WorkspaceDir,
-			Target: "/home/builder/work",
+			Source: cfg.BuildDir,
+			Target: "/home/builder/build",
+		})
+	}
+
+	// Add tmp directory mount if specified
+	if cfg.TmpDir != "" {
+		if err := os.MkdirAll(cfg.TmpDir, 0755); err != nil {
+			return "", fmt.Errorf("failed to create tmp dir %s: %w", cfg.TmpDir, err)
+		}
+		mounts = append(mounts, mount.Mount{
+			Type:   mount.TypeBind,
+			Source: cfg.TmpDir,
+			Target: "/home/builder/tmp",
 		})
 	}
 
@@ -136,8 +195,13 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 			if err := os.MkdirAll(layerDir, 0755); err != nil {
 				return "", fmt.Errorf("failed to create layer dir %s: %w", layerDir, err)
 			}
-			// Mount each layer to /home/builder/layers/layer-N for easy access
-			target := fmt.Sprintf("/home/builder/layers/layer-%d", i)
+			// Mount each layer using its proper name (or layer-N as fallback)
+			var target string
+			if i < len(cfg.LayerNames) && cfg.LayerNames[i] != "" {
+				target = fmt.Sprintf("/home/builder/layers/%s", cfg.LayerNames[i])
+			} else {
+				target = fmt.Sprintf("/home/builder/layers/layer-%d", i)
+			}
 			mounts = append(mounts, mount.Mount{
 				Type:     mount.TypeBind,
 				Source:   layerDir,
@@ -167,15 +231,15 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 		entrypoint = nil
 		cmd = strslice.StrSlice(cfg.Cmd)
 	}
+	// Remove old CpusetCpus logic (now handled by NanoCPUs)
+	hostConfig.Mounts = mounts
 
 	resp, err := d.cli.ContainerCreate(ctx, &container.Config{
 		Image:      cfg.Image,
 		Env:        cfg.Env,
 		Entrypoint: entrypoint,
 		Cmd:        cmd,
-	}, &container.HostConfig{
-		Mounts: mounts,
-	}, &network.NetworkingConfig{}, nil, cfg.Name)
+	}, hostConfig, &network.NetworkingConfig{}, nil, cfg.Name)
 	if err != nil {
 		return "", fmt.Errorf("create container: %w", err)
 	}
@@ -267,4 +331,57 @@ func (d *DockerManager) Exec(ctx context.Context, containerID string, cmd []stri
 		Stderr:   errBytes.Bytes(),
 		ExitCode: inspect.ExitCode,
 	}, nil
+}
+
+// ExecStream runs a command in the container with real-time output streaming to stdout/stderr
+func (d *DockerManager) ExecStream(ctx context.Context, containerID string, cmd []string, timeout time.Duration) (smidrContainer.ExecResult, error) {
+	execCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	execConfig := container.ExecOptions{
+		Cmd:          cmd,
+		AttachStdout: true,
+		AttachStderr: true,
+	}
+
+	execIDResp, err := d.cli.ContainerExecCreate(execCtx, containerID, execConfig)
+	if err != nil {
+		return smidrContainer.ExecResult{}, fmt.Errorf("exec create: %w", err)
+	}
+
+	resp, err := d.cli.ContainerExecAttach(execCtx, execIDResp.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return smidrContainer.ExecResult{}, fmt.Errorf("exec attach: %w", err)
+	}
+	defer resp.Close()
+
+	// Stream output to stdout/stderr in real-time while also collecting it
+	outBytes, errBytes := new(bytes.Buffer), new(bytes.Buffer)
+	outWriter := io.MultiWriter(os.Stdout, outBytes)
+	errWriter := io.MultiWriter(os.Stderr, errBytes)
+
+	_, err = stdcopy.StdCopy(outWriter, errWriter, resp.Reader)
+	if err != nil {
+		return smidrContainer.ExecResult{}, fmt.Errorf("exec output copy: %w", err)
+	}
+
+	inspect, err := d.cli.ContainerExecInspect(execCtx, execIDResp.ID)
+	if err != nil {
+		return smidrContainer.ExecResult{}, fmt.Errorf("exec inspect: %w", err)
+	}
+
+	return smidrContainer.ExecResult{
+		Stdout:   outBytes.Bytes(),
+		Stderr:   errBytes.Bytes(),
+		ExitCode: inspect.ExitCode,
+	}, nil
+}
+
+func parseMemory(mem string) int64 {
+	bytes, err := units.RAMInBytes(mem)
+	if err != nil {
+		// fallback or log error
+		return 0
+	}
+	return bytes
 }

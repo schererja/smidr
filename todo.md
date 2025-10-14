@@ -46,12 +46,12 @@
 
 ## Phase 5: Build Execution
 
-- [ ] Implement bitbake command execution in containers
-- [ ] Add real-time log streaming from container
-- [ ] Handle build process signals (interrupt, kill)
-- [ ] Implement build state tracking
-- [ ] Add error detection and reporting
-- [ ] Create build timeout handling
+- [X] Implement bitbake command execution in containers
+- [X] Add real-time log streaming from container
+- [X] Handle build process signals (interrupt, kill)
+- [X] Implement build state tracking
+- [X] Add error detection and reporting
+- [X] Create build timeout handling
 
 ## Phase 6: Artifact Management
 
@@ -102,3 +102,21 @@
 - [ ] Tag v0.1.0 MVP release
 - [ ] Publish to GitHub releases
 - [ ] Create announcement/blog post
+
+## Future Enhancements (Post-MVP)
+
+- [ ] Web UI for build management
+- [ ] Advanced caching strategies (deduplication, compression)
+- [ ] CI/CD integration for automated builds
+- [ ] Support for additional BSPs and vendors
+- [ ] Cloud-based build service option
+- [ ] Support for multiple build configurations
+- [ ] User authentication and access control
+- [ ] Integration with external artifact repositories (e.g., Artifactory)
+- [ ] Notifications (email, Slack) on build completion/failure
+- [ ] Plugin system for extending functionality
+- [ ] Localization and internationalization
+- [ ] Performance optimizations based on usage patterns
+- [ ] Support for alternative container runtimes (e.g., Podman)
+- [ ] Enhanced error reporting with actionable suggestions
+- [ ] Support for custom build scripts/hooks

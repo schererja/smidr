@@ -73,7 +73,7 @@ artifacts:
 
 # Container configuration with resource limits
 container:
-  base_image: ${CONTAINER_IMAGE:-smidr/yocto-builder:kirkstone}
+  base_image: ${CONTAINER_IMAGE:-crops/yocto:ubuntu-22.04-builder}
   memory: ${CONTAINER_MEMORY:-8g}
   cpu_count: ${CONTAINER_CPUS:-8}
   # Optional: override the container entrypoint (list of args)

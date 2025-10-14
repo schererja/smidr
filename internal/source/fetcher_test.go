@@ -33,16 +33,13 @@ func (m *MockLogger) Debug(msg string, args ...interface{}) {
 
 func TestNewFetcher(t *testing.T) {
 	logger := &MockLogger{}
-	sourcesDir := "/tmp/test-sources"
+	layersDir := "/tmp/test-layers"
+	downloadsDir := "/tmp/test-downloads"
 
-	fetcher := NewFetcher(sourcesDir, logger)
+	fetcher := NewFetcher(layersDir, downloadsDir, logger)
 
 	if fetcher == nil {
 		t.Fatal("NewFetcher returned nil")
-	}
-
-	if fetcher.sourcesDir != sourcesDir {
-		t.Errorf("sourcesDir = %q, want %q", fetcher.sourcesDir, sourcesDir)
 	}
 
 	if fetcher.logger != logger {
@@ -53,7 +50,7 @@ func TestNewFetcher(t *testing.T) {
 func TestIsGitRepository(t *testing.T) {
 	logger := &MockLogger{}
 	tmpDir := t.TempDir()
-	fetcher := NewFetcher(tmpDir, logger)
+	fetcher := NewFetcher(tmpDir, tmpDir, logger)
 
 	t.Run("directory with .git", func(t *testing.T) {
 		gitDir := filepath.Join(tmpDir, "repo-with-git")
@@ -223,26 +220,62 @@ func TestFetchGitLayer_MockGit(t *testing.T) {
 		tmpDir := t.TempDir()
 		sourceRepo := filepath.Join(tmpDir, "source-repo")
 
-		// Initialize a bare git repo to clone from
-		if err := exec.Command("git", "init", "--bare", sourceRepo).Run(); err != nil {
-			t.Skipf("Failed to create test git repo: %v", err)
+		// Create a proper git repository with commits
+		if err := os.MkdirAll(sourceRepo, 0755); err != nil {
+			t.Skipf("Failed to create repo dir: %v", err)
+		}
+
+		// Initialize the repo with main branch
+		if err := exec.Command("git", "init", "-b", "main", sourceRepo).Run(); err != nil {
+			t.Skipf("Failed to init git repo: %v", err)
+		}
+
+		// Configure git user for the test
+		exec.Command("git", "-C", sourceRepo, "config", "user.email", "test@example.com").Run()
+		exec.Command("git", "-C", sourceRepo, "config", "user.name", "Test User").Run()
+
+		// Create a test file and commit it
+		testFile := filepath.Join(sourceRepo, "test.txt")
+		if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
+			t.Skipf("Failed to create test file: %v", err)
+		}
+
+		if err := exec.Command("git", "-C", sourceRepo, "add", "test.txt").Run(); err != nil {
+			t.Skipf("Failed to add file: %v", err)
+		}
+
+		if err := exec.Command("git", "-C", sourceRepo, "commit", "-m", "Initial commit").Run(); err != nil {
+			t.Skipf("Failed to commit: %v", err)
 		}
 
 		logger := &MockLogger{}
 		sourcesDir := filepath.Join(tmpDir, "sources")
-		fetcher := NewFetcher(sourcesDir, logger)
+		fetcher := NewFetcher(sourcesDir, sourcesDir, logger)
 
 		layer := config.Layer{
 			Name:   "test-layer",
 			Git:    sourceRepo,
-			Branch: "master",
+			Branch: "main", // Use modern git default branch name
 		}
 
-		result := fetcher.fetchGitLayer(layer)
+		// Test using the current FetchLayers API
+		cfg := &config.Config{
+			Layers: []config.Layer{layer},
+		}
+		results, err := fetcher.FetchLayers(cfg)
+		if err != nil {
+			t.Errorf("FetchLayers failed: %v", err)
+		}
 
-		// Note: This might fail because the bare repo has no commits
-		// In a real scenario, we'd need a proper test repository
-		t.Logf("Fetch result: Success=%v, Error=%v", result.Success, result.Error)
+		if len(results) != 1 {
+			t.Errorf("Expected 1 result, got %d", len(results))
+		}
+
+		if len(results) > 0 && !results[0].Success {
+			t.Errorf("Expected successful fetch, got error: %v", results[0].Error)
+		}
+
+		t.Logf("Fetch results: %+v", results)
 	})
 }
 
@@ -255,7 +288,7 @@ func TestCleanCache(t *testing.T) {
 	os.WriteFile(filepath.Join(sourcesDir, "layer1", "test.txt"), []byte("test"), 0644)
 
 	logger := &MockLogger{}
-	fetcher := NewFetcher(sourcesDir, logger)
+	fetcher := NewFetcher(sourcesDir, sourcesDir, logger)
 
 	err := fetcher.CleanCache()
 	if err != nil {
@@ -295,7 +328,7 @@ func TestGetCacheSize(t *testing.T) {
 	expectedSize := int64(len(testData) * 2)
 
 	logger := &MockLogger{}
-	fetcher := NewFetcher(sourcesDir, logger)
+	fetcher := NewFetcher(sourcesDir, sourcesDir, logger)
 
 	size, err := fetcher.GetCacheSize()
 	if err != nil {
@@ -310,7 +343,8 @@ func TestGetCacheSize(t *testing.T) {
 func TestFetchLayers_EmptyConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := &MockLogger{}
-	fetcher := NewFetcher(filepath.Join(tmpDir, "sources"), logger)
+	sourcesDir := filepath.Join(tmpDir, "sources")
+	fetcher := NewFetcher(sourcesDir, sourcesDir, logger)
 
 	cfg := &config.Config{
 		Base: config.BaseConfig{
@@ -319,19 +353,16 @@ func TestFetchLayers_EmptyConfig(t *testing.T) {
 		Layers: []config.Layer{}, // No custom layers
 	}
 
-	// This will try to fetch base layers but will fail without real git repos
-	// We're mainly testing that it doesn't crash
+	// With the current implementation, empty layers means no fetch operations
 	results, err := fetcher.FetchLayers(cfg)
 
-	if err == nil {
-		t.Log("FetchLayers succeeded (unexpected in test environment)")
-	} else {
-		t.Logf("FetchLayers failed as expected in test environment: %v", err)
+	if err != nil {
+		t.Errorf("FetchLayers should not fail with empty config: %v", err)
 	}
 
-	// Should have attempted to fetch poky and meta-openembedded
-	if len(results) < 2 {
-		t.Errorf("Expected at least 2 fetch attempts, got %d", len(results))
+	// Should have no fetch attempts since no layers are configured
+	if len(results) != 0 {
+		t.Errorf("Expected 0 fetch attempts for empty config, got %d", len(results))
 	}
 }
 
@@ -359,7 +390,7 @@ func TestFetchResult(t *testing.T) {
 func TestEvictOldCache(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := &MockLogger{}
-	fetcher := NewFetcher(tmpDir, logger)
+	fetcher := NewFetcher(tmpDir, tmpDir, logger)
 
 	// Create two fake repos: one old, one recent
 	oldRepo := filepath.Join(tmpDir, "old-repo")

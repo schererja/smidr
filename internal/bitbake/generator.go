@@ -72,27 +72,33 @@ func (g *Generator) generateLocalConf(confDir string) error {
 	// Build Parallelism
 	threads := g.config.Build.BBNumberThreads
 	if threads <= 0 {
-		threads = 4 // default to 4 threads if not specified
+		threads = 2 // default to 4 threads if not specified
 	}
 	sb.WriteString(fmt.Sprintf("BB_NUMBER_THREADS = \"%d\"\n", threads))
 	parallelMake := g.config.Build.ParallelMake
 	if parallelMake <= 0 {
-		parallelMake = 4 // default to 4 if not specified
+		parallelMake = 2 // default to 4 if not specified
 	}
 	sb.WriteString(fmt.Sprintf("PARALLEL_MAKE = \"-j %d\"\n\n", parallelMake))
 
 	sb.WriteString("\n")
 	sb.WriteString("# Shared download and cache directories\n")
 
-	// Use configured directories or defaults
+	// Use configured directories or defaults. Prefer the global cache.Downloads
+	// when it's set so the generator points BitBake at the same location the
+	// fetcher populates (prevents double-cloning into both downloads and sources).
 	dlDir := "${TOPDIR}/../downloads"
-	if g.config.Directories.Downloads != "" {
+	if g.config.Cache.Downloads != "" {
+		dlDir = g.config.Cache.Downloads
+	} else if g.config.Directories.Downloads != "" {
 		dlDir = g.config.Directories.Downloads
 	}
 	sb.WriteString(fmt.Sprintf("DL_DIR = \"%s\"\n", dlDir))
 
 	sstateDir := "${TOPDIR}/../sstate-cache"
-	if g.config.Directories.SState != "" {
+	if g.config.Cache.SState != "" {
+		sstateDir = g.config.Cache.SState
+	} else if g.config.Directories.SState != "" {
 		sstateDir = g.config.Directories.SState
 	}
 	sb.WriteString(fmt.Sprintf("SSTATE_DIR = \"%s\"\n", sstateDir))
@@ -224,10 +230,20 @@ func (g *Generator) generateBBLayersConf(confDir string) error {
 	sb.WriteString(fmt.Sprintf("# Project: %s\n", g.config.Name))
 	sb.WriteString(fmt.Sprintf("# Description: %s\n\n", g.config.Description))
 
+	// Debug: print all layer names before writing bblayers.conf
+	fmt.Println("[DEBUG] Layers to be written to bblayers.conf:")
+	for i, layer := range g.config.Layers {
+		fmt.Printf("  [%d] %q\n", i, layer.Name)
+	}
+
 	sb.WriteString("BBPATH := \"${TOPDIR}\"\n")
 	sb.WriteString("BBFILES ?= \"\"\n")
 	sb.WriteString("BBLAYERS ?= \" \\\n")
 	for _, layer := range g.config.Layers {
+		// Skip poky itself as it's not a layer, just a container for layers
+		if layer.Name == "poky" {
+			continue
+		}
 		layerPath := g.getLayerPath(layer)
 		sb.WriteString(fmt.Sprintf("  %s \\\n", layerPath))
 	}
@@ -237,11 +253,13 @@ func (g *Generator) generateBBLayersConf(confDir string) error {
 }
 
 func (g *Generator) getLayerPath(layer config.Layer) string {
-	if layer.Path != "" {
-		return filepath.Join("${TOPDIR}/../layers", layer.Name)
+	// Use the path field if available, otherwise fall back to name
+	layerSubPath := layer.Path
+	if layerSubPath == "" {
+		layerSubPath = layer.Name
 	}
-	// Git layer - assume all code is cloned into the sources directory
-	return filepath.Join("${TOPDIR}/../sources", layer.Name)
+	// Always reference the canonical layers directory for all layers
+	return filepath.Join("${TOPDIR}/../layers", layerSubPath)
 }
 
 func (g *Generator) generateCustomImageRecipe() error {
