@@ -171,7 +171,7 @@ func (e *BuildExecutor) sourceEnvironment(ctx context.Context) error {
 			return fmt.Errorf("build environment not available: meta-openembedded not found in layers directory. Please ensure layers are properly fetched and mounted")
 		}
 
-		sourceCmd := []string{"sh", "-c", "mkdir -p /home/builder/build && cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && which bitbake"}
+		sourceCmd := []string{"bash", "-c", "mkdir -p /home/builder/build && cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && which bitbake"}
 		result, err = e.containerMgr.Exec(ctx, e.containerID, sourceCmd, 30*time.Second)
 		if err != nil {
 			return fmt.Errorf("failed to source build environment: %w", err)
@@ -231,7 +231,7 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context) (*BuildResult, error
 		echo "=== Starting bitbake ===" && \
 		bitbake %s`, bbThreads, parallelMake, imageName)
 
-	cmd := []string{"sh", "-c", bitbakeCmd}
+	cmd := []string{"bash", "-c", bitbakeCmd}
 
 	// Execute with a longer timeout for builds (default 24 hours)
 	timeout := 24 * time.Hour
@@ -241,7 +241,7 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context) (*BuildResult, error
 
 	// Pre-fetch sources to avoid checksum warnings and fail early if fetch fails
 	// Use `bitbake -c fetch` which is broadly supported for image targets.
-	fetchCmd := []string{"sh", "-c", fmt.Sprintf("cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && bitbake -c fetch %s", imageName)}
+	fetchCmd := []string{"bash", "-c", fmt.Sprintf("cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && bitbake -c fetch %s", imageName)}
 	fmt.Println("⬇️  Running pre-fetch (bitbake -c fetch) to download sources before build...")
 	fetchResult, fetchErr := e.containerMgr.ExecStream(ctx, e.containerID, fetchCmd, timeout)
 	if fetchErr != nil {
