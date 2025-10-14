@@ -220,9 +220,32 @@ func TestFetchGitLayer_MockGit(t *testing.T) {
 		tmpDir := t.TempDir()
 		sourceRepo := filepath.Join(tmpDir, "source-repo")
 
-		// Initialize a bare git repo to clone from
-		if err := exec.Command("git", "init", "--bare", sourceRepo).Run(); err != nil {
-			t.Skipf("Failed to create test git repo: %v", err)
+		// Create a proper git repository with commits
+		if err := os.MkdirAll(sourceRepo, 0755); err != nil {
+			t.Skipf("Failed to create repo dir: %v", err)
+		}
+
+		// Initialize the repo
+		if err := exec.Command("git", "init", sourceRepo).Run(); err != nil {
+			t.Skipf("Failed to init git repo: %v", err)
+		}
+
+		// Configure git user for the test
+		exec.Command("git", "-C", sourceRepo, "config", "user.email", "test@example.com").Run()
+		exec.Command("git", "-C", sourceRepo, "config", "user.name", "Test User").Run()
+
+		// Create a test file and commit it
+		testFile := filepath.Join(sourceRepo, "test.txt")
+		if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
+			t.Skipf("Failed to create test file: %v", err)
+		}
+
+		if err := exec.Command("git", "-C", sourceRepo, "add", "test.txt").Run(); err != nil {
+			t.Skipf("Failed to add file: %v", err)
+		}
+
+		if err := exec.Command("git", "-C", sourceRepo, "commit", "-m", "Initial commit").Run(); err != nil {
+			t.Skipf("Failed to commit: %v", err)
 		}
 
 		logger := &MockLogger{}
@@ -230,19 +253,28 @@ func TestFetchGitLayer_MockGit(t *testing.T) {
 		fetcher := NewFetcher(sourcesDir, sourcesDir, logger)
 
 		layer := config.Layer{
-			Name: "test-layer",
-			Git:  sourceRepo,
+			Name:   "test-layer",
+			Git:    sourceRepo,
+			Branch: "main", // Use modern git default branch name
 		}
 
-		// Note: This test was for an old API - fetchGitLayer no longer exists
-		// The current API uses FetchLayers which handles the full workflow
+		// Test using the current FetchLayers API
 		cfg := &config.Config{
 			Layers: []config.Layer{layer},
 		}
 		results, err := fetcher.FetchLayers(cfg)
 		if err != nil {
-			t.Logf("Fetch error: %v", err)
+			t.Errorf("FetchLayers failed: %v", err)
 		}
+
+		if len(results) != 1 {
+			t.Errorf("Expected 1 result, got %d", len(results))
+		}
+
+		if len(results) > 0 && !results[0].Success {
+			t.Errorf("Expected successful fetch, got error: %v", results[0].Error)
+		}
+
 		t.Logf("Fetch results: %+v", results)
 	})
 }
