@@ -82,8 +82,8 @@ func (e *BuildExecutor) ExecuteBuild(ctx context.Context) (*BuildResult, error) 
 // setupBuildEnvironment generates the necessary configuration files
 func (e *BuildExecutor) setupBuildEnvironment(ctx context.Context) error {
 	// First ensure we have the right working directory with proper permissions
-	// Use /tmp/build initially, then we can move it to the mounted workspace
-	setupDirCmd := []string{"sh", "-c", "mkdir -p /tmp/build/conf && whoami && pwd && ls -la /tmp/"}
+	// Use /home/builder/build initially, then we can move it to the mounted workspace
+	setupDirCmd := []string{"sh", "-c", "mkdir -p /home/builder/build/conf && whoami && pwd && ls -la /home/builder/"}
 
 	result, err := e.containerMgr.Exec(ctx, e.containerID, setupDirCmd, 10*time.Second)
 	if err != nil {
@@ -97,7 +97,7 @@ func (e *BuildExecutor) setupBuildEnvironment(ctx context.Context) error {
 	localConfContent := e.generateLocalConfContent()
 
 	// Write local.conf to container in temporary location first
-	writeLocalConfCmd := []string{"sh", "-c", fmt.Sprintf("cat > /tmp/build/conf/local.conf << 'EOF'\n%s\nEOF", localConfContent)}
+	writeLocalConfCmd := []string{"sh", "-c", fmt.Sprintf("cat > /home/builder/build/conf/local.conf << 'EOF'\n%s\nEOF", localConfContent)}
 
 	result, err = e.containerMgr.Exec(ctx, e.containerID, writeLocalConfCmd, 30*time.Second)
 	if err != nil {
@@ -108,7 +108,7 @@ func (e *BuildExecutor) setupBuildEnvironment(ctx context.Context) error {
 	}
 
 	// Verify the local.conf was written correctly
-	verifyCmd := []string{"sh", "-c", "cat /tmp/build/conf/local.conf | grep -E 'BB_NUMBER_THREADS|PARALLEL_MAKE'"}
+	verifyCmd := []string{"sh", "-c", "cat /home/builder/build/conf/local.conf | grep -E 'BB_NUMBER_THREADS|PARALLEL_MAKE'"}
 	verifyResult, _ := e.containerMgr.Exec(ctx, e.containerID, verifyCmd, 10*time.Second)
 	fmt.Printf("[DEBUG] Contents of local.conf in container:\n%s\n", string(verifyResult.Stdout))
 
@@ -116,7 +116,7 @@ func (e *BuildExecutor) setupBuildEnvironment(ctx context.Context) error {
 	bblayersContent := e.generateBBLayersConfContent()
 
 	// Write bblayers.conf to container
-	writeBBLayersCmd := []string{"sh", "-c", fmt.Sprintf("cat > /tmp/build/conf/bblayers.conf << 'EOF'\n%s\nEOF", bblayersContent)}
+	writeBBLayersCmd := []string{"sh", "-c", fmt.Sprintf("cat > /home/builder/build/conf/bblayers.conf << 'EOF'\n%s\nEOF", bblayersContent)}
 
 	result, err = e.containerMgr.Exec(ctx, e.containerID, writeBBLayersCmd, 30*time.Second)
 	if err != nil {
@@ -127,7 +127,7 @@ func (e *BuildExecutor) setupBuildEnvironment(ctx context.Context) error {
 	}
 
 	// Now try to copy to the mounted workspace if available
-	copyToWorkspaceCmd := []string{"sh", "-c", "if [ -d '/home/builder/work' ]; then cp -r /tmp/build/* /home/builder/work/ 2>/dev/null || echo 'Failed to copy to workspace, will use /tmp/build'; fi"}
+	copyToWorkspaceCmd := []string{"sh", "-c", "if [ -d '/home/builder/work' ]; then cp -r /home/builder/build/* /home/builder/work/ 2>/dev/null || echo 'Failed to copy to workspace, will use /home/builder/build'; fi"}
 	_, _ = e.containerMgr.Exec(ctx, e.containerID, copyToWorkspaceCmd, 10*time.Second)
 
 	return nil
@@ -146,7 +146,7 @@ func (e *BuildExecutor) sourceEnvironment(ctx context.Context) error {
 	}
 	if result.ExitCode != 0 {
 		// Try to source the environment in a writable directory
-		// The oe-init-build-env script needs to create conf directory, so use /tmp/build
+		// The oe-init-build-env script needs to create conf directory, so use /home/builder/build
 		// First, check whether the expected oe-init-build-env exists in the layers dir
 		// Debug: List what's actually in the layers directory
 		debugCmd := []string{"sh", "-c", "echo 'DEBUG: Contents of /home/builder/layers:' && ls -la /home/builder/layers/ || echo 'layers dir does not exist'"}
@@ -171,7 +171,7 @@ func (e *BuildExecutor) sourceEnvironment(ctx context.Context) error {
 			return fmt.Errorf("build environment not available: meta-openembedded not found in layers directory. Please ensure layers are properly fetched and mounted")
 		}
 
-		sourceCmd := []string{"sh", "-c", "mkdir -p /tmp/build && cd /tmp/build && source /home/builder/layers/poky/oe-init-build-env . && which bitbake"}
+		sourceCmd := []string{"sh", "-c", "mkdir -p /home/builder/build && cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && which bitbake"}
 		result, err = e.containerMgr.Exec(ctx, e.containerID, sourceCmd, 30*time.Second)
 		if err != nil {
 			return fmt.Errorf("failed to source build environment: %w", err)
@@ -218,7 +218,7 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context) (*BuildResult, error
 	// Use sed to update the values in local.conf right before running bitbake
 	bitbakeCmd := fmt.Sprintf(`set -x && \
 		echo "=== Starting build setup ===" && \
-		cd /tmp/build && \
+		cd /home/builder/build && \
 		echo "=== Checking memory limit ===" && \
 		cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "Cannot read cgroup v1/v2 memory limit" && \
 		echo "=== Sourcing environment ===" && \
@@ -233,17 +233,17 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context) (*BuildResult, error
 
 	cmd := []string{"sh", "-c", bitbakeCmd}
 
-	// Execute with a longer timeout for builds (default 2 hours)
-	timeout := 2 * time.Hour
+	// Execute with a longer timeout for builds (default 24 hours)
+	timeout := 24 * time.Hour
 	if e.config.Advanced.BuildTimeout > 0 {
 		timeout = time.Duration(e.config.Advanced.BuildTimeout) * time.Minute
 	}
 
 	// Pre-fetch sources to avoid checksum warnings and fail early if fetch fails
 	// Use `bitbake -c fetch` which is broadly supported for image targets.
-	fetchCmd := []string{"sh", "-c", fmt.Sprintf("cd /tmp/build && source /home/builder/layers/poky/oe-init-build-env . && bitbake -c fetch %s", imageName)}
+	fetchCmd := []string{"sh", "-c", fmt.Sprintf("cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && bitbake -c fetch %s", imageName)}
 	fmt.Println("⬇️  Running pre-fetch (bitbake -c fetch) to download sources before build...")
-	fetchResult, fetchErr := e.containerMgr.ExecStream(ctx, e.containerID, fetchCmd, 30*time.Minute)
+	fetchResult, fetchErr := e.containerMgr.ExecStream(ctx, e.containerID, fetchCmd, timeout)
 	if fetchErr != nil {
 		return &BuildResult{Success: false, ExitCode: fetchResult.ExitCode, Output: string(fetchResult.Stdout) + "\n" + string(fetchResult.Stderr)}, fmt.Errorf("pre-fetch failed: %w", fetchErr)
 	}
@@ -348,6 +348,11 @@ func (e *BuildExecutor) generateLocalConfContent() string {
 		packages := strings.Join(e.config.Build.ExtraPackages, " ")
 		content.WriteString(fmt.Sprintf("IMAGE_INSTALL:append = \" %s\"\n", packages))
 	}
+
+	// Deploy directory settings
+	// Always use container-local deploy dir
+	content.WriteString("TI_COMMON_DEPLOY = \"${TOPDIR}/deploy\"\n")
+	content.WriteString("DEPLOY_DIR = \"${TI_COMMON_DEPLOY}${@'' if d.getVar('BB_CURRENT_MC') == 'default' else '/${BB_CURRENT_MC}'}\"\n")
 
 	// Standard settings
 	content.WriteString("\n# Standard settings\n")

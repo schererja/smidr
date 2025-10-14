@@ -136,15 +136,24 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 		})
 	}
 
-	// Add workspace directory mount if specified
-	if cfg.WorkspaceDir != "" {
-		if err := os.MkdirAll(cfg.WorkspaceDir, 0755); err != nil {
-			return "", fmt.Errorf("failed to create workspace dir %s: %w", cfg.WorkspaceDir, err)
+	// Add build directory mount if specified
+	if cfg.BuildDir != "" {
+		if err := os.MkdirAll(cfg.BuildDir, 0755); err != nil {
+			return "", fmt.Errorf("failed to create build dir %s: %w", cfg.BuildDir, err)
+		}
+		// Try to set ownership to builder user (UID 1000, GID 1000), fallback to chmod 0777 if chown fails
+		chownErr := os.Chown(cfg.BuildDir, 1000, 1000)
+		if chownErr != nil {
+			// Not root or chown failed, fallback to chmod 0777
+			chmodErr := os.Chmod(cfg.BuildDir, 0777)
+			if chmodErr != nil {
+				fmt.Printf("[WARN] Could not set permissions on %s: %v\n", cfg.BuildDir, chmodErr)
+			}
 		}
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeBind,
-			Source: cfg.WorkspaceDir,
-			Target: "/home/builder/work",
+			Source: cfg.BuildDir,
+			Target: "/home/builder/build",
 		})
 	}
 

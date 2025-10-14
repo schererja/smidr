@@ -15,6 +15,7 @@ type ContainerConfig struct {
 	Mounts         []Mount
 	DownloadsDir   string   // Host path to mount as /home/builder/downloads
 	SstateCacheDir string   // Host path to mount as /home/builder/sstate-cache
+	BuildDir       string   // Host path to mount as /home/builder/build (persistent Yocto build dir)
 	WorkspaceDir   string   // Host path to mount as /home/builder/work (main workspace)
 	LayerDirs      []string // Host paths to Yocto meta-layers to inject into /home/builder/layers
 	LayerNames     []string // Names corresponding to LayerDirs for proper mounting

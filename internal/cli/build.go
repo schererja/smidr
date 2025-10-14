@@ -235,6 +235,7 @@ func runBuild(cmd *cobra.Command) error {
 		DownloadsDir:   downloadsDir,                                    // mount host downloads (DL_DIR) into container
 		SstateCacheDir: cfg.Directories.SState,                          // Wire SSTATE dir from config
 		WorkspaceDir:   cfg.Directories.Build,
+		BuildDir:       cfg.Directories.Build,
 		LayerDirs:      cfgLayerDirs,
 		LayerNames:     cfgLayerNames,
 		TmpDir:         cfg.Directories.Tmp, // Mount host tmp dir if set
