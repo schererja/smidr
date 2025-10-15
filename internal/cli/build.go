@@ -3,15 +3,21 @@ package cli
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
+	"os/user"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/term"
 
+	"github.com/intrik8-labs/smidr/internal/artifacts"
 	bitbake "github.com/intrik8-labs/smidr/internal/bitbake"
 	config "github.com/intrik8-labs/smidr/internal/config"
 	"github.com/intrik8-labs/smidr/internal/container"
@@ -48,6 +54,8 @@ func init() {
 	buildCmd.Flags().BoolP("force", "f", false, "Force rebuild (ignore cache)")
 	buildCmd.Flags().StringP("target", "t", "", "Override build target")
 	buildCmd.Flags().Bool("fetch-only", false, "Only fetch layers but don't build it")
+	buildCmd.Flags().String("customer", "", "Optional: customer/user name for build directory grouping")
+	buildCmd.Flags().Bool("clean", false, "If set, deletes the build directory before building (for a full rebuild)")
 }
 
 func runBuild(cmd *cobra.Command) error {
@@ -85,6 +93,39 @@ func runBuild(cmd *cobra.Command) error {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
 	setDefaultDirs(cfg, workDir)
+
+	// --- PATCH: Create unique or customer-specific build directory for this build ---
+	homedir, _ := os.UserHomeDir()
+	customer, _ := cmd.Flags().GetString("customer")
+	clean, _ := cmd.Flags().GetBool("clean")
+	imageName := cfg.Build.Image
+	var buildDir string
+	if customer != "" {
+		// Use per-customer/image build dir for incremental builds
+		buildDir = fmt.Sprintf("%s/.smidr/builds/build-%s/%s", homedir, customer, imageName)
+		if clean {
+			// Remove the build dir for a full rebuild
+			os.RemoveAll(buildDir)
+			fmt.Printf("🧹 Cleaned build directory: %s\n", buildDir)
+		}
+	} else {
+		// Use default unique build directory
+		buildUUID := uuid.New().String()
+		buildDir = fmt.Sprintf("%s/.smidr/builds/build-%s", homedir, buildUUID)
+	}
+	tmpDir := fmt.Sprintf("%s/tmp", buildDir)
+	deployDir := fmt.Sprintf("%s/deploy", buildDir)
+
+	os.MkdirAll(tmpDir, 0755)
+	os.MkdirAll(deployDir, 0755)
+
+	cfg.Directories.Build = buildDir
+	cfg.Directories.Tmp = tmpDir
+	cfg.Directories.Deploy = deployDir
+
+	fmt.Printf("🔒 Using build directory: %s\n", buildDir)
+	fmt.Printf("    TMPDIR: %s\n", tmpDir)
+	fmt.Printf("    DEPLOY_DIR: %s\n", deployDir)
 
 	// Create logger
 	verbose := viper.GetBool("verbose")
@@ -477,6 +518,13 @@ func runBuild(cmd *cobra.Command) error {
 
 		fmt.Printf("✅ Build completed successfully in %v\n", buildResult.Duration)
 		fmt.Printf("Exit code: %d\n", buildResult.ExitCode)
+
+		// Extract build artifacts
+		fmt.Println("📦 Extracting build artifacts...")
+		if err := extractBuildArtifacts(ctx, dm, containerID, cfg, buildResult.Duration); err != nil {
+			fmt.Printf("[WARNING] Failed to extract artifacts: %v\n", err)
+			// Don't fail the build for artifact extraction errors
+		}
 	} else {
 		// Test mode - run marker validation logic
 		fmt.Println("🚀 Build process running in test mode (SMIDR_TEST_WRITE_MARKERS=1)")
@@ -608,6 +656,165 @@ func setDefaultDirs(cfg *config.Config, workDir string) {
 			cfg.Cache.SState = fmt.Sprintf("%s/sstate-cache", workDir)
 		}
 	}
+}
+
+// extractBuildArtifacts extracts build artifacts from the container to persistent storage
+func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, containerID string, cfg *config.Config, buildDuration time.Duration) error {
+	// Get current user for metadata
+	currentUser, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	// Determine if this is a customer build (by checking build dir path)
+	artifactDir := ""
+	customer := ""
+	imageName := cfg.Build.Image
+	timestamp := time.Now().Format("20060102-150405")
+
+	if strings.Contains(cfg.Directories.Build, "/build-") {
+		parts := strings.Split(cfg.Directories.Build, "/build-")
+		if len(parts) > 1 {
+			customerAndRest := parts[1]
+			customerParts := strings.SplitN(customerAndRest, "/", 2)
+			customer = customerParts[0]
+		}
+	}
+
+	if customer != "" {
+		// Use customer artifact dir
+		artifactDir = fmt.Sprintf("%s/.smidr/artifacts/artifact-%s/%s-%s", currentUser.HomeDir, customer, imageName, timestamp)
+	} else {
+		// Fallback: use buildID as before
+		buildID := artifacts.GenerateBuildID(cfg.Name, currentUser.Username)
+		artifactDir = fmt.Sprintf("%s/.smidr/artifacts/%s", currentUser.HomeDir, buildID)
+	}
+
+	deploySrc := cfg.Directories.Deploy
+	deployDst := filepath.Join(artifactDir, "deploy")
+
+	fmt.Printf("[DEBUG] Copying deploy artifacts\n")
+	fmt.Printf("[DEBUG] Source: %s\n", deploySrc)
+	fmt.Printf("[DEBUG] Destination: %s\n", deployDst)
+
+	// Check if source exists and is a directory
+	info, statErr := os.Stat(deploySrc)
+	if statErr != nil {
+		fmt.Printf("[DEBUG] Source deploy directory does not exist: %v\n", statErr)
+		return fmt.Errorf("deploy source directory does not exist: %w", statErr)
+	}
+	if !info.IsDir() {
+		fmt.Printf("[DEBUG] Source deploy path is not a directory!\n")
+		return fmt.Errorf("deploy source is not a directory")
+	}
+
+	err = copyDir(deploySrc, deployDst)
+	if err != nil {
+		fmt.Printf("[DEBUG] Error copying deploy directory: %v\n", err)
+		return fmt.Errorf("failed to copy deploy artifacts: %w", err)
+	}
+	fmt.Printf("[DEBUG] Deploy directory copied successfully.\n")
+
+	// Create build metadata
+	metadata := artifacts.BuildMetadata{
+		BuildID:     filepath.Base(artifactDir),
+		ProjectName: cfg.Name,
+		User:        currentUser.Username,
+		Timestamp:   time.Now(),
+		ConfigUsed: map[string]string{
+			"yocto_series":  cfg.YoctoSeries,
+			"machine":       cfg.Build.Machine,
+			"image":         cfg.Build.Image,
+			"base_provider": cfg.Base.Provider,
+			"base_version":  cfg.Base.Version,
+		},
+		BuildDuration: buildDuration,
+		TargetImage:   cfg.Build.Image,
+		Status:        "success",
+	}
+
+	// Save metadata as JSON
+	if err := os.MkdirAll(artifactDir, 0755); err != nil {
+		return fmt.Errorf("failed to create artifact dir: %w", err)
+	}
+	metaPath := filepath.Join(artifactDir, "build-metadata.json")
+	f, err := os.Create(metaPath)
+	if err != nil {
+		return fmt.Errorf("failed to write metadata: %w", err)
+	}
+	defer f.Close()
+	if err := json.NewEncoder(f).Encode(metadata); err != nil {
+		return fmt.Errorf("failed to encode metadata: %w", err)
+	}
+
+	fmt.Printf("✅ Artifacts copied to: %s\n", artifactDir)
+	return nil
+}
+
+// copyDir recursively copies a directory from src to dst
+func copyDir(src string, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+
+		if err != nil {
+			fmt.Printf("[DEBUG] Skipping missing file: %s (%v)\n", path, err)
+			return nil
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			fmt.Printf("[DEBUG] Failed to get relative path for %s: %v\n", path, err)
+			return err
+		}
+		target := filepath.Join(dst, rel)
+
+		// Handle symlinks
+		if info.Mode()&os.ModeSymlink != 0 {
+			linkTarget, lerr := os.Readlink(path)
+			if lerr != nil {
+				fmt.Printf("[WARNING] Skipping broken symlink: %s (%v)\n", path, lerr)
+				return nil
+			}
+			// Ensure parent directory exists
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				fmt.Printf("[WARNING] Failed to create parent dir for symlink: %s (%v)\n", filepath.Dir(target), err)
+				return err
+			}
+			if err := os.Symlink(linkTarget, target); err != nil {
+				fmt.Printf("[WARNING] Failed to create symlink: %s -> %s (%v)\n", target, linkTarget, err)
+			}
+			return nil
+		}
+
+		if info.IsDir() {
+			return os.MkdirAll(target, info.Mode())
+		} else {
+			// Ensure parent directory exists
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				fmt.Printf("[WARNING] Failed to create parent dir for file: %s (%v)\n", filepath.Dir(target), err)
+				return err
+			}
+			srcFile, err := os.Open(path)
+			if err != nil {
+				fmt.Printf("[WARNING] Skipping missing file: %s (%v)\n", path, err)
+				return nil
+			}
+			defer srcFile.Close()
+			dstFile, err := os.Create(target)
+			if err != nil {
+				fmt.Printf("[WARNING] Failed to create file: %s (%v)\n", target, err)
+				return err
+			}
+			defer dstFile.Close()
+			_, err = io.Copy(dstFile, srcFile)
+			if err != nil {
+				fmt.Printf("[WARNING] Failed to copy file: %s -> %s (%v)\n", path, target, err)
+				return err
+			}
+			if err := os.Chmod(target, info.Mode()); err != nil {
+				fmt.Printf("[WARNING] Failed to chmod file: %s (%v)\n", target, err)
+			}
+			return nil
+		}
+	})
 }
 
 // isatty returns true if the given file descriptor is a terminal.
