@@ -111,15 +111,15 @@ func TestArtifactManager_ExtractArtifacts(t *testing.T) {
 		t.Fatalf("Failed to extract artifacts: %v", err)
 	}
 
-	// Verify extraction was called
-	expectedPath := "/home/builder/work/deploy"
+	// Verify extraction was called for the actual path
+	expectedPath := "/home/builder/build/deploy/images/qemux86-64"
 	if _, exists := mockExtractor.extractedPaths[expectedPath]; !exists {
 		t.Errorf("Expected container path %s to be extracted", expectedPath)
 	}
 
 	// Verify artifact file exists
 	artifactPath := am.GetArtifactPath(metadata.BuildID)
-	dummyFile := filepath.Join(artifactPath, "deploy", "dummy-artifact.img")
+	dummyFile := filepath.Join(artifactPath, "deploy-images-qemux86-64", "dummy-artifact.img")
 	if _, err := os.Stat(dummyFile); os.IsNotExist(err) {
 		t.Errorf("Expected artifact file %s to exist", dummyFile)
 	}
