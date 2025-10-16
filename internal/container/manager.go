@@ -50,3 +50,71 @@ type ContainerManager interface {
 	ImageExists(ctx context.Context, imageName string) bool
 	CopyFromContainer(ctx context.Context, containerID, containerPath, hostPath string) error
 }
+
+// NewContainerConfig creates a new container configuration with defaults
+func NewContainerConfig(image, name string) ContainerConfig {
+	return ContainerConfig{
+		Image: image,
+		Name:  name,
+		Env:   make([]string, 0),
+		Cmd:   make([]string, 0),
+	}
+}
+
+// WithEnv adds environment variables to the container config
+func (c ContainerConfig) WithEnv(env ...string) ContainerConfig {
+	c.Env = append(c.Env, env...)
+	return c
+}
+
+// WithCmd sets the command for the container
+func (c ContainerConfig) WithCmd(cmd ...string) ContainerConfig {
+	c.Cmd = cmd
+	return c
+}
+
+// WithMemoryLimit sets the memory limit for the container
+func (c ContainerConfig) WithMemoryLimit(limit string) ContainerConfig {
+	c.MemoryLimit = limit
+	return c
+}
+
+// WithCPUCount sets the CPU count for the container
+func (c ContainerConfig) WithCPUCount(count int) ContainerConfig {
+	c.CPUCount = count
+	return c
+}
+
+// WithDownloadsDir sets the downloads directory mount
+func (c ContainerConfig) WithDownloadsDir(dir string) ContainerConfig {
+	c.DownloadsDir = dir
+	return c
+}
+
+// WithWorkspaceDir sets the workspace directory mount
+func (c ContainerConfig) WithWorkspaceDir(dir string) ContainerConfig {
+	c.WorkspaceDir = dir
+	return c
+}
+
+// AddLayer adds a layer directory to the container config
+func (c ContainerConfig) AddLayer(hostPath, name string) ContainerConfig {
+	c.LayerDirs = append(c.LayerDirs, hostPath)
+	c.LayerNames = append(c.LayerNames, name)
+	return c
+}
+
+// IsSuccess checks if an ExecResult indicates success
+func (r ExecResult) IsSuccess() bool {
+	return r.ExitCode == 0
+}
+
+// GetStdoutString returns stdout as a string
+func (r ExecResult) GetStdoutString() string {
+	return string(r.Stdout)
+}
+
+// GetStderrString returns stderr as a string
+func (r ExecResult) GetStderrString() string {
+	return string(r.Stderr)
+}

@@ -77,13 +77,18 @@
 
 ## Phase 8: Testing & Validation
 
-- [ ] Write unit tests for core functionality
-- [ ] Create integration tests with real Yocto builds
-- [ ] Test with Toradex layers specifically
-- [ ] Test with multiple custom layer combinations
-- [ ] Validate disk space savings vs traditional approach
-- [ ] Benchmark build times
-- [ ] Test error handling and recovery
+- [ ] Write unit tests for all core packages (artifacts, bitbake, cli, config, container, source)
+- [ ] Ensure >80% code coverage for core logic
+- [ ] Create integration tests for CLI workflows (init, build, status, logs, artifacts)
+- [ ] Run integration tests with real Yocto builds (end-to-end)
+- [ ] Test with Toradex layers specifically (integration and artifact extraction)
+- [ ] Test with multiple custom Yocto layer combinations
+- [ ] Validate disk space savings vs traditional Yocto build approach
+- [ ] Benchmark build times for typical and large builds
+- [ ] Test error handling and recovery (simulate build/container failures)
+- [ ] Add automated test runs to CI (GitHub Actions)
+- [ ] Generate and publish test coverage reports
+- [ ] Document test strategy and how to run tests locally
 
 ## Phase 9: Documentation
 

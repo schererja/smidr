@@ -213,3 +213,43 @@ func TestDockerManager_LayerInjection(t *testing.T) {
 		t.Errorf("Layer-1 file not found in container, exit code: %d", res.ExitCode)
 	}
 }
+
+func TestDockerManager_ImageExists(t *testing.T) {
+	if err := exec.Command("docker", "info").Run(); err != nil {
+		t.Skip("Docker not available")
+	}
+	ctx := context.Background()
+	dm, err := NewDockerManager()
+	if err != nil {
+		t.Fatalf("Failed to create DockerManager: %v", err)
+	}
+	// Pull a known image
+	if err := dm.PullImage(ctx, "busybox:latest"); err != nil {
+		t.Fatalf("PullImage failed: %v", err)
+	}
+	// Check if it exists
+	if !dm.ImageExists(ctx, "busybox:latest") {
+		t.Errorf("ImageExists returned false for existing image")
+	}
+	// Check a non-existent image
+	if dm.ImageExists(ctx, "nonexistent-image-12345:latest") {
+		t.Errorf("ImageExists returned true for non-existent image")
+	}
+}
+
+func TestParseMemory(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"1g", 1073741824},
+		{"512m", 536870912},
+		{"invalid", 0}, // fallback
+	}
+	for _, tt := range tests {
+		result := parseMemory(tt.input)
+		if result != tt.expected {
+			t.Errorf("parseMemory(%q) = %d, want %d", tt.input, result, tt.expected)
+		}
+	}
+}

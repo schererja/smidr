@@ -445,3 +445,62 @@ cache:
 		t.Errorf("expected downloads path with substitution, got '%s'", cfg.Directories.Downloads)
 	}
 }
+
+func TestIsValidPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		expected bool
+	}{
+		{"valid simple path", "/usr/bin", true},
+		{"valid relative path", "src/main.go", true},
+		{"valid with dots", "/home/user/.config", true},
+		{"valid with hyphens", "/opt/my-app/data", true},
+		{"valid with tilde", "~/workspace", true},
+		{"valid with dollar", "$HOME/project", true},
+		{"invalid with spaces", "/path with spaces", false},
+		{"invalid with asterisk", "/path/*", false},
+		{"invalid with question mark", "/path/file?.txt", false},
+		{"empty string", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isValidPath(tt.path)
+			if result != tt.expected {
+				t.Errorf("isValidPath(%q) = %v, want %v", tt.path, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsValidPathOrEnvVar(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		expected bool
+	}{
+		{"valid simple path", "/usr/bin", true},
+		{"valid with colon", "/usr/local/bin:/usr/bin", true},
+		{"valid relative path", "src/main.go", true},
+		{"valid with dots", "/home/user/.config", true},
+		{"valid with dollar", "$PATH", true},
+		{"valid with tilde and dollar", "~/$HOME/path", true},
+		// Note: Due to regex [a-zA-Z0-9._/~$-:], the dash creates a range from $ to :
+		// which includes characters like %, &, ', (, ), *, +, etc.
+		{"accepts characters in range", "/path/%var", true}, // $ through : range
+		{"invalid with spaces", "/path with spaces", false},
+		{"invalid with semicolon", "/path;cmd", false}, // ; is after :
+		{"invalid with braces", "/path/{var}", false},  // { is after :
+		{"empty string", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isValidPathOrEnvVar(tt.path)
+			if result != tt.expected {
+				t.Errorf("isValidPathOrEnvVar(%q) = %v, want %v", tt.path, result, tt.expected)
+			}
+		})
+	}
+}

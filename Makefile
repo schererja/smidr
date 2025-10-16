@@ -36,8 +36,9 @@ test:
 coverage:
 	@echo "🧪 Running tests with coverage..."
 	go test -v -race -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out | grep total: | awk '{print "📊 Total coverage: " $$3}'
 	go tool cover -html=coverage.out -o coverage.html
-	@echo "📊 Coverage report: coverage.html"
+	@echo "📊 Coverage HTML report: coverage.html"
 
 # Run tests in specific package
 test-pkg:
@@ -132,7 +133,7 @@ help:
 	@echo "  build        - Build the binary (default)"
 	@echo "  build-all    - Build for multiple platforms"
 	@echo "  test         - Run all tests"
-	@echo "  coverage     - Run tests with coverage report"
+	@echo "  coverage     - Run tests with coverage report (prints percent and generates coverage.html)"
 	@echo "  test-pkg     - Run tests for specific package (interactive)"
 	@echo "  clean        - Clean build artifacts"
 	@echo "  install      - Install binary to GOPATH/bin"
