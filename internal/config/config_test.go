@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -76,6 +77,33 @@ func TestLoad_InvalidYAML(t *testing.T) {
 	}
 	if _, err := Load(cfgPath); err == nil {
 		t.Fatalf("expected YAML unmarshal error, got nil")
+	}
+}
+
+func TestLoad_ValidationFailure(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "smidr.yaml")
+	// Missing 'name' triggers validation failure inside Load, after successful unmarshal.
+	yamlContent := "description: \"Missing name\"\n" +
+		"base:\n" +
+		"  machine: verdin-imx8mp\n" +
+		"  distro: tdx-xwayland\n" +
+		"layers:\n" +
+		"  - name: meta-test\n" +
+		"    git: https://example.com/meta-test\n" +
+		"build:\n" +
+		"  image: core-image-minimal\n"
+	if err := os.WriteFile(cfgPath, []byte(yamlContent), 0644); err != nil {
+		t.Fatalf("failed to write temp config: %v", err)
+	}
+
+	_, err := Load(cfgPath)
+	if err == nil {
+		t.Fatalf("expected validation error from Load, got nil")
+	}
+	if !strings.Contains(err.Error(), "configuration validation failed") {
+		t.Fatalf("expected wrapped validation error, got: %v", err)
 	}
 }
 

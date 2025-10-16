@@ -3,11 +3,11 @@ package cli
 import (
 	"context"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
-
-	"github.com/intrik8-labs/smidr/internal/container/docker"
 
 	"github.com/spf13/cobra"
 
@@ -56,9 +56,53 @@ func TestSetDefaultDirs(t *testing.T) {
 func TestRunBuild_Basic(t *testing.T) {
 	cmd := &cobra.Command{Use: "build"}
 	cmd.SetContext(context.Background()) // Ensure context is not nil
+	// Ensure no config is set; runBuild will try to load default smidr.yaml and error
 	err := runBuild(cmd)
+	if err == nil {
+		t.Logf("runBuild unexpectedly succeeded with no config; this is acceptable but uncommon")
+	}
+}
+
+// Exercise early config validation and error path in runBuild by providing an invalid config file
+func TestRunBuild_InvalidConfig(t *testing.T) {
+	tmp := t.TempDir()
+	// create an invalid YAML file
+	cfgPath := filepath.Join(tmp, "smidr.yaml")
+	if err := os.WriteFile(cfgPath, []byte(": : : invalid"), 0o644); err != nil {
+		t.Fatalf("write cfg: %v", err)
+	}
+	// set working directory to tmp so default config path is found
+	oldwd, _ := os.Getwd()
+	_ = os.Chdir(tmp)
+	defer os.Chdir(oldwd)
+
+	cmd := &cobra.Command{Use: "build"}
+	cmd.SetContext(context.Background())
+	err := runBuild(cmd)
+	if err == nil {
+		t.Fatalf("expected error due to invalid config content")
+	}
+}
+
+// Exercise fetch-only like behavior by providing minimal valid config but no layers/repos; should reach fetch step and likely error/return
+func TestRunBuild_MinimalConfig(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "smidr.yaml")
+	// Minimal valid YAML with required fields
+	yaml := []byte("name: test\nbase:\n  provider: custom\n  machine: qemu\n  distro: poky\n  version: 6.0.0\nbuild:\n  image: core-image-minimal\n")
+	if err := os.WriteFile(cfgPath, yaml, 0o644); err != nil {
+		t.Fatalf("write cfg: %v", err)
+	}
+	oldwd, _ := os.Getwd()
+	_ = os.Chdir(tmp)
+	defer os.Chdir(oldwd)
+
+	cmd := &cobra.Command{Use: "build"}
+	cmd.SetContext(context.Background())
+	err := runBuild(cmd)
+	// We don't assert exact error; just ensure it doesn't panic and returns
 	if err != nil {
-		t.Logf("runBuild returned error: %v", err)
+		t.Logf("runBuild (minimal config) returned: %v", err)
 	}
 }
 
@@ -120,7 +164,8 @@ func TestCopyDirAndCopyFile(t *testing.T) {
 type mockDockerManager struct{}
 
 func (m *mockDockerManager) Exec(ctx context.Context, containerID string, cmd []string, timeout time.Duration) (container.ExecResult, error) {
-	return container.ExecResult{}, nil
+	// Simulate successful command execution with generic output
+	return container.ExecResult{Stdout: []byte("ok\n"), Stderr: nil, ExitCode: 0}, nil
 }
 func (m *mockDockerManager) CreateContainer(ctx context.Context, cfg container.ContainerConfig) (string, error) {
 	return "", nil
@@ -142,10 +187,38 @@ func (m *mockDockerManager) ImageExists(ctx context.Context, imageName string) b
 func (m *mockDockerManager) PullImage(ctx context.Context, image string) error      { return nil }
 
 func TestRunTestMarkerValidation_Empty(t *testing.T) {
-	dm := &docker.DockerManager{}
-	err := runTestMarkerValidation(context.Background(), dm, "", container.ContainerConfig{}, &config.Config{})
+	dm := &mockDockerManager{}
+	err := runTestMarkerValidation(context.Background(), dm, "cid", container.ContainerConfig{}, &config.Config{})
 	if err != nil {
 		t.Logf("runTestMarkerValidation returned error: %v", err)
+	}
+}
+
+// Exercise runTestMarkerValidation branches when WorkspaceDir, DownloadsDir and SstateCacheDir are set.
+func TestRunTestMarkerValidation_WithDirs(t *testing.T) {
+	dm := &mockDockerManager{}
+	tmp := t.TempDir()
+	ws := filepath.Join(tmp, "work")
+	dl := filepath.Join(tmp, "downloads")
+	ss := filepath.Join(tmp, "sstate")
+	// Create host paths that would be mounted; function only uses Exec and CopyFromContainer
+	_ = os.MkdirAll(ws, 0o755)
+	_ = os.MkdirAll(dl, 0o755)
+	_ = os.MkdirAll(ss, 0o755)
+
+	cfg := &config.Config{Layers: []config.Layer{{Name: "meta-test"}}}
+	cc := container.ContainerConfig{
+		WorkspaceDir:   ws,
+		DownloadsDir:   dl,
+		SstateCacheDir: ss,
+		LayerDirs:      []string{filepath.Join(tmp, "layers", "meta-test")},
+		LayerNames:     []string{"meta-test"},
+	}
+	_ = os.MkdirAll(cc.LayerDirs[0], 0o755)
+
+	// Should not error; we mainly want to exercise logging paths
+	if err := runTestMarkerValidation(context.Background(), dm, "cid", cc, cfg); err != nil {
+		t.Fatalf("runTestMarkerValidation returned error: %v", err)
 	}
 }
 
@@ -219,6 +292,32 @@ func TestCopyDir_NonExistentSource(t *testing.T) {
 	t.Logf("copyDir with non-existent source returned: %v", err)
 }
 
+func TestCopyDir_BrokenSymlink(t *testing.T) {
+	tmpSrc := t.TempDir()
+	tmpDst := t.TempDir()
+	// Create a broken symlink
+	broken := filepath.Join(tmpSrc, "broken")
+	os.Symlink(filepath.Join(tmpSrc, "missing"), broken)
+	// copyDir should skip broken symlink without failing
+	if err := copyDir(tmpSrc, tmpDst); err != nil {
+		t.Errorf("copyDir failed on broken symlink: %v", err)
+	}
+}
+
+func TestCopyDir_PermissionDenied(t *testing.T) {
+	tmpSrc := t.TempDir()
+	tmpDst := t.TempDir()
+	// Create a dir with no permissions to trigger mkdir/copy errors
+	sub := filepath.Join(tmpSrc, "nope")
+	if err := os.MkdirAll(sub, 0000); err != nil {
+		t.Skipf("unable to create 0000 dir on this FS: %v", err)
+	}
+	defer os.Chmod(sub, 0755)
+	// copyDir should return an error when it cannot read or create target
+	_ = os.Chmod(tmpDst, 0555)  // reduce dst perms to increase chance of error
+	_ = copyDir(tmpSrc, tmpDst) // allow function to exercise error branches; do not assert because behavior may vary by OS
+}
+
 func TestCopyFile_NonExistentSource(t *testing.T) {
 	tmpDst := t.TempDir()
 	err := copyFile("/nonexistent/file.txt", filepath.Join(tmpDst, "file.txt"))
@@ -245,4 +344,66 @@ func TestCopyFile_PreservesPermissions(t *testing.T) {
 	if err != nil || string(data) != "#!/bin/sh\necho test" {
 		t.Errorf("copyFile content mismatch: %v", err)
 	}
+}
+
+func TestExtractBuildArtifacts_Success(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Simulate a customer build directory structure
+	customer := "acme"
+	image := "unittest-image-ci"
+	buildDir := filepath.Join(home, ".smidr", "builds", "build-"+customer, image)
+	tmpDir := filepath.Join(buildDir, "tmp")
+	deployDir := filepath.Join(buildDir, "deploy")
+	if err := os.MkdirAll(deployDir, 0o755); err != nil {
+		t.Fatalf("mkdirs: %v", err)
+	}
+	// Create dummy deploy files
+	_ = os.WriteFile(filepath.Join(deployDir, "image.wic"), []byte("img"), 0o644)
+	_ = os.WriteFile(filepath.Join(deployDir, "manifest.txt"), []byte("m"), 0o644)
+	// Create build logs
+	_ = os.WriteFile(filepath.Join(buildDir, "build-log.txt"), []byte("log"), 0o644)
+	_ = os.WriteFile(filepath.Join(buildDir, "build-log.jsonl"), []byte("{\"msg\":\"log\"}\n"), 0o644)
+
+	cfg := &config.Config{
+		Name: "proj",
+		Build: config.BuildConfig{
+			Image: image,
+		},
+		Directories: config.DirectoryConfig{
+			Build:  buildDir,
+			Tmp:    tmpDir,
+			Deploy: deployDir,
+		},
+	}
+
+	start := time.Now()
+	// Call extractBuildArtifacts and expect success
+	err := extractBuildArtifacts(context.Background(), nil, "", cfg, 1*time.Second)
+	if err != nil {
+		t.Fatalf("extractBuildArtifacts failed: %v", err)
+	}
+
+	// Verify artifacts copied under actual user home (Build uses user.Current().HomeDir)
+	cu, _ := user.Current()
+	artifactsRoot := filepath.Join(cu.HomeDir, ".smidr", "artifacts", "artifact-"+customer)
+	foundPath := ""
+	_ = filepath.Walk(artifactsRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !info.IsDir() && filepath.Base(path) == "image.wic" && strings.Contains(path, image+"-") {
+			// ensure it's freshly created in this test run
+			if info.ModTime().After(start.Add(-time.Minute)) {
+				foundPath = path
+			}
+		}
+		return nil
+	})
+	if foundPath == "" {
+		t.Fatalf("expected image.wic to be copied into artifacts under %s", artifactsRoot)
+	}
+	// Cleanup created artifact directory
+	_ = os.RemoveAll(filepath.Dir(filepath.Dir(foundPath)))
 }

@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -251,5 +252,105 @@ func TestParseMemory(t *testing.T) {
 		if result != tt.expected {
 			t.Errorf("parseMemory(%q) = %d, want %d", tt.input, result, tt.expected)
 		}
+	}
+}
+
+func TestDockerManager_CopyFromContainer(t *testing.T) {
+	if err := exec.Command("docker", "info").Run(); err != nil {
+		t.Skip("Docker not available")
+	}
+
+	ctx := context.Background()
+	dm, err := NewDockerManager()
+	if err != nil {
+		t.Fatalf("Failed to create DockerManager: %v", err)
+	}
+
+	// Pull and create a simple container
+	if err := dm.PullImage(ctx, "busybox:latest"); err != nil {
+		t.Fatalf("PullImage failed: %v", err)
+	}
+
+	cfg := container.ContainerConfig{
+		Image: "busybox:latest",
+		Cmd:   []string{"sh", "-c", "echo 'test content' > /tmp/testfile.txt && sleep 2"},
+	}
+
+	id, err := dm.CreateContainer(ctx, cfg)
+	if err != nil {
+		t.Fatalf("CreateContainer failed: %v", err)
+	}
+	defer func() {
+		_ = dm.StopContainer(ctx, id, 2*time.Second)
+		_ = dm.RemoveContainer(ctx, id, true)
+	}()
+
+	if err := dm.StartContainer(ctx, id); err != nil {
+		t.Fatalf("StartContainer failed: %v", err)
+	}
+
+	// Wait for file to be created
+	time.Sleep(1 * time.Second)
+
+	// Copy file from container
+	tmpDir := t.TempDir()
+	hostPath := tmpDir + "/copied.txt"
+	err = dm.CopyFromContainer(ctx, id, "/tmp/testfile.txt", hostPath)
+	if err != nil {
+		t.Errorf("CopyFromContainer failed: %v", err)
+	}
+
+	// Verify file was copied
+	if _, err := os.Stat(hostPath); os.IsNotExist(err) {
+		t.Errorf("File was not copied to host")
+	}
+}
+
+func TestDockerManager_ExecStream(t *testing.T) {
+	if err := exec.Command("docker", "info").Run(); err != nil {
+		t.Skip("Docker not available")
+	}
+
+	ctx := context.Background()
+	dm, err := NewDockerManager()
+	if err != nil {
+		t.Fatalf("Failed to create DockerManager: %v", err)
+	}
+
+	// Pull and create a simple container
+	if err := dm.PullImage(ctx, "busybox:latest"); err != nil {
+		t.Fatalf("PullImage failed: %v", err)
+	}
+
+	cfg := container.ContainerConfig{
+		Image: "busybox:latest",
+		Cmd:   []string{"sleep", "10"},
+	}
+
+	id, err := dm.CreateContainer(ctx, cfg)
+	if err != nil {
+		t.Fatalf("CreateContainer failed: %v", err)
+	}
+	defer func() {
+		_ = dm.StopContainer(ctx, id, 2*time.Second)
+		_ = dm.RemoveContainer(ctx, id, true)
+	}()
+
+	if err := dm.StartContainer(ctx, id); err != nil {
+		t.Fatalf("StartContainer failed: %v", err)
+	}
+
+	// Execute command with streaming
+	result, err := dm.ExecStream(ctx, id, []string{"echo", "streaming test"}, 5*time.Second)
+	if err != nil {
+		t.Errorf("ExecStream failed: %v", err)
+	}
+
+	if result.ExitCode != 0 {
+		t.Errorf("ExecStream returned non-zero exit code: %d", result.ExitCode)
+	}
+
+	if !strings.Contains(string(result.Stdout), "streaming test") {
+		t.Errorf("ExecStream output missing expected text, got: %s", string(result.Stdout))
 	}
 }

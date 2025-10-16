@@ -12,11 +12,66 @@ import (
 	"github.com/intrik8-labs/smidr/internal/config"
 )
 
-// MockLogger for testing
 type MockLogger struct {
 	InfoMessages  []string
 	ErrorMessages []string
 	DebugMessages []string
+}
+
+// ...existing code...
+func TestFetcher_fetchBaseLayer(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := &MockLogger{}
+	fetcher := NewFetcher(tmpDir, tmpDir, logger)
+	cfg := &config.Config{Base: config.BaseConfig{Version: "6.0.0"}}
+
+	t.Run("unknown layer returns error", func(t *testing.T) {
+		result := fetcher.fetchBaseLayer("not-a-real-layer", cfg)
+		if result.Success {
+			t.Errorf("Expected failure for unknown layer, got success")
+		}
+		if result.Error == nil {
+			t.Errorf("Expected error for unknown layer, got nil")
+		}
+	})
+
+	t.Run("known layer returns result", func(t *testing.T) {
+		result := fetcher.fetchBaseLayer("poky", cfg)
+		if result.LayerName != "poky" {
+			t.Errorf("Expected LayerName 'poky', got %q", result.LayerName)
+		}
+		// Success may depend on git availability, but should not error for known layer
+		if result.Error != nil && !strings.Contains(result.Error.Error(), "git") {
+			t.Errorf("Unexpected error for known layer: %v", result.Error)
+		}
+	})
+}
+
+func TestFetcher_fetchLayer(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := &MockLogger{}
+	fetcher := NewFetcher(tmpDir, tmpDir, logger)
+	cfg := &config.Config{}
+
+	t.Run("unknown layer returns error", func(t *testing.T) {
+		result := fetcher.fetchLayer("not-a-real-layer", cfg)
+		if result.Success {
+			t.Errorf("Expected failure for unknown layer, got success")
+		}
+		if result.Error == nil {
+			t.Errorf("Expected error for unknown layer, got nil")
+		}
+	})
+
+	t.Run("known layer returns valid result", func(t *testing.T) {
+		result := fetcher.fetchLayer("poky", cfg)
+		if result.LayerName != "poky" {
+			t.Errorf("Expected LayerName 'poky', got %q", result.LayerName)
+		}
+		if result.Error != nil {
+			t.Errorf("Unexpected error for known layer: %v", result.Error)
+		}
+	})
 }
 
 func (m *MockLogger) Info(msg string, args ...interface{}) {
@@ -33,6 +88,7 @@ func (m *MockLogger) Debug(msg string, args ...interface{}) {
 
 func TestNewFetcher(t *testing.T) {
 	logger := &MockLogger{}
+
 	layersDir := "/tmp/test-layers"
 	downloadsDir := "/tmp/test-downloads"
 
@@ -204,6 +260,35 @@ func TestGetBranchForLayer(t *testing.T) {
 			if branch != tt.expected {
 				t.Errorf("getBranchForLayer(%q, %q) = %q, want %q",
 					tt.layerName, tt.version, branch, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetAlternativeRepository(t *testing.T) {
+	cases := []struct {
+		layer   string
+		wantLen int
+	}{
+		{"meta-toradex-nxp", 2},
+		{"meta-toradex-bsp-common", 2},
+		{"poky", 0},
+		{"meta-openembedded", 0},
+		{"meta-raspberrypi", 0},
+		{"unknown-layer", 0},
+	}
+
+	for _, c := range cases {
+		t.Run(c.layer, func(t *testing.T) {
+			alts := getAlternativeRepository(c.layer)
+			if len(alts) != c.wantLen {
+				t.Fatalf("getAlternativeRepository(%q) len=%d, want %d (%v)", c.layer, len(alts), c.wantLen, alts)
+			}
+			// basic sanity: when present, ensure entries look like URLs
+			for _, a := range alts {
+				if !strings.HasPrefix(a, "http") {
+					t.Errorf("alternative %q does not look like a URL", a)
+				}
 			}
 		})
 	}
@@ -466,7 +551,6 @@ func TestPerRepoLocking(t *testing.T) {
 	_ = releaseLock(lockFile)
 }
 
-// Benchmark tests
 func BenchmarkGetRequiredBaseLayers(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = getRequiredBaseLayers("toradex")
