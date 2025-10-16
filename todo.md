@@ -55,23 +55,25 @@
 
 ## Phase 6: Artifact Management
 
-- [ ] Implement artifact extraction from containers
-- [ ] Create artifact storage directory structure
-- [ ] Add artifact metadata tracking (build time, size, config used)
-- [ ] Implement artifact listing functionality
-- [ ] Add artifact cleanup/retention policies
-- [ ] Create artifact download/copy utilities
+- [x] Implement artifact extraction from containers *(done: robust extraction and copy logic, supports symlinks and all file types)*
+- [x] Create artifact storage directory structure *(done: customer/image/timestamp scoped, nested support)*
+- [x] Add artifact metadata tracking (build time, size, config used) *(done: metadata.json written for each build)*
+- [x] Implement artifact listing functionality *(done: CLI lists all nested files, supports --customer)*
+- [x] Add artifact cleanup/retention policies *(done: CLI clean command, retention by count/age)*
+- [x] Create artifact download/copy utilities *(done: CLI copy command, supports nested and symlinks)*
 
 ## Phase 7: CLI Development
 
-- [ ] Set up CLI framework (cobra or similar)
-- [ ] Implement `smidr init` command
-- [ ] Implement `smidr build` command
-- [ ] Implement `smidr status` command
-- [ ] Implement `smidr logs` command
-- [ ] Implement `smidr artifacts` command
-- [ ] Add global flags (verbose, config path, etc.)
-- [ ] Create help text and usage examples
+- [x] Set up CLI framework (cobra or similar) *(done: cobra used for all commands)*
+- [x] Implement `smidr init` command *(done: see internal/cli/init.go)*
+- [x] Implement `smidr build` command *(done: see internal/cli/build.go)*
+- [x] Implement `smidr status` command *(done: full status logic, artifact summary, and --list-artifacts flag)*
+- [x] Implement `smidr logs` command *(done: CLI log viewing, supports --customer, buildID, image)*
+- [x] Implement `smidr artifacts` command *(done: see internal/cli/artifacts.go)*
+- [x] Add global flags (verbose, config path, etc.) *(done: see internal/cli/root.go)*
+- [X] Write detailed help text for each CLI command (init, build, status, logs, artifacts)
+- [X] Add usage examples for common workflows (init, build, status, logs, artifacts)
+- [X] Ensure --help output is clear and includes flag explanations and sample invocations
 
 ## Phase 8: Testing & Validation
 

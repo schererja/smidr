@@ -2,7 +2,9 @@ package bitbake
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -37,8 +39,32 @@ type BuildResult struct {
 	Error    string
 }
 
+// BuildLogWriter allows streaming log output to both plain text and JSONL
+type BuildLogWriter struct {
+	PlainWriter io.Writer
+	JSONLWriter io.Writer
+}
+
+// WriteLog writes a log line to both plain and JSONL outputs
+func (w *BuildLogWriter) WriteLog(stream, line string) {
+	ts := time.Now().Format(time.RFC3339Nano)
+	if w.PlainWriter != nil {
+		fmt.Fprintf(w.PlainWriter, "%s\n", line)
+	}
+	if w.JSONLWriter != nil {
+		entry := map[string]interface{}{
+			"timestamp": ts,
+			"stream":    stream,
+			"message":   line,
+		}
+		b, _ := json.Marshal(entry)
+		fmt.Fprintf(w.JSONLWriter, "%s\n", b)
+	}
+}
+
 // ExecuteBuild runs the complete bitbake build process
-func (e *BuildExecutor) ExecuteBuild(ctx context.Context) (*BuildResult, error) {
+// ExecuteBuild runs the complete bitbake build process, optionally streaming logs
+func (e *BuildExecutor) ExecuteBuild(ctx context.Context, logWriter *BuildLogWriter) (*BuildResult, error) {
 	startTime := time.Now()
 
 	fmt.Println("🔧 Setting up Yocto build environment...")
@@ -67,7 +93,7 @@ func (e *BuildExecutor) ExecuteBuild(ctx context.Context) (*BuildResult, error) 
 	// Check actual container memory limit using docker inspect
 	fmt.Printf("[DEBUG] Checking container memory limit with docker inspect...\n")
 
-	buildResult, err := e.executeBitbake(ctx)
+	buildResult, err := e.executeBitbake(ctx, logWriter)
 	buildResult.Duration = time.Since(startTime)
 
 	if err != nil {
@@ -185,7 +211,8 @@ func (e *BuildExecutor) sourceEnvironment(ctx context.Context) error {
 }
 
 // executeBitbake runs the actual bitbake command
-func (e *BuildExecutor) executeBitbake(ctx context.Context) (*BuildResult, error) {
+// executeBitbake runs the actual bitbake command, streaming logs if logWriter is provided
+func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogWriter) (*BuildResult, error) {
 	// Construct the bitbake command
 	imageName := e.config.Build.Image
 	if imageName == "" {
@@ -244,6 +271,18 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context) (*BuildResult, error
 	fetchCmd := []string{"bash", "-c", fmt.Sprintf("cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && bitbake -c fetch %s", imageName)}
 	fmt.Println("⬇️  Running pre-fetch (bitbake -c fetch) to download sources before build...")
 	fetchResult, fetchErr := e.containerMgr.ExecStream(ctx, e.containerID, fetchCmd, timeout)
+	if logWriter != nil {
+		for _, line := range strings.Split(string(fetchResult.Stdout), "\n") {
+			if line != "" {
+				logWriter.WriteLog("stdout", line)
+			}
+		}
+		for _, line := range strings.Split(string(fetchResult.Stderr), "\n") {
+			if line != "" {
+				logWriter.WriteLog("stderr", line)
+			}
+		}
+	}
 	if fetchErr != nil {
 		return &BuildResult{Success: false, ExitCode: fetchResult.ExitCode, Output: string(fetchResult.Stdout) + "\n" + string(fetchResult.Stderr)}, fmt.Errorf("pre-fetch failed: %w", fetchErr)
 	}
@@ -252,12 +291,25 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context) (*BuildResult, error
 	}
 
 	fmt.Println("📺 Streaming build output...")
+	// Stream build output and write to logWriter if provided
 	result, err := e.containerMgr.ExecStream(ctx, e.containerID, cmd, timeout)
+	if logWriter != nil {
+		for _, line := range strings.Split(string(result.Stdout), "\n") {
+			if line != "" {
+				logWriter.WriteLog("stdout", line)
+			}
+		}
+		for _, line := range strings.Split(string(result.Stderr), "\n") {
+			if line != "" {
+				logWriter.WriteLog("stderr", line)
+			}
+		}
+	}
 
 	buildResult := &BuildResult{
 		Success:  result.ExitCode == 0,
 		ExitCode: result.ExitCode,
-		Output:   string(result.Stdout) + "\n" + string(result.Stderr), // Combine stdout and stderr
+		Output:   string(result.Stdout) + "\n" + string(result.Stderr),
 		Error:    string(result.Stderr),
 	}
 
