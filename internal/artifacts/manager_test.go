@@ -2,6 +2,7 @@ package artifacts
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -177,6 +178,46 @@ func TestFormatSize(t *testing.T) {
 		if result != tc.expected {
 			t.Errorf("FormatSize(%d) = %s, expected %s", tc.bytes, result, tc.expected)
 		}
+	}
+}
+
+func TestArtifactManager_ListBuilds(t *testing.T) {
+	tmpDir := t.TempDir()
+	am, err := NewArtifactManager(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create artifact manager: %v", err)
+	}
+	// Create two builds with valid metadata
+	for i := 1; i <= 2; i++ {
+		md := BuildMetadata{
+			BuildID:     fmt.Sprintf("build%d", i),
+			ProjectName: "proj",
+			User:        "user",
+			Timestamp:   time.Now(),
+			Status:      "success",
+		}
+		if err := am.SaveMetadata(md); err != nil {
+			t.Fatalf("Failed to save metadata: %v", err)
+		}
+	}
+	// Add a build with invalid metadata (corrupt file)
+	badBuildDir := filepath.Join(tmpDir, "badbuild")
+	os.MkdirAll(badBuildDir, 0755)
+	os.WriteFile(filepath.Join(badBuildDir, "build-metadata.json"), []byte("not json"), 0644)
+	// List builds
+	builds, err := am.ListBuilds()
+	if err != nil {
+		t.Fatalf("ListBuilds failed: %v", err)
+	}
+	if len(builds) != 2 {
+		t.Errorf("Expected 2 valid builds, got %d", len(builds))
+	}
+	ids := map[string]bool{}
+	for _, b := range builds {
+		ids[b.BuildID] = true
+	}
+	if !ids["build1"] || !ids["build2"] {
+		t.Errorf("Missing expected build IDs in result: %v", ids)
 	}
 }
 

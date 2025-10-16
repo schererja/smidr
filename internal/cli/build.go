@@ -570,10 +570,11 @@ func runBuild(cmd *cobra.Command) error {
 
 // getTailString returns the last n characters of a string
 func getTailString(s string, n int) string {
-	if len(s) <= n {
+	lines := strings.Split(s, "\n")
+	if n >= len(lines) {
 		return s
 	}
-	return s[len(s)-n:]
+	return strings.Join(lines[len(lines)-n:], "\n")
 }
 
 // runTestMarkerValidation runs the test marker validation logic
