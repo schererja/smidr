@@ -78,7 +78,7 @@
 ## Phase 8: Testing & Validation
 
 - [ ] Write unit tests for all core packages (artifacts, bitbake, cli, config, container, source)
-- [ ] Ensure >80% code coverage for core logic
+- [ ] Ensure >60% code coverage for core logic
 - [ ] Create integration tests for CLI workflows (init, build, status, logs, artifacts)
 - [ ] Run integration tests with real Yocto builds (end-to-end)
 - [ ] Test with Toradex layers specifically (integration and artifact extraction)

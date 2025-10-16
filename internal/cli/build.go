@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -347,57 +346,14 @@ func runBuild(cmd *cobra.Command) error {
 		return fmt.Errorf("failed to create DockerManager: %w", err)
 	}
 
-	// Validate the resolved downloads directory exists and optionally create it
-	// Default behavior: auto-create when running non-interactively (CI) or when
-	// SMIDR_AUTO_CREATE_DOWNLOADS=1 is set. If running interactively, prompt the
-	// user unless auto-create is enabled.
+	// Ensure the downloads directory exists; always auto-create, no prompts
 	if containerConfig.DownloadsDir != "" {
-		autoCreate := os.Getenv("SMIDR_AUTO_CREATE_DOWNLOADS") == "1"
-		// Detect non-interactive environment by checking if stdin is a terminal
-		if !isatty(os.Stdin.Fd()) {
-			autoCreate = true
-		}
-
 		if fi, err := os.Stat(containerConfig.DownloadsDir); err != nil || !fi.IsDir() {
-			if autoCreate {
-				if err := os.MkdirAll(containerConfig.DownloadsDir, 0755); err != nil {
-					return fmt.Errorf("failed to create downloads dir: %w", err)
-				}
-				fmt.Printf("Created downloads dir: %s\n", containerConfig.DownloadsDir)
-			} else {
-				fmt.Printf("⚠️  Downloads dir %s does not exist. Create it now? (y/N): ", containerConfig.DownloadsDir)
-				reader := bufio.NewReader(os.Stdin)
-				resp, _ := reader.ReadString('\n')
-				resp = strings.TrimSpace(resp)
-				if strings.ToLower(resp) == "y" {
-					if err := os.MkdirAll(containerConfig.DownloadsDir, 0755); err != nil {
-						return fmt.Errorf("failed to create downloads dir: %w", err)
-					}
-					fmt.Printf("Created %s\n", containerConfig.DownloadsDir)
-				} else {
-					fmt.Println("Proceeding without downloads dir. Fetch step may fail.")
-				}
-			}
-		} else {
-			// Directory exists - check if empty
-			f, _ := os.Open(containerConfig.DownloadsDir)
-			names, _ := f.Readdirnames(1)
-			f.Close()
-			if len(names) == 0 {
-				if !autoCreate {
-					fmt.Printf("⚠️  Downloads dir %s exists but is empty. Continue? (y/N): ", containerConfig.DownloadsDir)
-					reader := bufio.NewReader(os.Stdin)
-					resp, _ := reader.ReadString('\n')
-					resp = strings.TrimSpace(resp)
-					if strings.ToLower(resp) != "y" {
-						fmt.Println("Aborting build. Populate the downloads dir or continue with fetch later.")
-						return nil
-					}
-				} else {
-					// autoCreate true -> continue silently
-				}
+			if err := os.MkdirAll(containerConfig.DownloadsDir, 0755); err != nil {
+				return fmt.Errorf("failed to create downloads dir: %w", err)
 			}
 		}
+		// If the directory exists (even if empty), proceed silently
 	}
 
 	// Print resolved host<->container mappings for clarity
@@ -578,7 +534,7 @@ func getTailString(s string, n int) string {
 }
 
 // runTestMarkerValidation runs the test marker validation logic
-func runTestMarkerValidation(ctx context.Context, dm *docker.DockerManager, containerID string, containerConfig container.ContainerConfig, cfg *config.Config) error {
+func runTestMarkerValidation(ctx context.Context, dm container.ContainerManager, containerID string, containerConfig container.ContainerConfig, cfg *config.Config) error {
 	// Test container functionality and mount accessibility
 	// Note: On CI, bind-mounted directories may not be writable due to UID mismatches
 
