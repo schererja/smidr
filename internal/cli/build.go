@@ -30,15 +30,24 @@ import (
 // buildCmd represents the build command
 var buildCmd = &cobra.Command{
 	Use:   "build",
-	Short: "Build the embedded Linux image",
-	Long: `Start building the embedded Linux image according to the
-configuration specified in smidr.yaml.
+	Short: "Build a Yocto-based embedded Linux image in a managed container",
+	Long: `Run a Yocto build in a managed container environment using the configuration in smidr.yaml.
 
-This will:
-1. Prepare the container environment
-2. Fetch and cache source code
-3. Execute the build process
-4. Extract build artifacts`,
+	This command will:
+		1. Prepare the container environment
+		2. Fetch and cache source code and layers
+		3. Execute the build process (bitbake)
+		4. Extract build artifacts and store them in the artifact directory
+
+	Flags allow you to override the build target, force a rebuild, or group builds by customer/project.
+
+	Examples:
+		smidr build --target core-image-minimal
+		smidr build --target core-image-minimal --customer acme
+		smidr build --target core-image-minimal --force
+		smidr build --target core-image-minimal --fetch-only
+		smidr build --target core-image-minimal --clean
+	`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runBuild(cmd); err != nil {
 			fmt.Println("Error during build:", err)
@@ -486,8 +495,29 @@ func runBuild(cmd *cobra.Command) error {
 		fmt.Println("🚀 Starting Yocto build...")
 		fmt.Println("💡 Use Ctrl+C to gracefully cancel the build at any time")
 
+		// Prepare log files in the build directory
+		logDir := cfg.Directories.Build
+		os.MkdirAll(logDir, 0755)
+		plainLogPath := filepath.Join(logDir, "build-log.txt")
+		jsonlLogPath := filepath.Join(logDir, "build-log.jsonl")
+		plainLogFile, err := os.Create(plainLogPath)
+		if err != nil {
+			return fmt.Errorf("failed to create build-log.txt: %w", err)
+		}
+		defer plainLogFile.Close()
+		jsonlLogFile, err := os.Create(jsonlLogPath)
+		if err != nil {
+			return fmt.Errorf("failed to create build-log.jsonl: %w", err)
+		}
+		defer jsonlLogFile.Close()
+
+		logWriter := &bitbake.BuildLogWriter{
+			PlainWriter: io.MultiWriter(os.Stdout, plainLogFile),
+			JSONLWriter: jsonlLogFile,
+		}
+
 		executor := bitbake.NewBuildExecutor(cfg, dm, containerID, containerConfig.WorkspaceDir)
-		buildResult, err := executor.ExecuteBuild(ctx)
+		buildResult, err := executor.ExecuteBuild(ctx, logWriter)
 
 		if err != nil {
 			// Check if the error was due to context cancellation (signal handling)
@@ -715,6 +745,18 @@ func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, contai
 	}
 	fmt.Printf("[DEBUG] Deploy directory copied successfully.\n")
 
+	// Copy build logs to artifact directory
+	buildLogTxt := filepath.Join(cfg.Directories.Build, "build-log.txt")
+	buildLogJsonl := filepath.Join(cfg.Directories.Build, "build-log.jsonl")
+	destLogTxt := filepath.Join(artifactDir, "build-log.txt")
+	destLogJsonl := filepath.Join(artifactDir, "build-log.jsonl")
+	if err := copyFile(buildLogTxt, destLogTxt); err != nil {
+		fmt.Printf("[WARNING] Failed to copy build-log.txt to artifact dir: %v\n", err)
+	}
+	if err := copyFile(buildLogJsonl, destLogJsonl); err != nil {
+		fmt.Printf("[WARNING] Failed to copy build-log.jsonl to artifact dir: %v\n", err)
+	}
+
 	// Create build metadata
 	metadata := artifacts.BuildMetadata{
 		BuildID:     filepath.Base(artifactDir),
@@ -754,7 +796,6 @@ func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, contai
 // copyDir recursively copies a directory from src to dst
 func copyDir(src string, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-
 		if err != nil {
 			fmt.Printf("[DEBUG] Skipping missing file: %s (%v)\n", path, err)
 			return nil
@@ -765,7 +806,6 @@ func copyDir(src string, dst string) error {
 			return err
 		}
 		target := filepath.Join(dst, rel)
-
 		// Handle symlinks
 		if info.Mode()&os.ModeSymlink != 0 {
 			linkTarget, lerr := os.Readlink(path)
@@ -783,7 +823,6 @@ func copyDir(src string, dst string) error {
 			}
 			return nil
 		}
-
 		if info.IsDir() {
 			return os.MkdirAll(target, info.Mode())
 		} else {
@@ -815,6 +854,24 @@ func copyDir(src string, dst string) error {
 			return nil
 		}
 	})
+}
+
+// copyFile copies a file from src to dst
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
 }
 
 // isatty returns true if the given file descriptor is a terminal.

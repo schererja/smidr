@@ -9,9 +9,16 @@ import (
 
 var initCmd = &cobra.Command{
 	Use:   "init [project-name]",
-	Short: "Initialize a new Smidr project",
-	Long:  ` Create a new Smidr project with the specified name with the template configuration`,
-	Args:  cobra.MaximumNArgs(1),
+	Short: "Initialize a new Smidr project configuration",
+	Long: `Initialize a new Smidr project by generating a template configuration file (smidr.yaml) in the current directory.
+
+If a project name is provided, it will be used in the generated config. If not, 'my-smidr-project' is used by default.
+
+This command will not overwrite an existing smidr.yaml file.`,
+	Example: `  smidr init
+  smidr init myproject
+  smidr init "Acme IoT Gateway"`,
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		projectName := "my-smidr-project"
 		if len(args) == 1 {
