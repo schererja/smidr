@@ -380,8 +380,23 @@ func (e *BuildExecutor) generateLocalConfContent() string {
 
 	// Directory settings
 	content.WriteString("DL_DIR = \"/home/builder/downloads\"\n")
-	// Use SSTATE_MIRRORS instead of SSTATE_DIR to avoid permission issues
-	content.WriteString("SSTATE_MIRRORS = \"file://.* file:///home/builder/sstate-cache/PATH\"\n")
+	// Use SSTATE_MIRRORS instead of SSTATE_DIR to avoid permission issues. Allow override via config.
+	if strings.TrimSpace(e.config.Advanced.SStateMirrors) != "" {
+		content.WriteString(fmt.Sprintf("SSTATE_MIRRORS = \"%s\"\n", e.config.Advanced.SStateMirrors))
+	} else {
+		content.WriteString("SSTATE_MIRRORS = \"file://.* file:///home/builder/sstate-cache/PATH\"\n")
+	}
+
+	// Optional premirror configuration and network controls
+	if strings.TrimSpace(e.config.Advanced.PreMirrors) != "" {
+		content.WriteString(fmt.Sprintf("PREMIRRORS = \"%s\"\n", e.config.Advanced.PreMirrors))
+	}
+	if e.config.Advanced.NoNetwork {
+		content.WriteString("BB_NO_NETWORK = \"1\"\n")
+	}
+	if e.config.Advanced.FetchPremirrorOnly {
+		content.WriteString("BB_FETCH_PREMIRRORONLY = \"1\"\n")
+	}
 
 	// Package management
 	if e.config.Build.PackageClasses != "" {
