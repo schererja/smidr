@@ -175,6 +175,13 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 				fmt.Printf("[WARN] Could not set permissions on %s: %v\n", cfg.BuildDir, chmodErr)
 			}
 		}
+		// Also ensure deploy subdir is writable
+		deployDir := fmt.Sprintf("%s/deploy", cfg.BuildDir)
+		if err := os.MkdirAll(deployDir, 0755); err == nil {
+			if err := os.Chown(deployDir, 1000, 1000); err != nil {
+				_ = os.Chmod(deployDir, 0777)
+			}
+		}
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeBind,
 			Source: cfg.BuildDir,
