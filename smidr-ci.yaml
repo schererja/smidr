@@ -1,0 +1,34 @@
+name: ci-smoke
+description: "CI fast tiers: parse/fetch/sstate"
+base:
+  provider: custom
+  machine: qemux86-64
+  distro: poky
+  version: "6.0.0"
+layers:
+  - name: poky
+    git: https://git.yoctoproject.org/poky
+    branch: kirkstone
+  - name: meta-openembedded
+    git: https://github.com/openembedded/meta-openembedded
+    branch: kirkstone
+build:
+  image: core-image-minimal
+  bb_number_threads: 2
+  parallel_make: 2
+directories:
+  downloads: ${YOCTO_DL_DIR:-~/.smidr/dl}
+  sstate: ${YOCTO_SSTATE_DIR:-~/.smidr/sstate}
+  tmp: ${YOCTO_TMP_DIR:-~/.smidr/tmp}
+  deploy: ${YOCTO_DEPLOY_DIR:-~/.smidr/deploy}
+container:
+  base_image: crops/yocto:ubuntu-22.04-builder
+advanced:
+  bb_signature_handler: OEEquivHash
+  conf_version: "2"
+  # Optional: set via env to point to your mirror (example for documentation)
+  # bb_hashserve: "auto"
+packages:
+  classes: package_rpm
+features:
+  extra_image_features: ["debug-tweaks"]

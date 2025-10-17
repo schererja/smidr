@@ -192,6 +192,21 @@ Smidr is developed by Jason Scherer, a software engineer focused on solving real
 - [Contributing Guide](CONTRIBUTING.md)
 - [Cache & Source Management](docs/cache.md)
 
+### Fast Yocto CI tiers
+
+To validate container wiring and Yocto integration quickly without long builds:
+
+- `make yocto-smoke` — starts a container and runs a lightweight smoke (no build)
+- `make yocto-fetch` — runs fetch-only using your restored DL_DIR
+- `make yocto-sstate` — attempts a build that should restore from sstate (fast when mirrors hit)
+
+Use the provided `smidr-ci.yaml` with environment variables to steer cache locations:
+
+- `YOCTO_DL_DIR` — path to pre-restored downloads
+- `YOCTO_SSTATE_DIR` — path to pre-restored sstate
+
+Nightly or scheduled jobs can perform a full build once and publish sstate/downloads to speed up PR runs.
+
 ---
 
 ## 🤝 Contributing

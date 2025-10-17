@@ -203,6 +203,12 @@ func runBuild(cmd *cobra.Command) error {
 	fmt.Println()
 	fmt.Printf("Project: %s - %s\n", cfg.Name, cfg.Description)
 
+	// If --fetch-only was requested, stop here to keep CI fast
+	if ok, _ := cmd.Flags().GetBool("fetch-only"); ok {
+		fmt.Println("🛑 Fetch-only mode enabled — skipping container start and build")
+		return nil
+	}
+
 	// Step 2: Prepare container config
 	fmt.Println("🐳 Preparing container environment...")
 	// Allow tests to override container name and mounts for verification
