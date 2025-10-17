@@ -98,3 +98,46 @@ func TestGetBitBakeCommand(t *testing.T) {
 		t.Fatalf("unexpected cmd with extras: %q", cmd)
 	}
 }
+
+func TestGenerateLocalConf_AdvancedOverrides(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+
+	cfg := minimalConfig()
+	// Ensure directories set so generator writes to predictable paths
+	cfg.Directories.Downloads = filepath.Join(tmp, "downloads")
+	cfg.Directories.SState = filepath.Join(tmp, "sstate-cache")
+	// Set Advanced overrides
+	cfg.Advanced.SStateMirrors = "file://.* file:///home/builder/sstate-cache/PATH"
+	cfg.Advanced.PreMirrors = "git://.*/.* http://premirror.example.com/\nhttps?://.*/.* http://premirror.example.com/"
+	cfg.Advanced.NoNetwork = true
+	cfg.Advanced.FetchPremirrorOnly = true
+
+	g := NewGenerator(cfg, filepath.Join(tmp, "build"))
+	if err := g.Generate(); err != nil {
+		t.Fatalf("Generate error: %v", err)
+	}
+
+	// Read generated local.conf
+	b, err := os.ReadFile(filepath.Join(tmp, "conf", "local.conf"))
+	if err != nil {
+		t.Fatalf("read local.conf: %v", err)
+	}
+	s := string(b)
+
+	if !strings.Contains(s, "SSTATE_MIRRORS = \"file://.* file:///home/builder/sstate-cache/PATH\"") {
+		t.Fatalf("expected SSTATE_MIRRORS override to be present, got:\n%s", s)
+	}
+	if !strings.Contains(s, "PREMIRRORS = \"") {
+		t.Fatalf("expected PREMIRRORS to be present, got:\n%s", s)
+	}
+	if !strings.Contains(s, "BB_NO_NETWORK = \"1\"") {
+		t.Fatalf("expected BB_NO_NETWORK to be present, got:\n%s", s)
+	}
+	if !strings.Contains(s, "BB_FETCH_PREMIRRORONLY = \"1\"") {
+		t.Fatalf("expected BB_FETCH_PREMIRRORONLY to be present, got:\n%s", s)
+	}
+
+	// When SSTATE_MIRRORS is set, SSTATE_DIR may still be present earlier in file for diskmon,
+	// but we ensure mirrors line exists which is what we care about.
+}

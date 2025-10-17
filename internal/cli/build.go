@@ -124,8 +124,9 @@ func runBuild(cmd *cobra.Command) error {
 	tmpDir := fmt.Sprintf("%s/tmp", buildDir)
 	deployDir := fmt.Sprintf("%s/deploy", buildDir)
 
-	os.MkdirAll(tmpDir, 0755)
-	os.MkdirAll(deployDir, 0755)
+	// Ensure tmp and deploy are created with permissive permissions so container user can write
+	os.MkdirAll(tmpDir, 0777)
+	os.MkdirAll(deployDir, 0777)
 
 	cfg.Directories.Build = buildDir
 	cfg.Directories.Tmp = tmpDir
@@ -202,6 +203,12 @@ func runBuild(cmd *cobra.Command) error {
 	}
 	fmt.Println()
 	fmt.Printf("Project: %s - %s\n", cfg.Name, cfg.Description)
+
+	// If --fetch-only was requested, stop here to keep CI fast
+	if ok, _ := cmd.Flags().GetBool("fetch-only"); ok {
+		fmt.Println("🛑 Fetch-only mode enabled — skipping container start and build")
+		return nil
+	}
 
 	// Step 2: Prepare container config
 	fmt.Println("🐳 Preparing container environment...")

@@ -90,6 +90,10 @@ type AdvancedConfig struct {
 	QemuGTK            bool   `yaml:"qemu_gtk,omitempty"`
 	AcceptFSLEULA      bool   `yaml:"accept_fsl_eula,omitempty"`
 	BuildTimeout       int    `yaml:"build_timeout,omitempty"` // Build timeout in minutes
+	SStateMirrors      string `yaml:"sstate_mirrors,omitempty"`
+	PreMirrors         string `yaml:"premirrors,omitempty"`
+	NoNetwork          bool   `yaml:"bb_no_network,omitempty"`
+	FetchPremirrorOnly bool   `yaml:"bb_fetch_premirroronly,omitempty"`
 }
 
 type CacheConfig struct {

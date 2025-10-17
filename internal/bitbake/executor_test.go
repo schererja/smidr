@@ -124,6 +124,28 @@ func TestBuildExecutor_generateLocalConfContent_defaults(t *testing.T) {
 	}
 }
 
+func TestBuildExecutor_generateLocalConfContent_Advanced(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Advanced.SStateMirrors = "file://.* file:///cache/sstate/PATH"
+	cfg.Advanced.PreMirrors = "https?://.*/.* http://mirror.local/"
+	cfg.Advanced.NoNetwork = true
+	cfg.Advanced.FetchPremirrorOnly = true
+	be := NewBuildExecutor(cfg, nil, "cid", "/tmp")
+	conf := be.generateLocalConfContent()
+	if !strings.Contains(conf, "SSTATE_MIRRORS = \"file://.* file:///cache/sstate/PATH\"") {
+		t.Fatalf("expected SSTATE_MIRRORS from config, got:\n%s", conf)
+	}
+	if !strings.Contains(conf, "PREMIRRORS = \"") {
+		t.Fatalf("expected PREMIRRORS in conf, got:\n%s", conf)
+	}
+	if !strings.Contains(conf, "BB_NO_NETWORK = \"1\"") {
+		t.Fatalf("expected BB_NO_NETWORK in conf, got:\n%s", conf)
+	}
+	if !strings.Contains(conf, "BB_FETCH_PREMIRRORONLY = \"1\"") {
+		t.Fatalf("expected BB_FETCH_PREMIRRORONLY in conf, got:\n%s", conf)
+	}
+}
+
 type fakeLogWriter struct {
 	lines []string
 }

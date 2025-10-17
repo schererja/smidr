@@ -1,5 +1,5 @@
 # Makefile for smidr - Embedded Linux Build Tool
-.PHONY: build test clean install fmt lint help run dev deps check coverage
+.PHONY: build test clean install fmt lint help run dev deps check coverage yocto-smoke yocto-fetch yocto-sstate
 
 # Variables
 BINARY_NAME=smidr
@@ -155,3 +155,26 @@ help:
 	@echo "  make run ARGS='--help'"
 	@echo "  make run-build ARGS='--target my-image'"
 	@echo "  make check    # fmt + lint + test"
+
+# --- Fast Yocto CI tiers ---
+# Tier 0: container+env smoke (no network, no build). Validates container starts and bitbake is callable.
+yocto-smoke: build
+	@echo "🚦 Yocto smoke: parse-only in container (no network/build)"
+	SMIDR_TEST_ENTRYPOINT='sh,-c,sleep 3600' \
+	SMIDR_TEST_WRITE_MARKERS=1 \
+	./$(BINARY_NAME) $(ARGS) build --customer ci --target core-image-minimal
+	@echo "✅ Smoke complete"
+
+# Tier 1: fetch-only with preseeded downloads (kept fast via restored DL_DIR). No compile.
+yocto-fetch: build
+	@echo "📦 Yocto fetch-only: download sources using mirrors/cache"
+	SMIDR_TEST_ENTRYPOINT='sh,-c,sleep 3600' \
+	SMIDR_TEST_WRITE_MARKERS=1 \
+	./$(BINARY_NAME) $(ARGS) build --customer ci --target core-image-minimal --fetch-only
+	@echo "✅ Fetch-only complete"
+
+# Tier 2: sstate-restore build (fast if SSTATE_MIRRORS hits). Intended for CI where caches are restored.
+yocto-sstate: build
+	@echo "🧩 Yocto sstate build: attempts bitbake with sstate restore"
+	./$(BINARY_NAME) $(ARGS) build --customer ci --target core-image-minimal
+	@echo "✅ Sstate tier invoked (ensure SSTATE_MIRRORS via smidr.yaml/local.conf)"

@@ -95,17 +95,24 @@ func (g *Generator) generateLocalConf(confDir string) error {
 	}
 	sb.WriteString(fmt.Sprintf("DL_DIR = \"%s\"\n", dlDir))
 
-	sstateDir := "${TOPDIR}/../sstate-cache"
-	if g.config.Cache.SState != "" {
-		sstateDir = g.config.Cache.SState
-	} else if g.config.Directories.SState != "" {
-		sstateDir = g.config.Directories.SState
+	// Prefer SSTATE_MIRRORS if configured; otherwise default to SSTATE_DIR
+	if strings.TrimSpace(g.config.Advanced.SStateMirrors) != "" {
+		sb.WriteString(fmt.Sprintf("SSTATE_MIRRORS = \"%s\"\n", g.config.Advanced.SStateMirrors))
+	} else {
+		sstateDir := "${TOPDIR}/../sstate-cache"
+		if g.config.Cache.SState != "" {
+			sstateDir = g.config.Cache.SState
+		} else if g.config.Directories.SState != "" {
+			sstateDir = g.config.Directories.SState
+		}
+		sb.WriteString(fmt.Sprintf("SSTATE_DIR = \"%s\"\n", sstateDir))
 	}
-	sb.WriteString(fmt.Sprintf("SSTATE_DIR = \"%s\"\n", sstateDir))
 
 	tmpDir := "${TOPDIR}/tmp"
 	if g.config.Directories.Tmp != "" {
 		tmpDir = g.config.Directories.Tmp
+		// When a host tmp is provided, point TMPDIR inside the container to the mounted path
+		sb.WriteString("TMPDIR = \"/home/builder/tmp\"\n")
 	}
 	sb.WriteString(fmt.Sprintf("TMP_DIR = \"%s\"\n", tmpDir))
 
@@ -166,6 +173,17 @@ func (g *Generator) generateLocalConf(confDir string) error {
 		sb.WriteString("BB_SIGNATURE_HANDLER = \"OEEquivHash\"\n")
 	}
 	sb.WriteString("\n")
+
+	// Optional premirrors and network behavior
+	if strings.TrimSpace(g.config.Advanced.PreMirrors) != "" {
+		sb.WriteString(fmt.Sprintf("PREMIRRORS = \"%s\"\n", g.config.Advanced.PreMirrors))
+	}
+	if g.config.Advanced.NoNetwork {
+		sb.WriteString("BB_NO_NETWORK = \"1\"\n")
+	}
+	if g.config.Advanced.FetchPremirrorOnly {
+		sb.WriteString("BB_FETCH_PREMIRRORONLY = \"1\"\n")
+	}
 
 	// QEMU configuration
 	if g.config.Advanced.QemuSDL {
