@@ -161,23 +161,23 @@ help:
 yocto-smoke: build
 	@echo "🚦 Yocto smoke: parse-only in container (no network/build)"
 	SMIDR_TEST_IMAGE=crops/yocto:ubuntu-22.04-builder \
-	SMIDR_TEST_ENTRYPOINT=sh,-c,\"sleep 3600\" \
+	SMIDR_TEST_ENTRYPOINT='sh,-c,sleep 3600' \
 	SMIDR_TEST_WRITE_MARKERS=1 \
-	./$(BINARY_NAME) --config smidr.yaml build --customer ci --target core-image-minimal
+	./$(BINARY_NAME) $(ARGS) build --customer ci --target core-image-minimal
 	@echo "✅ Smoke complete"
 
 # Tier 1: fetch-only with preseeded downloads (kept fast via restored DL_DIR). No compile.
 yocto-fetch: build
 	@echo "📦 Yocto fetch-only: download sources using mirrors/cache"
 	SMIDR_TEST_IMAGE=crops/yocto:ubuntu-22.04-builder \
-	SMIDR_TEST_ENTRYPOINT=sh,-c,\"sleep 3600\" \
+	SMIDR_TEST_ENTRYPOINT='sh,-c,sleep 3600' \
 	SMIDR_TEST_WRITE_MARKERS=1 \
-	./$(BINARY_NAME) --config smidr.yaml build --customer ci --target core-image-minimal --fetch-only
+	./$(BINARY_NAME) $(ARGS) build --customer ci --target core-image-minimal --fetch-only
 	@echo "✅ Fetch-only complete"
 
 # Tier 2: sstate-restore build (fast if SSTATE_MIRRORS hits). Intended for CI where caches are restored.
 yocto-sstate: build
 	@echo "🧩 Yocto sstate build: attempts bitbake with sstate restore"
 	SMIDR_TEST_IMAGE=crops/yocto:ubuntu-22.04-builder \
-	./$(BINARY_NAME) --config smidr.yaml build --customer ci --target core-image-minimal
+	./$(BINARY_NAME) $(ARGS) build --customer ci --target core-image-minimal
 	@echo "✅ Sstate tier invoked (ensure SSTATE_MIRRORS via smidr.yaml/local.conf)"
