@@ -1,0 +1,138 @@
+name: Yocto Fast CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "Makefile"
+      - "smidr-ci.yaml"
+      - "internal/**"
+      - "cmd/**"
+      - ".github/workflows/yocto-ci.yml"
+  push:
+    branches: [chore/phase8-fast-yocto-ci]
+
+concurrency:
+  group: yocto-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Go build and unit tests
+        run: |
+          make check
+
+  yocto-smoke:
+    runs-on: ubuntu-22.04
+    needs: build-and-test
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare cache directories
+        run: |
+          mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate $HOME/.smidr/tmp $HOME/.smidr/deploy
+
+      - name: Restore downloads cache
+        uses: actions/cache/restore@v4
+        with:
+          path: $HOME/.smidr/dl
+          key: yocto-dl-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+
+      - name: Restore sstate cache
+        uses: actions/cache/restore@v4
+        with:
+          path: $HOME/.smidr/sstate
+          key: yocto-sstate-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+
+      - name: Yocto smoke (no build)
+        env:
+          YOCTO_DL_DIR: ${{ env.HOME }}/.smidr/dl
+          YOCTO_SSTATE_DIR: ${{ env.HOME }}/.smidr/sstate
+          YOCTO_TMP_DIR: ${{ env.HOME }}/.smidr/tmp
+          YOCTO_DEPLOY_DIR: ${{ env.HOME }}/.smidr/deploy
+          # Optional mirrors; keep unset by default
+          YOCTO_SSTATE_MIRRORS: file://.* file:///${{ env.HOME }}/.smidr/sstate/PATH
+        run: |
+          make yocto-smoke ARGS="--config smidr-ci.yaml"
+
+  yocto-fetch:
+    runs-on: ubuntu-22.04
+    needs: yocto-smoke
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare cache directories
+        run: |
+          mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate $HOME/.smidr/tmp $HOME/.smidr/deploy
+
+      - name: Restore downloads cache (rw)
+        uses: actions/cache/restore@v4
+        with:
+          path: $HOME/.smidr/dl
+          key: yocto-dl-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+
+      - name: Restore sstate cache (ro)
+        uses: actions/cache/restore@v4
+        with:
+          path: $HOME/.smidr/sstate
+          key: yocto-sstate-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+
+      - name: Fetch-only
+        env:
+          YOCTO_DL_DIR: ${{ env.HOME }}/.smidr/dl
+          YOCTO_SSTATE_DIR: ${{ env.HOME }}/.smidr/sstate
+          YOCTO_TMP_DIR: ${{ env.HOME }}/.smidr/tmp
+          YOCTO_DEPLOY_DIR: ${{ env.HOME }}/.smidr/deploy
+          YOCTO_SSTATE_MIRRORS: file://.* file:///${{ env.HOME }}/.smidr/sstate/PATH
+        run: |
+          make yocto-fetch ARGS="--config smidr-ci.yaml"
+
+      - name: Save updated downloads cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: $HOME/.smidr/dl
+          key: yocto-dl-${{ runner.os }}-${{ github.run_id }}
+
+  yocto-sstate:
+    runs-on: ubuntu-22.04
+    needs: yocto-fetch
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare cache directories
+        run: |
+          mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate $HOME/.smidr/tmp $HOME/.smidr/deploy
+
+      - name: Restore caches
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            $HOME/.smidr/dl
+            $HOME/.smidr/sstate
+          key: yocto-all-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+
+      - name: Build with sstate restore
+        env:
+          YOCTO_DL_DIR: ${{ env.HOME }}/.smidr/dl
+          YOCTO_SSTATE_DIR: ${{ env.HOME }}/.smidr/sstate
+          YOCTO_TMP_DIR: ${{ env.HOME }}/.smidr/tmp
+          YOCTO_DEPLOY_DIR: ${{ env.HOME }}/.smidr/deploy
+          YOCTO_SSTATE_MIRRORS: file://.* file:///${{ env.HOME }}/.smidr/sstate/PATH
+        run: |
+          make yocto-sstate ARGS="--config smidr-ci.yaml"
