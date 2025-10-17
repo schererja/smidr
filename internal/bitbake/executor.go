@@ -387,6 +387,11 @@ func (e *BuildExecutor) generateLocalConfContent() string {
 		content.WriteString("SSTATE_MIRRORS = \"file://.* file:///home/builder/sstate-cache/PATH\"\n")
 	}
 
+	// If a host tmp directory is mounted, direct TMPDIR to it so BitBake writes under a writable path
+	if strings.TrimSpace(e.config.Directories.Tmp) != "" {
+		content.WriteString("TMPDIR = \"/home/builder/tmp\"\n")
+	}
+
 	// Optional premirror configuration and network controls
 	if strings.TrimSpace(e.config.Advanced.PreMirrors) != "" {
 		content.WriteString(fmt.Sprintf("PREMIRRORS = \"%s\"\n", e.config.Advanced.PreMirrors))

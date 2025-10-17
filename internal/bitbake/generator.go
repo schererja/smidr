@@ -111,6 +111,8 @@ func (g *Generator) generateLocalConf(confDir string) error {
 	tmpDir := "${TOPDIR}/tmp"
 	if g.config.Directories.Tmp != "" {
 		tmpDir = g.config.Directories.Tmp
+		// When a host tmp is provided, point TMPDIR inside the container to the mounted path
+		sb.WriteString("TMPDIR = \"/home/builder/tmp\"\n")
 	}
 	sb.WriteString(fmt.Sprintf("TMP_DIR = \"%s\"\n", tmpDir))
 
