@@ -125,8 +125,15 @@ func runBuild(cmd *cobra.Command) error {
 	deployDir := fmt.Sprintf("%s/deploy", buildDir)
 
 	// Ensure tmp and deploy are created with permissive permissions so container user can write
-	os.MkdirAll(tmpDir, 0777)
-	os.MkdirAll(deployDir, 0777)
+	if err := os.MkdirAll(tmpDir, 0777); err != nil {
+		return fmt.Errorf("failed to create tmp dir: %w", err)
+	}
+	if err := os.Chown(tmpDir, 1000, 1000); err != nil {
+		_ = os.Chmod(tmpDir, 0777)
+	}
+	if err := os.MkdirAll(deployDir, 0777); err != nil {
+		return fmt.Errorf("failed to create deploy dir: %w", err)
+	}
 
 	cfg.Directories.Build = buildDir
 	cfg.Directories.Tmp = tmpDir
