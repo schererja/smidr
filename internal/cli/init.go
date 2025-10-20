@@ -103,12 +103,11 @@ func generateConfigTemplate(projectName string) string {
     # Extra packages to include
     extra_packages:
       - python3
-      - nodejs
       - vim
 
     # Build options
-    parallel_make: 8
-    bb_number_threads: 8
+    parallel_make: 2
+    bb_number_threads: 2
 
   # Output artifacts to extract
   artifacts:
@@ -133,15 +132,6 @@ func generateConfigTemplate(projectName string) string {
 
     # Resource limits
     memory: "8g"
-    cpu_count: 8
-
-  # Cache configuration
-  cache:
-    # Shared cache locations (defaults to ~/.smidr)
-    downloads: ~/.smidr/downloads
-    sstate: ~/.smidr/sstate-cache
-
-    # Cache retention (days)
-    retention: 30
+    cpu_count: 2
   `, projectName, projectName)
 }

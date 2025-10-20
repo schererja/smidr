@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
@@ -70,7 +70,7 @@ jobs:
           make yocto-smoke ARGS="--config smidr-ci.yaml"
 
   yocto-fetch:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     needs: yocto-smoke
     steps:
       - uses: actions/checkout@v4
@@ -139,7 +139,7 @@ jobs:
           DL_MB_ENV: ${{ steps.size-check.outputs.dl_mb }}
 
   yocto-sstate:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     needs: yocto-fetch
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     steps:

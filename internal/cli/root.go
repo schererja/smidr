@@ -24,7 +24,7 @@ custom Linux distributions for embedded devices.`,
 
 func Execute() error {
 	if err := rootCmd.Execute(); err != nil {
-		return err
+		return fmt.Errorf("RootCommand failure: %v", err)
 	}
 	return nil
 }

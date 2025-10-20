@@ -84,13 +84,9 @@ func (g *Generator) generateLocalConf(confDir string) error {
 	sb.WriteString("\n")
 	sb.WriteString("# Shared download and cache directories\n")
 
-	// Use configured directories or defaults. Prefer the global cache.Downloads
-	// when it's set so the generator points BitBake at the same location the
-	// fetcher populates (prevents double-cloning into both downloads and sources).
+	// Use configured directories or defaults.
 	dlDir := "${TOPDIR}/../downloads"
-	if g.config.Cache.Downloads != "" {
-		dlDir = g.config.Cache.Downloads
-	} else if g.config.Directories.Downloads != "" {
+	if g.config.Directories.Downloads != "" {
 		dlDir = g.config.Directories.Downloads
 	}
 	sb.WriteString(fmt.Sprintf("DL_DIR = \"%s\"\n", dlDir))
@@ -100,9 +96,7 @@ func (g *Generator) generateLocalConf(confDir string) error {
 		sb.WriteString(fmt.Sprintf("SSTATE_MIRRORS = \"%s\"\n", g.config.Advanced.SStateMirrors))
 	} else {
 		sstateDir := "${TOPDIR}/../sstate-cache"
-		if g.config.Cache.SState != "" {
-			sstateDir = g.config.Cache.SState
-		} else if g.config.Directories.SState != "" {
+		if g.config.Directories.SState != "" {
 			sstateDir = g.config.Directories.SState
 		}
 		sb.WriteString(fmt.Sprintf("SSTATE_DIR = \"%s\"\n", sstateDir))

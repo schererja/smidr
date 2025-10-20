@@ -119,8 +119,12 @@ func (e *BuildExecutor) setupBuildEnvironment(ctx context.Context) error {
 		return fmt.Errorf("failed to setup build directory: %s", string(result.Stderr))
 	}
 
-	// Generate local.conf content
+	// Patch: Ensure TMPDIR is set in local.conf to match the mounted tmp dir
 	localConfContent := e.generateLocalConfContent()
+	// Add TMPDIR override to local.conf if not present
+	if !strings.Contains(localConfContent, "TMPDIR") {
+		localConfContent += fmt.Sprintf("\nTMPDIR = \"%s\"\n", e.config.Directories.Tmp)
+	}
 
 	// Write local.conf to container in temporary location first
 	writeLocalConfCmd := []string{"sh", "-c", fmt.Sprintf("cat > /home/builder/build/conf/local.conf << 'EOF'\n%s\nEOF", localConfContent)}

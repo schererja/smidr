@@ -281,15 +281,7 @@ func TestContainerConfigValidation(t *testing.T) {
 	}
 }
 
-func TestCacheConfigValidation(t *testing.T) {
-	t.Parallel()
-
-	// Test negative retention
-	cache := CacheConfig{Retention: -1}
-	if err := cache.Validate(); err == nil {
-		t.Fatalf("expected validation error for negative retention")
-	}
-}
+// CacheConfig removed in MVP; no cache validation tests
 
 func TestEnvironmentVariableSubstitution(t *testing.T) {
 	t.Parallel()

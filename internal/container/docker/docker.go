@@ -48,7 +48,7 @@ func (d *DockerManager) PullImage(ctx context.Context, imageName string) error {
 }
 
 func (d *DockerManager) ImageExists(ctx context.Context, imageName string) bool {
-	_, _, err := d.cli.ImageInspectWithRaw(ctx, imageName)
+	_, err := d.cli.ImageInspect(ctx, imageName)
 	return err == nil
 }
 
