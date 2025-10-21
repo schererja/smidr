@@ -81,13 +81,13 @@
 - [x] Ensure >60% code coverage for core logic (current total ~66% as of 2025-10-16)
 - [x] Create integration tests for CLI workflows (init, status, logs, artifacts)
 - [x] Add entrypoint smoke test for main.go
-- [ ] Run integration tests with real Yocto builds (end-to-end)
-- [ ] Test with Toradex layers specifically (integration and artifact extraction)
+- [X] Run integration tests with real Yocto builds (end-to-end)
+- [X] Test with Toradex layers specifically (integration and artifact extraction)
 - [ ] Test with multiple custom Yocto layer combinations
 - [ ] Validate disk space savings vs traditional Yocto build approach
 - [ ] Benchmark build times for typical and large builds
 - [ ] Test error handling and recovery (simulate build/container failures)
-- [ ] Add automated test runs to CI (GitHub Actions)
+- [X] Add automated test runs to CI (GitHub Actions)
 - [ ] Generate and publish test coverage reports
 - [ ] Document test strategy and how to run tests locally
 

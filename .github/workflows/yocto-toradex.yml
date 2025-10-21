@@ -29,7 +29,7 @@ jobs:
           fi
           docker info
 
-  - name: Run Toradex integration build (core-image-minimal)
+      - name: Run Toradex integration build (core-image-minimal)
         env:
           YOCTO_DL_DIR: ~/.smidr/downloads
           YOCTO_SSTATE_DIR: ~/.smidr/sstate
