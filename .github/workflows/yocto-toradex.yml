@@ -37,7 +37,7 @@ jobs:
           YOCTO_TMP_DIR: ~/.smidr/tmp
           YOCTO_DEPLOY_DIR: ~/.smidr/deploy
         run: |
-          go run ./cmd/smidr --config smidr-toradex-ci.yaml build --customer ci-toradex --clean
+          go run ./cmd/smidr --config smidr-toradex-ci.yaml build --customer ci-toradex
 
       - name: List artifacts for Toradex build
         run: |
