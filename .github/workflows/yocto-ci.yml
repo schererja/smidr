@@ -167,7 +167,7 @@ jobs:
 
       - name: Build with sstate restore
         run: |
-          make yocto-sstate ARGS="--config smidr-ci.yaml build --customer acme --use-sstate"
+          make yocto-sstate ARGS="--config smidr-ci.yaml build --customer acme --target core-image-minimal"
 
       - name: Upload deploy artifacts (on failure)
         if: failure()
