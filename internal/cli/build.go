@@ -694,8 +694,29 @@ func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, contai
 		artifactDir = fmt.Sprintf("%s/.smidr/artifacts/%s", currentUser.HomeDir, buildID)
 	}
 
-	// Use the actual per-build deploy directory, not the config value (which may be overridden by env vars)
+	// Use the actual per-build deploy directory first, but fall back to TMPDIR/deploy for sstate-restored builds
 	deploySrc := filepath.Join(cfg.Directories.Build, "deploy")
+
+	// Check if per-build deploy exists and has content
+	deployInfo, deployStatErr := os.Stat(deploySrc)
+	if deployStatErr != nil || !deployInfo.IsDir() {
+		// Fall back to TMPDIR/deploy (where sstate artifacts go)
+		deploySrc = filepath.Join(cfg.Directories.Tmp, "deploy")
+		fmt.Printf("[INFO] Per-build deploy not found, using TMPDIR/deploy: %s\n", deploySrc)
+	} else {
+		// Check if it's empty
+		entries, _ := os.ReadDir(deploySrc)
+		if len(entries) == 0 {
+			// Empty, try TMPDIR/deploy instead
+			tmpDeploySrc := filepath.Join(cfg.Directories.Tmp, "deploy")
+			tmpInfo, tmpErr := os.Stat(tmpDeploySrc)
+			if tmpErr == nil && tmpInfo.IsDir() {
+				deploySrc = tmpDeploySrc
+				fmt.Printf("[INFO] Per-build deploy empty, using TMPDIR/deploy: %s\n", deploySrc)
+			}
+		}
+	}
+
 	deployDst := filepath.Join(artifactDir, "deploy")
 
 	fmt.Printf("[DEBUG] Copying deploy artifacts\n")
