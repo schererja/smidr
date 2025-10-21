@@ -694,30 +694,31 @@ func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, contai
 		artifactDir = fmt.Sprintf("%s/.smidr/artifacts/%s", currentUser.HomeDir, buildID)
 	}
 
-	deploySrc := cfg.Directories.Deploy
+	// Use the actual per-build deploy directory, not the config value (which may be overridden by env vars)
+	deploySrc := filepath.Join(cfg.Directories.Build, "deploy")
 	deployDst := filepath.Join(artifactDir, "deploy")
 
-	// fmt.Printf("[DEBUG] Copying deploy artifacts\n")
-	// fmt.Printf("[DEBUG] Source: %s\n", deploySrc)
-	// fmt.Printf("[DEBUG] Destination: %s\n", deployDst)
+	fmt.Printf("[DEBUG] Copying deploy artifacts\n")
+	fmt.Printf("[DEBUG] Source: %s\n", deploySrc)
+	fmt.Printf("[DEBUG] Destination: %s\n", deployDst)
 
 	// Check if source exists and is a directory
 	info, statErr := os.Stat(deploySrc)
 	if statErr != nil {
-		// fmt.Printf("[DEBUG] Source deploy directory does not exist: %v\n", statErr)
+		fmt.Printf("[DEBUG] Source deploy directory does not exist: %v\n", statErr)
 		return fmt.Errorf("deploy source directory does not exist: %w", statErr)
 	}
 	if !info.IsDir() {
-		// fmt.Printf("[DEBUG] Source deploy path is not a directory!\n")
+		fmt.Printf("[DEBUG] Source deploy path is not a directory!\n")
 		return fmt.Errorf("deploy source is not a directory")
 	}
 
 	err = copyDir(deploySrc, deployDst)
 	if err != nil {
-		// fmt.Printf("[DEBUG] Error copying deploy directory: %v\n", err)
+		fmt.Printf("[DEBUG] Error copying deploy directory: %v\n", err)
 		return fmt.Errorf("failed to copy deploy artifacts: %w", err)
 	}
-	// fmt.Printf("[DEBUG] Deploy directory copied successfully.\n")
+	fmt.Printf("[DEBUG] Deploy directory copied successfully.\n")
 
 	// Copy build logs to artifact directory
 	buildLogTxt := filepath.Join(cfg.Directories.Build, "build-log.txt")
