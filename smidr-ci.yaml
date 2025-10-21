@@ -17,7 +17,7 @@ build:
   bb_number_threads: 2
   parallel_make: 2
 directories:
-  downloads: ${YOCTO_DL_DIR:-~/.smidr/dl}
+  downloads: ${YOCTO_DL_DIR:-~/.smidr/downloads}
   sstate: ${YOCTO_SSTATE_DIR:-~/.smidr/sstate}
   tmp: ${YOCTO_TMP_DIR:-~/.smidr/tmp}
   deploy: ${YOCTO_DEPLOY_DIR:-~/.smidr/deploy}
