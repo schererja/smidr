@@ -65,8 +65,7 @@ jobs:
 
       - name: Yocto smoke (no build)
         run: |
-          smidr init --config smidr-ci.yaml
-          smidr build --customer acme --config smidr-ci.yaml
+          make yocto-smoke ARGS="--config smidr-ci.yaml build --customer acme"
 
   yocto-fetch:
     runs-on: self-hosted
@@ -107,8 +106,7 @@ jobs:
 
       - name: Fetch-only
         run: |
-          smidr init --config smidr-ci.yaml
-          smidr build --customer acme --config smidr-ci.yaml --fetch-only
+          make yocto-fetch ARGS="--config smidr-ci.yaml build --customer acme --fetch-only"
 
       - name: Check cache sizes
         id: size-check
@@ -169,8 +167,7 @@ jobs:
 
       - name: Build with sstate restore
         run: |
-          smidr init --config smidr-ci.yaml
-          smidr build --customer acme --config smidr-ci.yaml --use-sstate
+          make yocto-sstate ARGS="--config smidr-ci.yaml build --customer acme --use-sstate"
 
       - name: Upload deploy artifacts (on failure)
         if: failure()
