@@ -243,9 +243,6 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 	if bbThreads <= 0 {
 		bbThreads = 2
 	}
-
-	fmt.Printf("[INFO] Forcing BitBake parallelism: BB_NUMBER_THREADS=%d, PARALLEL_MAKE=-j%d\n", bbThreads, parallelMake)
-
 	// Use sed to update the values in local.conf right before running bitbake
 	bitbakeCmd := fmt.Sprintf(`set -x && \
 		echo "=== Starting build setup ===" && \
@@ -324,10 +321,18 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 
 	if result.ExitCode != 0 {
 		buildResult.Success = false
-		// Attempt cleansstate and retry logic
-		fmt.Println("🧹 BitBake build failed. Attempting cleansstate and retry...")
-		failedRecipe := extractFailedRecipe(string(result.Stderr))
+		fmt.Println("🧹 BitBake build failed. Attempting targeted cleanup, cleansstate, and retry...")
+		stderrText := string(result.Stderr)
+		failedRecipe := extractFailedRecipe(stderrText)
 		if failedRecipe != "" {
+			// Targeted cleanup for pseudo path mismatch
+			if strings.Contains(strings.ToLower(stderrText), "pseudo") && strings.Contains(strings.ToLower(stderrText), "path mismatch") {
+				fmt.Printf("🧹 Detected pseudo path mismatch for recipe '%s' — cleaning workdir artifacts before cleansstate...\n", failedRecipe)
+				if err := e.targetedCleanup(ctx, failedRecipe, logWriter); err != nil {
+					fmt.Printf("[WARN] Targeted cleanup had issues: %v (continuing)\n", err)
+				}
+			}
+
 			cleansstateCmd := []string{"bash", "-c", fmt.Sprintf("cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && bitbake -c cleansstate %s", failedRecipe)}
 			fmt.Printf("🧹 Running bitbake -c cleansstate %s\n", failedRecipe)
 			cleanResult, cleanErr := e.containerMgr.ExecStream(ctx, e.containerID, cleansstateCmd, 2*time.Hour)
@@ -347,6 +352,7 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 				fmt.Printf("[ERROR] cleansstate failed for %s: %v\n", failedRecipe, cleanErr)
 				return buildResult, fmt.Errorf("bitbake build failed, cleansstate also failed for %s", failedRecipe)
 			}
+
 			// Retry build once
 			fmt.Println("🔁 Retrying bitbake build after cleansstate...")
 			retryResult, retryErr := e.containerMgr.ExecStream(ctx, e.containerID, cmd, timeout)
@@ -378,6 +384,51 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 	}
 
 	return buildResult, nil
+}
+
+// targetedCleanup removes per-recipe workdir artifacts that commonly cause pseudo path mismatch
+// It targets only the failing recipe directories under /home/builder/tmp/work/*/<recipe>/*
+func (e *BuildExecutor) targetedCleanup(ctx context.Context, recipe string, logWriter *BuildLogWriter) error {
+	if strings.TrimSpace(recipe) == "" {
+		return nil
+	}
+	// Bash script to cleanup common problematic subdirs
+	script := fmt.Sprintf(`set -e
+echo "=== Targeted cleanup for recipe: %s ==="
+found=0
+for d in /home/builder/tmp/work/*/%s/*; do
+  if [ -d "$d" ]; then
+	found=1
+	echo "Cleaning $d/{packages-split,sstate-build-package,pseudo}"
+	rm -rf "$d/packages-split" "$d/sstate-build-package" "$d/pseudo" || true
+  fi
+done
+if [ "$found" = "0" ]; then
+  echo "No workdir found for recipe %s (this may be fine)"
+fi
+`, recipe, recipe, recipe)
+
+	cmd := []string{"bash", "-c", script}
+	res, err := e.containerMgr.ExecStream(ctx, e.containerID, cmd, 10*time.Minute)
+	if logWriter != nil {
+		for _, line := range strings.Split(string(res.Stdout), "\n") {
+			if line != "" {
+				logWriter.WriteLog("stdout", line)
+			}
+		}
+		for _, line := range strings.Split(string(res.Stderr), "\n") {
+			if line != "" {
+				logWriter.WriteLog("stderr", line)
+			}
+		}
+	}
+	if err != nil {
+		return err
+	}
+	if res.ExitCode != 0 {
+		return fmt.Errorf("targeted cleanup exited with code %d", res.ExitCode)
+	}
+	return nil
 }
 
 // generateLocalConfContent creates the content for local.conf
@@ -580,11 +631,15 @@ func extractFailedRecipe(stderr string) string {
 				parts := strings.Split(path, "/")
 				if len(parts) > 0 {
 					bbFile := parts[len(parts)-1]
-					// strace_5.16.bb -> strace-5.16
+					// strace_5.16.bb -> strace
 					if strings.HasSuffix(bbFile, ".bb") {
 						nameVer := strings.TrimSuffix(bbFile, ".bb")
-						nameVer = strings.Replace(nameVer, "_", "-", 1)
-						return nameVer
+						// Take the base name before the first underscore (recipe name)
+						base := nameVer
+						if idx := strings.Index(base, "_"); idx > 0 {
+							base = base[:idx]
+						}
+						return base
 					}
 				}
 			}
