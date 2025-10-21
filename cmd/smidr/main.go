@@ -1,7 +1,14 @@
 package main
 
-import "github.com/intrik8-labs/smidr/internal/cli"
+import (
+	"fmt"
+
+	"github.com/intrik8-labs/smidr/internal/cli"
+)
 
 func main() {
-	cli.Execute()
+	err := cli.Execute()
+	if err != nil {
+		fmt.Printf("Error running Smidr: %v\n", err)
+	}
 }

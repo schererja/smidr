@@ -67,6 +67,33 @@ func init() {
 }
 
 func runBuild(cmd *cobra.Command) error {
+
+	// Helper to expand ~ and make absolute
+	expandPath := func(path string) string {
+		if path == "" {
+			return ""
+		}
+		// Only expand ~ if it is at the start of the path
+		if strings.HasPrefix(path, "~") {
+			if len(path) == 1 || path[1] == '/' {
+				homedir, err := os.UserHomeDir()
+				if err != nil {
+					panic("Could not resolve ~ to home directory: " + err.Error())
+				}
+				path = homedir + path[1:]
+			}
+		}
+		// Make absolute if not already
+		if !strings.HasPrefix(path, "/") {
+			abs, err := os.Getwd()
+			if err != nil {
+				panic("Could not get working directory: " + err.Error())
+			}
+			path = abs + "/" + path
+		}
+		return path
+	}
+
 	// Set up signal handling for graceful cancellation
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
@@ -107,6 +134,7 @@ func runBuild(cmd *cobra.Command) error {
 	customer, _ := cmd.Flags().GetString("customer")
 	clean, _ := cmd.Flags().GetBool("clean")
 	imageName := cfg.Build.Image
+
 	var buildDir string
 	if customer != "" {
 		// Use per-customer/image build dir for incremental builds
@@ -121,66 +149,58 @@ func runBuild(cmd *cobra.Command) error {
 		buildUUID := uuid.New().String()
 		buildDir = fmt.Sprintf("%s/.smidr/builds/build-%s", homedir, buildUUID)
 	}
-	tmpDir := fmt.Sprintf("%s/tmp", buildDir)
+
+	// TMPDIR: use config if set, else per-build
+	var tmpDir string
+	if cfg.Directories.Tmp != "" {
+		tmpDir = expandPath(cfg.Directories.Tmp)
+	} else {
+		tmpDir = fmt.Sprintf("%s/tmp", buildDir)
+	}
+	// DEPLOY_DIR: always per-build
 	deployDir := fmt.Sprintf("%s/deploy", buildDir)
 
-	os.MkdirAll(tmpDir, 0755)
-	os.MkdirAll(deployDir, 0755)
+	// Ensure tmp and deploy are created with permissive permissions so container user can write
+	if err := os.MkdirAll(tmpDir, 0777); err != nil {
+		return fmt.Errorf("failed to create tmp dir: %w", err)
+	}
+	if err := os.Chown(tmpDir, 1000, 1000); err != nil {
+		_ = os.Chmod(tmpDir, 0777)
+	}
+	if err := os.MkdirAll(deployDir, 0777); err != nil {
+		return fmt.Errorf("failed to create deploy dir: %w", err)
+	}
 
 	cfg.Directories.Build = buildDir
 	cfg.Directories.Tmp = tmpDir
 	cfg.Directories.Deploy = deployDir
 
-	fmt.Printf("🔒 Using build directory: %s\n", buildDir)
+	fmt.Println("🔒 Using:")
 	fmt.Printf("    TMPDIR: %s\n", tmpDir)
 	fmt.Printf("    DEPLOY_DIR: %s\n", deployDir)
+	fmt.Printf("    BUILD_DIR: %s\n", buildDir)
 
 	// Create logger
 	verbose := viper.GetBool("verbose")
 	logger := source.NewConsoleLogger(os.Stdout, verbose)
 
-	// Helper to expand ~ and make absolute
-	expandPath := func(path string) string {
-		if path == "" {
-			return ""
-		}
-		// Only expand ~ if it is at the start of the path
-		if strings.HasPrefix(path, "~") {
-			if len(path) == 1 || path[1] == '/' {
-				homedir, err := os.UserHomeDir()
-				if err != nil {
-					panic("Could not resolve ~ to home directory: " + err.Error())
-				}
-				path = homedir + path[1:]
-			}
-		}
-		// Make absolute if not already
-		if !strings.HasPrefix(path, "/") {
-			abs, err := os.Getwd()
-			if err != nil {
-				panic("Could not get working directory: " + err.Error())
-			}
-			path = abs + "/" + path
-		}
-		return path
-	}
-
 	// Expand and resolve all relevant directories
-	downloadsDir := ""
-	if cfg.Cache.Downloads != "" {
-		downloadsDir = cfg.Cache.Downloads
-	} else if cfg.Directories.Source != "" {
+	// Prefer directories.downloads; fallback to directories.source
+	downloadsDir := cfg.Directories.Downloads
+	if downloadsDir == "" && cfg.Directories.Source != "" {
 		downloadsDir = cfg.Directories.Source
 	}
 	downloadsDir = expandPath(downloadsDir)
+	if downloadsDir != "" {
+		cfg.Directories.Downloads = downloadsDir
+	}
 	cfg.Directories.Layers = expandPath(cfg.Directories.Layers)
 	cfg.Directories.Source = expandPath(cfg.Directories.Source)
 	cfg.Directories.SState = expandPath(cfg.Directories.SState)
 	cfg.Directories.Build = expandPath(cfg.Directories.Build)
 	cfg.Directories.Tmp = expandPath(cfg.Directories.Tmp)
 	cfg.Directories.Deploy = expandPath(cfg.Directories.Deploy)
-	cfg.Cache.SState = expandPath(cfg.Cache.SState)
-	cfg.Cache.Downloads = expandPath(cfg.Cache.Downloads)
+	// Cache fields removed; Directories are canonical
 
 	// Step 1: Fetch layers
 	fmt.Println("📦 Fetching required layers...")
@@ -202,6 +222,12 @@ func runBuild(cmd *cobra.Command) error {
 	}
 	fmt.Println()
 	fmt.Printf("Project: %s - %s\n", cfg.Name, cfg.Description)
+
+	// If --fetch-only was requested, stop here to keep CI fast
+	if ok, _ := cmd.Flags().GetBool("fetch-only"); ok {
+		fmt.Println("🛑 Fetch-only mode enabled — skipping container start and build")
+		return nil
+	}
 
 	// Step 2: Prepare container config
 	fmt.Println("🐳 Preparing container environment...")
@@ -270,7 +296,7 @@ func runBuild(cmd *cobra.Command) error {
 	for i, dir := range cfgLayerDirs {
 		// Ensure the layer directory exists before checking for layer.conf
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			logger.Debug("Failed to create layer directory %s: %v", dir, err)
+			// logger.Debug("Failed to create layer directory %s: %v", dir, err)
 			continue
 		}
 
@@ -282,7 +308,7 @@ func runBuild(cmd *cobra.Command) error {
 			// Include directory anyway for mounting - layer.conf will be created when fetched
 			validLayerDirs = append(validLayerDirs, dir)
 			validLayerNames = append(validLayerNames, cfgLayerNames[i])
-			logger.Debug("Including layer directory for mounting (conf/layer.conf will be created on fetch): %s", dir)
+			// logger.Debug("Including layer directory for mounting (conf/layer.conf will be created on fetch): %s", dir)
 		}
 	}
 	cfgLayerDirs = validLayerDirs
@@ -294,19 +320,23 @@ func runBuild(cmd *cobra.Command) error {
 		imageToUse = "crops/yocto:ubuntu-22.04-builder" // fallback to official Yocto build image
 	}
 
+	// Patch: Set TMPDIR in container environment to ensure BitBake uses the correct tmp dir
+	env := os.Environ()
+	env = append(env, fmt.Sprintf("TMPDIR=%s", cfg.Directories.Tmp))
 	containerConfig := container.ContainerConfig{
 		Image:          imageToUse,
 		Cmd:            []string{"echo 'Container ready'; sleep 86400"}, // 24 hours
-		DownloadsDir:   downloadsDir,                                    // mount host downloads (DL_DIR) into container
+		DownloadsDir:   cfg.Directories.Downloads,                       // mount host downloads (DL_DIR) into container
 		SstateCacheDir: cfg.Directories.SState,                          // Wire SSTATE dir from config
 		WorkspaceDir:   cfg.Directories.Build,
 		BuildDir:       cfg.Directories.Build,
+		TmpDir:         cfg.Directories.Tmp, // Mount host tmp dir if set
 		LayerDirs:      cfgLayerDirs,
 		LayerNames:     cfgLayerNames,
-		TmpDir:         cfg.Directories.Tmp, // Mount host tmp dir if set
 		Name:           testName,
 		MemoryLimit:    cfg.Container.Memory,
 		CPUCount:       cfg.Container.CPUCount,
+		Env:            env,
 	}
 	// Apply test overrides if provided
 	if testDownloads != "" {
@@ -379,7 +409,7 @@ func runBuild(cmd *cobra.Command) error {
 		}
 	}
 	if containerConfig.DownloadsDir == cfg.Directories.Source && containerConfig.DownloadsDir != "" {
-		fmt.Println("⚠️  Note: downloads and sources are the same path on host — this can cause confusion. Consider setting cache.downloads and directories.source to distinct paths in smidr.yaml.")
+		fmt.Println("⚠️  Note: downloads and sources are the same path on host — this can cause confusion. Consider setting directories.downloads and directories.source to distinct paths in smidr.yaml.")
 	}
 
 	// Step 4: Pull image (skip pulling if a test image override is provided or image exists locally)
@@ -629,20 +659,7 @@ func setDefaultDirs(cfg *config.Config, workDir string) {
 	}
 
 	// Provide sane defaults for global cache locations if not supplied
-	if cfg.Cache.Downloads == "" {
-		if homedir, err := os.UserHomeDir(); err == nil {
-			cfg.Cache.Downloads = fmt.Sprintf("%s/.smidr/downloads", homedir)
-		} else {
-			cfg.Cache.Downloads = fmt.Sprintf("%s/sources", workDir)
-		}
-	}
-	if cfg.Cache.SState == "" {
-		if homedir, err := os.UserHomeDir(); err == nil {
-			cfg.Cache.SState = fmt.Sprintf("%s/.smidr/sstate-cache", homedir)
-		} else {
-			cfg.Cache.SState = fmt.Sprintf("%s/sstate-cache", workDir)
-		}
-	}
+	// Removed cache defaults; defaults exist for Directories in setDefaultDirs
 }
 
 // extractBuildArtifacts extracts build artifacts from the container to persistent storage
@@ -680,27 +697,27 @@ func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, contai
 	deploySrc := cfg.Directories.Deploy
 	deployDst := filepath.Join(artifactDir, "deploy")
 
-	fmt.Printf("[DEBUG] Copying deploy artifacts\n")
-	fmt.Printf("[DEBUG] Source: %s\n", deploySrc)
-	fmt.Printf("[DEBUG] Destination: %s\n", deployDst)
+	// fmt.Printf("[DEBUG] Copying deploy artifacts\n")
+	// fmt.Printf("[DEBUG] Source: %s\n", deploySrc)
+	// fmt.Printf("[DEBUG] Destination: %s\n", deployDst)
 
 	// Check if source exists and is a directory
 	info, statErr := os.Stat(deploySrc)
 	if statErr != nil {
-		fmt.Printf("[DEBUG] Source deploy directory does not exist: %v\n", statErr)
+		// fmt.Printf("[DEBUG] Source deploy directory does not exist: %v\n", statErr)
 		return fmt.Errorf("deploy source directory does not exist: %w", statErr)
 	}
 	if !info.IsDir() {
-		fmt.Printf("[DEBUG] Source deploy path is not a directory!\n")
+		// fmt.Printf("[DEBUG] Source deploy path is not a directory!\n")
 		return fmt.Errorf("deploy source is not a directory")
 	}
 
 	err = copyDir(deploySrc, deployDst)
 	if err != nil {
-		fmt.Printf("[DEBUG] Error copying deploy directory: %v\n", err)
+		// fmt.Printf("[DEBUG] Error copying deploy directory: %v\n", err)
 		return fmt.Errorf("failed to copy deploy artifacts: %w", err)
 	}
-	fmt.Printf("[DEBUG] Deploy directory copied successfully.\n")
+	// fmt.Printf("[DEBUG] Deploy directory copied successfully.\n")
 
 	// Copy build logs to artifact directory
 	buildLogTxt := filepath.Join(cfg.Directories.Build, "build-log.txt")
@@ -754,12 +771,12 @@ func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, contai
 func copyDir(src string, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			fmt.Printf("[DEBUG] Skipping missing file: %s (%v)\n", path, err)
+			fmt.Printf("[WARNING] Skipping missing file: %s (%v)\n", path, err)
 			return nil
 		}
 		rel, err := filepath.Rel(src, path)
 		if err != nil {
-			fmt.Printf("[DEBUG] Failed to get relative path for %s: %v\n", path, err)
+			// fmt.Printf("[DEBUG] Failed to get relative path for %s: %v\n", path, err)
 			return err
 		}
 		target := filepath.Join(dst, rel)

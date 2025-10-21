@@ -213,10 +213,7 @@ func (f *Fetcher) fetchGitLayerTo(layer config.Layer, baseDir string) FetchResul
 	}
 
 	// Clone the repository
-	branch := layer.Branch
-	if branch == "" {
-		branch = "master"
-	}
+	branch := layer.Branch // Restore original branch handling
 
 	cleanURL := strings.TrimSuffix(layer.Git, ".git")
 	f.logger.Info("Cloning layer %s from %s (branch: %s) into %s", layer.Name, cleanURL, branch, baseDir)
@@ -224,7 +221,7 @@ func (f *Fetcher) fetchGitLayerTo(layer config.Layer, baseDir string) FetchResul
 
 	var cmd *exec.Cmd
 	var stderr strings.Builder
-	tryBranch := branch
+	tryBranch := branch // Restore original branch handling
 	cloneSucceeded := false
 	cloneErr := error(nil)
 	// Try initial branch
@@ -317,7 +314,7 @@ func acquireLock(path string, timeout time.Duration) (bool, error) {
 		fd, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 		if err == nil {
 			// Write PID and timestamp for diagnostics
-			_, _ = fd.WriteString(fmt.Sprintf("pid:%d\nstarted:%s\n", os.Getpid(), time.Now().Format(time.RFC3339)))
+			_, _ = fmt.Fprintf(fd, "pid:%d\nstarted:%s\n", os.Getpid(), time.Now().Format(time.RFC3339))
 			_ = fd.Close()
 			return true, nil
 		}
@@ -348,7 +345,7 @@ func (f *Fetcher) updateGitRepository(path string, branch string) error {
 	}
 
 	// Checkout the desired branch if specified
-	if branch != "" {
+	if branch != "" { // Restore original branch handling
 		checkoutCmd := exec.Command("git", "-C", path, "checkout", branch)
 		if err := checkoutCmd.Run(); err != nil {
 			return fmt.Errorf("git checkout failed: %w", err)

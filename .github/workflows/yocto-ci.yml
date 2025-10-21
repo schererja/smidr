@@ -1,0 +1,177 @@
+name: Yocto Fast CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "Makefile"
+      - "smidr-ci.yaml"
+      - "internal/**"
+      - "cmd/**"
+      - ".github/workflows/yocto-ci.yml"
+  push:
+    branches: [chore/phase8-fast-yocto-ci]
+
+concurrency:
+  group: yocto-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Go build and unit tests
+        run: |
+          make check
+
+  yocto-smoke:
+    runs-on: self-hosted
+    needs: build-and-test
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.25.1"
+
+      - name: Prepare cache directories
+        run: |
+          mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate $HOME/.smidr/tmp $HOME/.smidr/deploy
+          chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
+
+      - name: Restore downloads cache
+        uses: actions/cache/restore@v4
+        with:
+          path: $HOME/.smidr/dl
+          key: yocto-dl-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+
+      - name: Restore sstate cache
+        uses: actions/cache/restore@v4
+        with:
+          path: $HOME/.smidr/sstate
+          key: yocto-sstate-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+
+      - name: Yocto smoke (no build)
+        run: |
+          make yocto-smoke ARGS="--config smidr-ci.yaml build --customer acme"
+
+  yocto-fetch:
+    runs-on: self-hosted
+    needs: yocto-smoke
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.25.1"
+
+      - name: Maximize build space
+        run: |
+          echo "Disk space before cleanup:" && df -h
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af || true
+          echo "Disk space after cleanup:" && df -h
+
+      - name: Prepare cache directories
+        run: |
+          mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate $HOME/.smidr/tmp $HOME/.smidr/deploy
+          chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
+
+      - name: Restore downloads cache (rw)
+        uses: actions/cache/restore@v4
+        with:
+          path: $HOME/.smidr/dl
+          key: yocto-dl-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+
+      - name: Restore sstate cache (ro)
+        uses: actions/cache/restore@v4
+        with:
+          path: $HOME/.smidr/sstate
+          key: yocto-sstate-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+
+      - name: Fetch-only
+        run: |
+          make yocto-fetch ARGS="--config smidr-ci.yaml build --customer acme --fetch-only"
+
+      - name: Check cache sizes
+        id: size-check
+        run: |
+          set -e
+          DL_MB=$(du -sm "$HOME/.smidr/dl" 2>/dev/null | awk '{print $1}')
+          SSTATE_MB=$(du -sm "$HOME/.smidr/sstate" 2>/dev/null | awk '{print $1}')
+          echo "DL_DIR: ${DL_MB:-0} MB, SSTATE: ${SSTATE_MB:-0} MB"
+          echo "dl_mb=${DL_MB:-0}" >> $GITHUB_OUTPUT
+          echo "sstate_mb=${SSTATE_MB:-0}" >> $GITHUB_OUTPUT
+
+      - name: Save updated downloads cache
+        if: always() && steps.size-check.outputs.dl_mb != '' && fromJSON(steps.size-check.outputs.dl_mb) < 6000
+        uses: actions/cache/save@v4
+        with:
+          path: $HOME/.smidr/dl
+          key: yocto-dl-${{ runner.os }}-${{ github.run_id }}
+
+      - name: Show cache size and skip reason
+        if: always()
+        run: |
+          echo "DL_DIR size (MB): ${DL_MB:-$DL_MB_ENV}"
+          if [ -n "${DL_MB}" ] && [ "${DL_MB}" -ge 6000 ]; then
+            echo "Skipping cache save: DL_DIR >= 6000 MB"
+          fi
+        env:
+          DL_MB_ENV: ${{ steps.size-check.outputs.dl_mb }}
+
+  yocto-sstate:
+    runs-on: self-hosted
+    needs: yocto-fetch
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Maximize build space
+        run: |
+          echo "Disk space before cleanup:" && df -h
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af || true
+          echo "Disk space after cleanup:" && df -h
+
+      - name: Prepare cache directories
+        run: |
+          mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate $HOME/.smidr/tmp $HOME/.smidr/deploy
+          chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
+
+      - name: Restore caches
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            $HOME/.smidr/dl
+            $HOME/.smidr/sstate
+          key: yocto-all-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+
+      - name: Build with sstate restore
+        run: |
+          make yocto-sstate ARGS="--config smidr-ci.yaml build --customer acme --target core-image-minimal"
+
+      - name: Upload deploy artifacts (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yocto-deploy
+          path: $HOME/.smidr/deploy

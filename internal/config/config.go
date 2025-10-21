@@ -21,7 +21,6 @@ type Config struct {
 	Advanced    AdvancedConfig  `yaml:"advanced,omitempty"`
 	Artifacts   []string        `yaml:"artifacts,omitempty"`
 	Container   ContainerConfig `yaml:"container,omitempty"`
-	Cache       CacheConfig     `yaml:"cache,omitempty"`
 	YoctoSeries string          `yaml:"yocto_series,omitempty"` // e.g. "kirkstone", "dunfell"
 }
 
@@ -90,13 +89,13 @@ type AdvancedConfig struct {
 	QemuGTK            bool   `yaml:"qemu_gtk,omitempty"`
 	AcceptFSLEULA      bool   `yaml:"accept_fsl_eula,omitempty"`
 	BuildTimeout       int    `yaml:"build_timeout,omitempty"` // Build timeout in minutes
+	SStateMirrors      string `yaml:"sstate_mirrors,omitempty"`
+	PreMirrors         string `yaml:"premirrors,omitempty"`
+	NoNetwork          bool   `yaml:"bb_no_network,omitempty"`
+	FetchPremirrorOnly bool   `yaml:"bb_fetch_premirroronly,omitempty"`
 }
 
-type CacheConfig struct {
-	Downloads string `yaml:"downloads,omitempty"`
-	SState    string `yaml:"sstate,omitempty"`
-	Retention int    `yaml:"retention,omitempty"`
-}
+// CacheConfig removed: Directories.* is canonical for all paths.
 
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
@@ -112,6 +111,8 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	// Cache block removed; Directories.* is canonical
+
 	// Validate the configuration
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
@@ -119,6 +120,8 @@ func Load(path string) (*Config, error) {
 
 	return &cfg, nil
 }
+
+// Legacy cache normalization removed
 
 // substituteEnvVars performs environment variable substitution in YAML content
 // Supports formats: ${VAR}, ${VAR:-default}, ${VAR:+alternative}
@@ -249,10 +252,7 @@ func (c *Config) Validate() error {
 		errors = append(errors, err)
 	}
 
-	// Validate cache settings
-	if err := c.Cache.Validate(); err != nil {
-		errors = append(errors, err)
-	}
+	// Cache validation removed
 
 	if len(errors) > 0 {
 		var errorMessages []string
@@ -483,24 +483,7 @@ func (c *ContainerConfig) Validate() error {
 	return nil
 }
 
-// Validate validates CacheConfig
-func (c *CacheConfig) Validate() error {
-	// Validate cache paths if provided
-	if c.Downloads != "" && !isValidPathOrEnvVar(c.Downloads) {
-		return ValidationError{Field: "cache.downloads", Message: "invalid directory path format"}
-	}
-
-	if c.SState != "" && !isValidPathOrEnvVar(c.SState) {
-		return ValidationError{Field: "cache.sstate", Message: "invalid directory path format"}
-	}
-
-	// Validate retention period
-	if c.Retention < 0 {
-		return ValidationError{Field: "cache.retention", Message: "retention must be non-negative"}
-	}
-
-	return nil
-}
+// CacheConfig and validation removed
 
 // Helper functions for validation
 

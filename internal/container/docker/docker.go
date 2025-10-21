@@ -48,7 +48,7 @@ func (d *DockerManager) PullImage(ctx context.Context, imageName string) error {
 }
 
 func (d *DockerManager) ImageExists(ctx context.Context, imageName string) bool {
-	_, _, err := d.cli.ImageInspectWithRaw(ctx, imageName)
+	_, err := d.cli.ImageInspect(ctx, imageName)
 	return err == nil
 }
 
@@ -136,6 +136,12 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 		if err := os.MkdirAll(cfg.DownloadsDir, 0755); err != nil {
 			return "", fmt.Errorf("failed to create downloads dir %s: %w", cfg.DownloadsDir, err)
 		}
+		// Try to set ownership to builder user (UID 1000, GID 1000); fallback to chmod 0777 so non-owners can write
+		if err := os.Chown(cfg.DownloadsDir, 1000, 1000); err != nil {
+			if chmodErr := os.Chmod(cfg.DownloadsDir, 0777); chmodErr != nil {
+				fmt.Printf("[WARN] Could not set writable permissions on %s: chown err=%v chmod err=%v\n", cfg.DownloadsDir, err, chmodErr)
+			}
+		}
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeBind,
 			Source: cfg.DownloadsDir,
@@ -169,6 +175,13 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 				fmt.Printf("[WARN] Could not set permissions on %s: %v\n", cfg.BuildDir, chmodErr)
 			}
 		}
+		// Also ensure deploy subdir is writable
+		deployDir := fmt.Sprintf("%s/deploy", cfg.BuildDir)
+		if err := os.MkdirAll(deployDir, 0755); err == nil {
+			if err := os.Chown(deployDir, 1000, 1000); err != nil {
+				_ = os.Chmod(deployDir, 0777)
+			}
+		}
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeBind,
 			Source: cfg.BuildDir,
@@ -180,6 +193,17 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 	if cfg.TmpDir != "" {
 		if err := os.MkdirAll(cfg.TmpDir, 0755); err != nil {
 			return "", fmt.Errorf("failed to create tmp dir %s: %w", cfg.TmpDir, err)
+		}
+		// Ensure tmp is writable by container user; use 1777 (sticky bit) if possible, else 0777
+		if err := os.Chown(cfg.TmpDir, 1000, 1000); err != nil {
+			// Not owner or not permitted; still try to set broad perms
+			if chmodErr := os.Chmod(cfg.TmpDir, 01777); chmodErr != nil {
+				// Fallback to 0777 if sticky not supported
+				_ = os.Chmod(cfg.TmpDir, 0777)
+			}
+		} else {
+			// If chown succeeded, set sticky perms as best practice for tmp directories
+			_ = os.Chmod(cfg.TmpDir, 01777)
 		}
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeBind,
@@ -275,6 +299,15 @@ func (d *DockerManager) StartContainer(ctx context.Context, containerID string) 
 		if setupRes.ExitCode != 0 {
 			fmt.Printf("⚠️  Basic workspace setup failed: %s\n", string(setupRes.Stderr))
 		}
+	}
+
+	// Ensure the bind-mounted /home/builder/tmp exists and is writable (sticky tmp semantics)
+	// This helps BitBake create HOSTTOOLS under TMPDIR without PermissionError.
+	tmpSetup := []string{"sh", "-c", "mkdir -p /home/builder/tmp && chmod 1777 /home/builder/tmp || chmod 0777 /home/builder/tmp"}
+	if res, err := d.Exec(ctx, containerID, tmpSetup, 5*time.Second); err != nil {
+		fmt.Printf("⚠️  Could not ensure /home/builder/tmp permissions: %v\n", err)
+	} else if res.ExitCode != 0 {
+		fmt.Printf("⚠️  Ensuring /home/builder/tmp perms failed: stdout=%s stderr=%s\n", string(res.Stdout), string(res.Stderr))
 	}
 
 	return nil
