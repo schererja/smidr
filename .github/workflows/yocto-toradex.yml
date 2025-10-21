@@ -1,0 +1,63 @@
+name: Toradex Integration Build
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly on Mondays at 03:00 UTC
+    - cron: "0 3 * * 1"
+
+jobs:
+  build-toradex:
+    runs-on: self-hosted
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.25.1"
+
+      - name: Go build
+        run: go build -v ./...
+
+      - name: Ensure Docker is available
+        run: |
+          if ! command -v docker &> /dev/null; then
+            echo "Docker not found on self-hosted runner" >&2
+            exit 1
+          fi
+          docker info
+
+      - name: Run Toradex integration build (core-image-minimal)
+        env:
+          YOCTO_DL_DIR: ~/.smidr/downloads
+          YOCTO_SSTATE_DIR: ~/.smidr/sstate
+          YOCTO_TMP_DIR: ~/.smidr/tmp
+          YOCTO_DEPLOY_DIR: ~/.smidr/deploy
+        run: |
+          go run ./cmd/smidr --config smidr-toradex-ci.yaml build --customer ci-toradex --clean
+
+      - name: List artifacts for Toradex build
+        run: |
+          ls -la ~/.smidr/artifacts || true
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toradex-build-logs
+          path: |
+            ~/.smidr/builds/**/build-log.txt
+            ~/.smidr/builds/**/build-log.jsonl
+          if-no-files-found: warn
+
+      - name: Upload deploy artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toradex-deploy
+          path: |
+            ~/.smidr/artifacts/**/deploy/**
+          if-no-files-found: warn

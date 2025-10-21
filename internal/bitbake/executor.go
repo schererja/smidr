@@ -446,11 +446,30 @@ func (e *BuildExecutor) generateLocalConfContent() string {
 		machine = e.config.Base.Machine
 	}
 
-	// Use fallback machine if configured machine requires missing layers
+	// Use fallback machine only if required Toradex/NXP layers are missing
 	if machine == "verdin-imx8mp" {
-		// verdin-imx8mp requires meta-freescale layers that we don't have
-		machine = "qemux86-64"
-		fmt.Printf("⚠️  Falling back to %s machine (verdin-imx8mp requires meta-freescale layers)\n", machine)
+		// Check presence of required layers by name in the loaded config
+		has := func(name string) bool {
+			for _, l := range e.config.Layers {
+				if strings.EqualFold(l.Name, name) {
+					return true
+				}
+			}
+			return false
+		}
+		required := []string{"meta-freescale", "meta-freescale-3rdparty", "meta-toradex-bsp-common", "meta-toradex-nxp"}
+		missing := false
+		for _, r := range required {
+			if !has(r) {
+				missing = true
+				break
+			}
+		}
+		if missing {
+			// Fall back only if we don't have the necessary BSP layers
+			fmt.Printf("⚠️  Required Toradex/NXP layers not all present; falling back MACHINE to qemux86-64 for portability\n")
+			machine = "qemux86-64"
+		}
 	}
 
 	if machine != "" {
