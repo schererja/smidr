@@ -240,7 +240,7 @@ func runBuild(cmd *cobra.Command) error {
 	testLayerDirsCSV := os.Getenv("SMIDR_TEST_LAYER_DIRS") // comma-separated
 	var testLayerDirs []string
 	if testLayerDirsCSV != "" {
-		for p := range strings.SplitSeq(testLayerDirsCSV, ",") {
+		for _, p := range strings.Split(testLayerDirsCSV, ",") {
 			p = strings.TrimSpace(p)
 			if p != "" {
 				testLayerDirs = append(testLayerDirs, p)
