@@ -65,13 +65,8 @@ jobs:
 
       - name: Yocto smoke (no build)
         run: |
-          export YOCTO_DL_DIR="$HOME/.smidr/dl"
-          export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate"
-          export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
-          export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
-          export YOCTO_SSTATE_MIRRORS="file://.* file:///$HOME/.smidr/sstate/PATH"
-          source layers/poky/oe-init-build-env "$YOCTO_TMP_DIR"
-          make yocto-smoke ARGS="--config smidr-ci.yaml"
+          smidr init --config smidr-ci.yaml
+          smidr build --customer acme --config smidr-ci.yaml
 
   yocto-fetch:
     runs-on: self-hosted
@@ -112,13 +107,8 @@ jobs:
 
       - name: Fetch-only
         run: |
-          export YOCTO_DL_DIR="$HOME/.smidr/dl"
-          export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate"
-          export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
-          export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
-          export YOCTO_SSTATE_MIRRORS="file://.* file:///$HOME/.smidr/sstate/PATH"
-          source layers/poky/oe-init-build-env "$YOCTO_TMP_DIR"
-          make yocto-fetch ARGS="--config smidr-ci.yaml"
+          smidr init --config smidr-ci.yaml
+          smidr build --customer acme --config smidr-ci.yaml --fetch-only
 
       - name: Check cache sizes
         id: size-check
@@ -179,13 +169,8 @@ jobs:
 
       - name: Build with sstate restore
         run: |
-          export YOCTO_DL_DIR="$HOME/.smidr/dl"
-          export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate"
-          export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
-          export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
-          export YOCTO_SSTATE_MIRRORS="file://.* file:///$HOME/.smidr/sstate/PATH"
-          source layers/poky/oe-init-build-env "$YOCTO_TMP_DIR"
-          make yocto-sstate ARGS="--config smidr-ci.yaml"
+          smidr init --config smidr-ci.yaml
+          smidr build --customer acme --config smidr-ci.yaml --use-sstate
 
       - name: Upload deploy artifacts (on failure)
         if: failure()
