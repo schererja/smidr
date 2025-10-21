@@ -69,8 +69,8 @@ jobs:
           export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate"
           export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
           export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
-          # Optional mirrors; keep unset by default or point to restored sstate
           export YOCTO_SSTATE_MIRRORS="file://.* file:///$HOME/.smidr/sstate/PATH"
+          source layers/poky/oe-init-build-env "$YOCTO_TMP_DIR"
           make yocto-smoke ARGS="--config smidr-ci.yaml"
 
   yocto-fetch:
@@ -117,6 +117,7 @@ jobs:
           export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
           export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
           export YOCTO_SSTATE_MIRRORS="file://.* file:///$HOME/.smidr/sstate/PATH"
+          source layers/poky/oe-init-build-env "$YOCTO_TMP_DIR"
           make yocto-fetch ARGS="--config smidr-ci.yaml"
 
       - name: Check cache sizes
@@ -183,6 +184,7 @@ jobs:
           export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
           export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
           export YOCTO_SSTATE_MIRRORS="file://.* file:///$HOME/.smidr/sstate/PATH"
+          source layers/poky/oe-init-build-env "$YOCTO_TMP_DIR"
           make yocto-sstate ARGS="--config smidr-ci.yaml"
 
       - name: Upload deploy artifacts (on failure)
