@@ -41,7 +41,11 @@ jobs:
 
       - name: List artifacts for Toradex build
         run: |
-          ls -la ~/.smidr/artifacts || true
+          echo "=== Artifacts directory structure ==="
+          find ~/.smidr/artifacts -type f 2>/dev/null | head -20 || echo "No artifacts found"
+          echo ""
+          echo "=== Builds directory structure ==="
+          find ~/.smidr/builds -type f -name "*.txt" -o -name "*.jsonl" 2>/dev/null | head -20 || echo "No build logs found"
 
       - name: Upload build logs
         if: always()
@@ -49,8 +53,8 @@ jobs:
         with:
           name: toradex-build-logs
           path: |
-            ~/.smidr/builds/**/build-log.txt
-            ~/.smidr/builds/**/build-log.jsonl
+            ~/.smidr/builds/build-ci-toradex/**/build-log.txt
+            ~/.smidr/builds/build-ci-toradex/**/build-log.jsonl
           if-no-files-found: warn
 
       - name: Upload deploy artifacts
@@ -59,5 +63,5 @@ jobs:
         with:
           name: toradex-deploy
           path: |
-            ~/.smidr/artifacts/**/deploy/**
+            ~/.smidr/artifacts/artifact-ci-toradex/**/*
           if-no-files-found: warn
