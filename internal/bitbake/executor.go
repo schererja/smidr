@@ -324,7 +324,57 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 
 	if result.ExitCode != 0 {
 		buildResult.Success = false
-		return buildResult, fmt.Errorf("bitbake build failed with exit code %d", result.ExitCode)
+		// Attempt cleansstate and retry logic
+		fmt.Println("🧹 BitBake build failed. Attempting cleansstate and retry...")
+		failedRecipe := extractFailedRecipe(string(result.Stderr))
+		if failedRecipe != "" {
+			cleansstateCmd := []string{"bash", "-c", fmt.Sprintf("cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && bitbake -c cleansstate %s", failedRecipe)}
+			fmt.Printf("🧹 Running bitbake -c cleansstate %s\n", failedRecipe)
+			cleanResult, cleanErr := e.containerMgr.ExecStream(ctx, e.containerID, cleansstateCmd, 2*time.Hour)
+			if logWriter != nil {
+				for _, line := range strings.Split(string(cleanResult.Stdout), "\n") {
+					if line != "" {
+						logWriter.WriteLog("stdout", line)
+					}
+				}
+				for _, line := range strings.Split(string(cleanResult.Stderr), "\n") {
+					if line != "" {
+						logWriter.WriteLog("stderr", line)
+					}
+				}
+			}
+			if cleanErr != nil || cleanResult.ExitCode != 0 {
+				fmt.Printf("[ERROR] cleansstate failed for %s: %v\n", failedRecipe, cleanErr)
+				return buildResult, fmt.Errorf("bitbake build failed, cleansstate also failed for %s", failedRecipe)
+			}
+			// Retry build once
+			fmt.Println("🔁 Retrying bitbake build after cleansstate...")
+			retryResult, retryErr := e.containerMgr.ExecStream(ctx, e.containerID, cmd, timeout)
+			if logWriter != nil {
+				for _, line := range strings.Split(string(retryResult.Stdout), "\n") {
+					if line != "" {
+						logWriter.WriteLog("stdout", line)
+					}
+				}
+				for _, line := range strings.Split(string(retryResult.Stderr), "\n") {
+					if line != "" {
+						logWriter.WriteLog("stderr", line)
+					}
+				}
+			}
+			buildResult.Output += "\n--- Cleansstate and retry output ---\n" + string(retryResult.Stdout) + "\n" + string(retryResult.Stderr)
+			if retryErr != nil || retryResult.ExitCode != 0 {
+				fmt.Printf("[ERROR] Retry build failed for %s: %v\n", failedRecipe, retryErr)
+				return buildResult, fmt.Errorf("bitbake build failed after cleansstate/retry for %s", failedRecipe)
+			}
+			fmt.Println("✅ Build succeeded after cleansstate and retry.")
+			buildResult.Success = true
+			buildResult.ExitCode = retryResult.ExitCode
+			return buildResult, nil
+		} else {
+			fmt.Println("[WARN] Could not extract failed recipe for cleansstate. No retry attempted.")
+			return buildResult, fmt.Errorf("bitbake build failed with exit code %d", result.ExitCode)
+		}
 	}
 
 	return buildResult, nil
@@ -515,4 +565,30 @@ func (e *BuildExecutor) generateBBLayersConfContent() string {
 	content.WriteString("  \"\n")
 
 	return content.String()
+}
+
+// extractFailedRecipe tries to parse the failed recipe from BitBake stderr output
+func extractFailedRecipe(stderr string) string {
+	lines := strings.Split(stderr, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "ERROR: Task (") && strings.Contains(line, ":do_") {
+			// Example: ERROR: Task (/home/builder/layers/poky/meta/recipes-devtools/strace/strace_5.16.bb:do_package) failed with exit code '1'
+			start := strings.Index(line, "(")
+			end := strings.Index(line, ":do_")
+			if start >= 0 && end > start {
+				path := line[start+1 : end]
+				parts := strings.Split(path, "/")
+				if len(parts) > 0 {
+					bbFile := parts[len(parts)-1]
+					// strace_5.16.bb -> strace-5.16
+					if strings.HasSuffix(bbFile, ".bb") {
+						nameVer := strings.TrimSuffix(bbFile, ".bb")
+						nameVer = strings.Replace(nameVer, "_", "-", 1)
+						return nameVer
+					}
+				}
+			}
+		}
+	}
+	return ""
 }
