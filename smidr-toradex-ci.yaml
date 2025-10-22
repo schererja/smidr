@@ -27,8 +27,8 @@ build:
   # Build a minimal image to exercise full deploy artifacts
   image: core-image-minimal
   machine: verdin-imx8mp
-  bb_number_threads: 2
-  parallel_make: 2
+  bb_number_threads: 8
+  parallel_make: 8
 artifacts:
   - "*.rpm"
   - "*.ipk"
