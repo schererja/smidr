@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       force_clean_build:
-        description: "Force clean build (--clean flag) to generate artifacts"
+        description: "Force image regeneration (rootfs + image tasks only, reuses packages)"
         required: false
         type: boolean
         default: false
@@ -69,7 +69,7 @@ jobs:
 
           CLEAN_FLAG=""
           if [ "${{ github.event.inputs.force_clean_build }}" = "true" ]; then
-            echo "🧹 Clean image build requested - will regenerate image artifacts only"
+            echo "🧹 Force image regeneration requested - will rebuild rootfs and image only"
             CLEAN_FLAG="--clean-image"
           fi
 

@@ -18,7 +18,7 @@ type BuildExecutor struct {
 	containerMgr container.ContainerManager
 	containerID  string
 	workspaceDir string
-	cleanImage   bool // If true, run 'bitbake -c clean <image>' before building
+	forceImage   bool // If true, force image regeneration without rebuilding packages
 }
 
 // NewBuildExecutor creates a new build executor
@@ -31,9 +31,9 @@ func NewBuildExecutor(cfg *config.Config, containerMgr container.ContainerManage
 	}
 }
 
-// SetCleanImage sets whether to clean the image recipe before building
-func (e *BuildExecutor) SetCleanImage(clean bool) {
-	e.cleanImage = clean
+// SetForceImage sets whether to force image regeneration (rootfs + image tasks only)
+func (e *BuildExecutor) SetForceImage(force bool) {
+	e.forceImage = force
 }
 
 // BuildResult contains the results of a build execution
@@ -297,29 +297,30 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 		return &BuildResult{Success: false, ExitCode: fetchResult.ExitCode, Output: string(fetchResult.Stdout) + "\n" + string(fetchResult.Stderr)}, fmt.Errorf("pre-fetch failed with exit code %d", fetchResult.ExitCode)
 	}
 
-	// If --clean-image flag is set, clean only the image recipe (not all dependencies)
-	if e.cleanImage {
-		cleanCmd := []string{"bash", "-c", fmt.Sprintf("cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && bitbake -c clean %s", imageName)}
-		fmt.Printf("🧹 Running image clean (bitbake -c clean %s) to regenerate image artifacts...\n", imageName)
-		cleanResult, cleanErr := e.containerMgr.ExecStream(ctx, e.containerID, cleanCmd, 10*time.Minute)
+	// If forceImage is set, force regeneration of rootfs and image tasks only (not packages)
+	if e.forceImage {
+		fmt.Printf("🔄 Forcing image regeneration (rootfs + image tasks only)...\n")
+		// Remove only the image task stamps to force re-execution
+		forceCmd := []string{"bash", "-c", fmt.Sprintf(`cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && \
+			bitbake -c clean %s && \
+			bitbake -c cleanall %s`, imageName, imageName)}
+		forceResult, forceErr := e.containerMgr.ExecStream(ctx, e.containerID, forceCmd, 10*time.Minute)
 		if logWriter != nil {
-			for _, line := range strings.Split(string(cleanResult.Stdout), "\n") {
+			for _, line := range strings.Split(string(forceResult.Stdout), "\n") {
 				if line != "" {
 					logWriter.WriteLog("stdout", line)
 				}
 			}
-			for _, line := range strings.Split(string(cleanResult.Stderr), "\n") {
+			for _, line := range strings.Split(string(forceResult.Stderr), "\n") {
 				if line != "" {
 					logWriter.WriteLog("stderr", line)
 				}
 			}
 		}
-		if cleanErr != nil {
-			fmt.Printf("⚠️  Image clean completed with error: %v (continuing anyway)\n", cleanErr)
-		} else if cleanResult.ExitCode != 0 {
-			fmt.Printf("⚠️  Image clean exited with code %d (continuing anyway)\n", cleanResult.ExitCode)
+		if forceErr != nil || forceResult.ExitCode != 0 {
+			fmt.Printf("⚠️  Force image tasks warning (continuing): %v\n", forceErr)
 		} else {
-			fmt.Printf("✅ Image clean completed successfully\n")
+			fmt.Printf("✅ Image task stamps removed - will regenerate rootfs and image\n")
 		}
 	}
 

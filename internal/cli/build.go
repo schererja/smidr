@@ -513,10 +513,10 @@ func runBuild(cmd *cobra.Command) error {
 
 		executor := bitbake.NewBuildExecutor(cfg, dm, containerID, containerConfig.WorkspaceDir)
 
-		// Set clean-image flag if requested
+		// Set clean-image flag if requested to force image regeneration
 		cleanImage, _ := cmd.Flags().GetBool("clean-image")
 		if cleanImage {
-			executor.SetCleanImage(true)
+			executor.SetForceImage(true)
 		}
 
 		buildResult, err := executor.ExecuteBuild(ctx, logWriter)
