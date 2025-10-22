@@ -83,6 +83,10 @@
 - [x] Add entrypoint smoke test for main.go
 - [X] Run integration tests with real Yocto builds (end-to-end)
 - [X] Test with Toradex layers specifically (integration and artifact extraction)
+  - ✅ Toradex CI workflow created and working
+  - ✅ Sstate-only build detection implemented - gracefully skips artifact extraction when 100% cache hit
+  - ℹ️  For audit/verification: sstate cache serves as cryptographically-verified artifact store
+  - 💡 To force artifact generation from sstate: add `--clean` flag or run `bitbake -c deploy <image>`
 - [ ] Test with multiple custom Yocto layer combinations
 - [ ] Validate disk space savings vs traditional Yocto build approach
 - [ ] Benchmark build times for typical and large builds

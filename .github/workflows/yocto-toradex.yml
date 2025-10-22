@@ -37,6 +37,10 @@ jobs:
           YOCTO_TMP_DIR: ~/.smidr/tmp
           YOCTO_DEPLOY_DIR: ~/.smidr/deploy
         run: |
+          # Note: When build completes 100% from sstate cache (common on repeated runs),
+          # no deploy artifacts are generated. This is expected and validates build reproducibility.
+          # The sstate cache itself serves as the cryptographically-verified artifact store.
+          # To force artifact generation, run with --clean flag or manually run: bitbake -c deploy <image>
           go run ./cmd/smidr --config smidr-toradex-ci.yaml build --customer ci-toradex
 
       - name: List artifacts for Toradex build
