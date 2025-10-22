@@ -42,6 +42,6 @@ advanced:
   build_timeout: 240
   sstate_mirrors: ${YOCTO_SSTATE_MIRRORS:-file://.* file:///home/builder/sstate-cache/PATH}
 packages:
-  classes: package_rpm
+  classes: package_ipk
 features:
   extra_image_features: ["debug-tweaks", "package-management"]
