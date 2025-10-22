@@ -154,6 +154,14 @@ func runBuild(cmd *cobra.Command) error {
 	var tmpDir string
 	if cfg.Directories.Tmp != "" {
 		tmpDir = expandPath(cfg.Directories.Tmp)
+		// If --clean was requested and we're using a configured (potentially shared) TMPDIR,
+		// clean it to ensure a fresh build with artifacts
+		if clean && customer != "" {
+			// Create a customer-specific subdir in the configured TMPDIR to avoid cleaning shared state
+			tmpDir = fmt.Sprintf("%s/%s-%s", tmpDir, customer, imageName)
+			os.RemoveAll(tmpDir)
+			fmt.Printf("🧹 Cleaned TMPDIR: %s\n", tmpDir)
+		}
 	} else {
 		tmpDir = fmt.Sprintf("%s/tmp", buildDir)
 	}
