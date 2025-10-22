@@ -84,6 +84,9 @@
 - [X] Run integration tests with real Yocto builds (end-to-end)
 - [X] Test with Toradex layers specifically (integration and artifact extraction)
 - [ ] Test with multiple custom Yocto layer combinations
+  - 🚧 In progress: Created test configs for Raspberry Pi, Intel BSP, Toradex
+  - 🚧 Matrix CI workflow created to test all combinations
+  - ⏳ Pending: Run and validate matrix builds
 - [ ] Validate disk space savings vs traditional Yocto build approach
 - [ ] Benchmark build times for typical and large builds
 - [ ] Test error handling and recovery (simulate build/container failures)

@@ -694,30 +694,87 @@ func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, contai
 		artifactDir = fmt.Sprintf("%s/.smidr/artifacts/%s", currentUser.HomeDir, buildID)
 	}
 
+	// Start with the configured deploy directory (may be per-build or shared TMPDIR)
 	deploySrc := cfg.Directories.Deploy
+	fmt.Printf("[DEBUG] Configured Deploy directory: %s\n", deploySrc)
+
+	// If the configured deploy doesn't exist or is empty, try TMPDIR/deploy as fallback (for sstate-restored builds)
+	deployInfo, deployStatErr := os.Stat(deploySrc)
+	if deployStatErr != nil || !deployInfo.IsDir() {
+		fmt.Printf("[DEBUG] Configured deploy stat error or not a dir: %v\n", deployStatErr)
+		// Try TMPDIR/deploy as fallback
+		tmpDeploySrc := filepath.Join(cfg.Directories.Tmp, "deploy")
+		fmt.Printf("[DEBUG] Trying TMPDIR/deploy: %s\n", tmpDeploySrc)
+		tmpInfo, tmpErr := os.Stat(tmpDeploySrc)
+		if tmpErr == nil && tmpInfo.IsDir() {
+			deploySrc = tmpDeploySrc
+			fmt.Printf("[INFO] Configured deploy not found, using TMPDIR/deploy: %s\n", deploySrc)
+		} else {
+			fmt.Printf("[DEBUG] TMPDIR/deploy also not available: %v\n", tmpErr)
+		}
+	} else {
+		// Check if it's empty
+		entries, _ := os.ReadDir(deploySrc)
+		fmt.Printf("[DEBUG] Configured deploy has %d entries\n", len(entries))
+		if len(entries) > 0 {
+			fmt.Printf("[DEBUG] Sample entries: ")
+			for i, e := range entries {
+				if i >= 3 {
+					fmt.Printf("... (%d more)", len(entries)-3)
+					break
+				}
+				fmt.Printf("%s ", e.Name())
+			}
+			fmt.Println()
+		}
+		if len(entries) == 0 {
+			// Empty, try TMPDIR/deploy instead
+			tmpDeploySrc := filepath.Join(cfg.Directories.Tmp, "deploy")
+			fmt.Printf("[DEBUG] Configured deploy empty, trying TMPDIR/deploy: %s\n", tmpDeploySrc)
+			tmpInfo, tmpErr := os.Stat(tmpDeploySrc)
+			if tmpErr == nil && tmpInfo.IsDir() {
+				tmpEntries, _ := os.ReadDir(tmpDeploySrc)
+				fmt.Printf("[DEBUG] TMPDIR/deploy has %d entries\n", len(tmpEntries))
+				if len(tmpEntries) > 0 {
+					deploySrc = tmpDeploySrc
+					fmt.Printf("[INFO] Configured deploy empty, using TMPDIR/deploy: %s\n", deploySrc)
+				} else {
+					// Both are empty - this was a 100% sstate cache build
+					fmt.Println("ℹ️  Build completed entirely from sstate cache - no new artifacts generated")
+					fmt.Println("💡 Artifacts from previous builds are available in the sstate cache")
+					// Don't fail - just skip artifact extraction
+					return nil
+				}
+			} else {
+				fmt.Printf("[DEBUG] TMPDIR/deploy also not available: %v\n", tmpErr)
+				// No deploy directory at all - sstate-only build
+				fmt.Println("ℹ️  Build completed entirely from sstate cache - no deploy directory populated")
+				return nil
+			}
+		}
+	}
+
 	deployDst := filepath.Join(artifactDir, "deploy")
 
-	// fmt.Printf("[DEBUG] Copying deploy artifacts\n")
-	// fmt.Printf("[DEBUG] Source: %s\n", deploySrc)
-	// fmt.Printf("[DEBUG] Destination: %s\n", deployDst)
-
-	// Check if source exists and is a directory
+	fmt.Printf("[DEBUG] Copying deploy artifacts\n")
+	fmt.Printf("[DEBUG] Source: %s\n", deploySrc)
+	fmt.Printf("[DEBUG] Destination: %s\n", deployDst) // Check if source exists and is a directory
 	info, statErr := os.Stat(deploySrc)
 	if statErr != nil {
-		// fmt.Printf("[DEBUG] Source deploy directory does not exist: %v\n", statErr)
+		fmt.Printf("[DEBUG] Source deploy directory does not exist: %v\n", statErr)
 		return fmt.Errorf("deploy source directory does not exist: %w", statErr)
 	}
 	if !info.IsDir() {
-		// fmt.Printf("[DEBUG] Source deploy path is not a directory!\n")
+		fmt.Printf("[DEBUG] Source deploy path is not a directory!\n")
 		return fmt.Errorf("deploy source is not a directory")
 	}
 
 	err = copyDir(deploySrc, deployDst)
 	if err != nil {
-		// fmt.Printf("[DEBUG] Error copying deploy directory: %v\n", err)
+		fmt.Printf("[DEBUG] Error copying deploy directory: %v\n", err)
 		return fmt.Errorf("failed to copy deploy artifacts: %w", err)
 	}
-	// fmt.Printf("[DEBUG] Deploy directory copied successfully.\n")
+	fmt.Printf("[DEBUG] Deploy directory copied successfully.\n")
 
 	// Copy build logs to artifact directory
 	buildLogTxt := filepath.Join(cfg.Directories.Build, "build-log.txt")
