@@ -623,6 +623,15 @@ func (e *BuildExecutor) generateBBLayersConfContent() string {
 				continue
 			}
 			layerDir := strings.TrimSuffix(confPath, "/conf/layer.conf")
+
+			// Skip test, example, and skeleton layers
+			if strings.Contains(layerDir, "/tests/") ||
+				strings.Contains(layerDir, "/testdata/") ||
+				strings.Contains(layerDir, "/meta-selftest") ||
+				strings.Contains(layerDir, "/meta-skeleton") {
+				continue
+			}
+
 			catCmd := []string{"sh", "-c", fmt.Sprintf("cat '%s'", confPath)}
 			catResult, err := e.containerMgr.Exec(ctx, e.containerID, catCmd, 2*time.Second)
 			confContent := string(catResult.Stdout)
