@@ -46,12 +46,12 @@ jobs:
           # Note: When build completes 100% from sstate cache (common on repeated runs),
           # no deploy artifacts are generated. This is expected and validates build reproducibility.
           # The sstate cache itself serves as the cryptographically-verified artifact store.
-          # Use workflow input 'force_clean_build' to generate artifacts on first run
+          # Use workflow input 'force_clean_build' to regenerate only image artifacts (fast)
 
           CLEAN_FLAG=""
           if [ "${{ github.event.inputs.force_clean_build }}" = "true" ]; then
-            echo "🧹 Clean build requested - will generate fresh artifacts"
-            CLEAN_FLAG="--clean"
+            echo "🧹 Clean image build requested - will regenerate image artifacts only"
+            CLEAN_FLAG="--clean-image"
           fi
 
           go run ./cmd/smidr --config smidr-toradex-ci.yaml build --customer ci-toradex $CLEAN_FLAG

@@ -64,6 +64,7 @@ func init() {
 	buildCmd.Flags().Bool("fetch-only", false, "Only fetch layers but don't build it")
 	buildCmd.Flags().String("customer", "", "Optional: customer/user name for build directory grouping")
 	buildCmd.Flags().Bool("clean", false, "If set, deletes the build directory before building (for a full rebuild)")
+	buildCmd.Flags().Bool("clean-image", false, "If set, runs 'bitbake -c clean <image>' to regenerate only image artifacts without rebuilding dependencies")
 }
 
 func runBuild(cmd *cobra.Command) error {
@@ -511,6 +512,13 @@ func runBuild(cmd *cobra.Command) error {
 		}
 
 		executor := bitbake.NewBuildExecutor(cfg, dm, containerID, containerConfig.WorkspaceDir)
+
+		// Set clean-image flag if requested
+		cleanImage, _ := cmd.Flags().GetBool("clean-image")
+		if cleanImage {
+			executor.SetCleanImage(true)
+		}
+
 		buildResult, err := executor.ExecuteBuild(ctx, logWriter)
 
 		if err != nil {

@@ -69,8 +69,8 @@ jobs:
 
           CLEAN_FLAG=""
           if [ "${{ github.event.inputs.force_clean_build }}" = "true" ]; then
-            echo "🧹 Clean build requested - will generate fresh artifacts"
-            CLEAN_FLAG="--clean"
+            echo "🧹 Clean image build requested - will regenerate image artifacts only"
+            CLEAN_FLAG="--clean-image"
           fi
 
           go run ./cmd/smidr --config ${{ matrix.config.file }} build --customer ${{ matrix.config.customer }} $CLEAN_FLAG

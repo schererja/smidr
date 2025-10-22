@@ -18,6 +18,7 @@ type BuildExecutor struct {
 	containerMgr container.ContainerManager
 	containerID  string
 	workspaceDir string
+	cleanImage   bool // If true, run 'bitbake -c clean <image>' before building
 }
 
 // NewBuildExecutor creates a new build executor
@@ -28,6 +29,11 @@ func NewBuildExecutor(cfg *config.Config, containerMgr container.ContainerManage
 		containerID:  containerID,
 		workspaceDir: workspaceDir,
 	}
+}
+
+// SetCleanImage sets whether to clean the image recipe before building
+func (e *BuildExecutor) SetCleanImage(clean bool) {
+	e.cleanImage = clean
 }
 
 // BuildResult contains the results of a build execution
@@ -289,6 +295,32 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 	}
 	if fetchResult.ExitCode != 0 {
 		return &BuildResult{Success: false, ExitCode: fetchResult.ExitCode, Output: string(fetchResult.Stdout) + "\n" + string(fetchResult.Stderr)}, fmt.Errorf("pre-fetch failed with exit code %d", fetchResult.ExitCode)
+	}
+
+	// If --clean-image flag is set, clean only the image recipe (not all dependencies)
+	if e.cleanImage {
+		cleanCmd := []string{"bash", "-c", fmt.Sprintf("cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && bitbake -c clean %s", imageName)}
+		fmt.Printf("🧹 Running image clean (bitbake -c clean %s) to regenerate image artifacts...\n", imageName)
+		cleanResult, cleanErr := e.containerMgr.ExecStream(ctx, e.containerID, cleanCmd, 10*time.Minute)
+		if logWriter != nil {
+			for _, line := range strings.Split(string(cleanResult.Stdout), "\n") {
+				if line != "" {
+					logWriter.WriteLog("stdout", line)
+				}
+			}
+			for _, line := range strings.Split(string(cleanResult.Stderr), "\n") {
+				if line != "" {
+					logWriter.WriteLog("stderr", line)
+				}
+			}
+		}
+		if cleanErr != nil {
+			fmt.Printf("⚠️  Image clean completed with error: %v (continuing anyway)\n", cleanErr)
+		} else if cleanResult.ExitCode != 0 {
+			fmt.Printf("⚠️  Image clean exited with code %d (continuing anyway)\n", cleanResult.ExitCode)
+		} else {
+			fmt.Printf("✅ Image clean completed successfully\n")
+		}
 	}
 
 	fmt.Println("📺 Streaming build output...")
