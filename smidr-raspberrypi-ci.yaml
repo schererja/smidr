@@ -27,6 +27,7 @@ artifacts:
   - "*.tar.bz2"
   - "*.manifest"
 directories:
+  layers: ${YOCTO_LAYERS_DIR:-~/.smidr/layers}
   downloads: ${YOCTO_DL_DIR:-~/.smidr/downloads}
   sstate: ${YOCTO_SSTATE_DIR:-~/.smidr/sstate}
   tmp: ${YOCTO_TMP_DIR:-~/.smidr/tmp}

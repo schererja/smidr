@@ -122,6 +122,7 @@ func runBuild(cmd *cobra.Command) error {
 		return fmt.Errorf("error loading configuration: %w", err)
 	}
 	fmt.Printf("✅ Loaded project: %s\n", cfg.Name)
+	fmt.Printf("[DEBUG] Config BBNumberThreads: %d, ParallelMake: %d\n", cfg.Build.BBNumberThreads, cfg.Build.ParallelMake)
 	fmt.Println()
 
 	workDir, err := os.Getwd()
