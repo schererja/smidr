@@ -16,12 +16,12 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/term"
 
-	"github.com/intrik8-labs/smidr/internal/artifacts"
-	bitbake "github.com/intrik8-labs/smidr/internal/bitbake"
-	config "github.com/intrik8-labs/smidr/internal/config"
-	"github.com/intrik8-labs/smidr/internal/container"
-	docker "github.com/intrik8-labs/smidr/internal/container/docker"
-	source "github.com/intrik8-labs/smidr/internal/source"
+	"github.com/schererja/smidr/internal/artifacts"
+	bitbake "github.com/schererja/smidr/internal/bitbake"
+	config "github.com/schererja/smidr/internal/config"
+	"github.com/schererja/smidr/internal/container"
+	docker "github.com/schererja/smidr/internal/container/docker"
+	source "github.com/schererja/smidr/internal/source"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

@@ -18,7 +18,7 @@ import (
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-units"
 
-	smidrContainer "github.com/intrik8-labs/smidr/internal/container"
+	smidrContainer "github.com/schererja/smidr/internal/container"
 )
 
 // DockerManager implements container.ContainerManager using the Docker Engine API

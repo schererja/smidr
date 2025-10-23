@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/intrik8-labs/smidr/internal/config"
-	"github.com/intrik8-labs/smidr/internal/container"
+	"github.com/schererja/smidr/internal/config"
+	"github.com/schererja/smidr/internal/container"
 )
 
 func TestSetDefaultDirs(t *testing.T) {

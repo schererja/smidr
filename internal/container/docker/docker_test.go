@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intrik8-labs/smidr/internal/container"
+	"github.com/schererja/smidr/internal/container"
 )
 
 // Note: These tests require Docker to be running and accessible.

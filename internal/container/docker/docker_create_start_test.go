@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	smidrContainer "github.com/intrik8-labs/smidr/internal/container"
+	smidrContainer "github.com/schererja/smidr/internal/container"
 )
 
 // TestCreateStartContainer exercises CreateContainer and StartContainer success paths.

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intrik8-labs/smidr/internal/config"
+	"github.com/schererja/smidr/internal/config"
 )
 
 type MockLogger struct {

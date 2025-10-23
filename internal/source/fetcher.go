@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intrik8-labs/smidr/internal/config"
+	"github.com/schererja/smidr/internal/config"
 )
 
 // Fetcher is responsible for fetching source code from various repositories.

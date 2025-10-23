@@ -1,0 +1,130 @@
+syntax = "proto3";
+
+package smidr.v1;
+
+option go_package = "github.com/schererja/smidr/api/proto/v1";
+
+// Smidr service provides build orchestration and artifact management
+service Smidr {
+  // StartBuild initiates a new build with the provided configuration
+  rpc StartBuild(StartBuildRequest) returns (BuildStatus);
+
+  // GetBuildStatus retrieves the current status of a build
+  rpc GetBuildStatus(BuildStatusRequest) returns (BuildStatus);
+
+  // StreamLogs streams build logs in real-time
+  rpc StreamLogs(StreamLogsRequest) returns (stream LogLine);
+
+  // ListArtifacts lists all artifacts from a completed build
+  rpc ListArtifacts(ListArtifactsRequest) returns (ArtifactsList);
+
+  // CancelBuild cancels a running build
+  rpc CancelBuild(CancelBuildRequest) returns (CancelResult);
+
+  // ListBuilds lists all builds (active and completed)
+  rpc ListBuilds(ListBuildsRequest) returns (BuildsList);
+}
+
+// StartBuildRequest contains the configuration for starting a new build
+message StartBuildRequest {
+  // Config file path or inline YAML content
+  string config = 1;
+
+  // Build target (e.g., "core-image-minimal")
+  string target = 2;
+
+  // Force clean build
+  bool force_clean = 3;
+
+  // Force image regeneration only
+  bool force_image = 4;
+
+  // Additional environment variables
+  map<string, string> env_vars = 5;
+}
+
+// BuildStatusRequest requests status for a specific build
+message BuildStatusRequest {
+  string build_id = 1;
+}
+
+// BuildStatus contains the current state of a build
+message BuildStatus {
+  string build_id = 1;
+  string target = 2;
+  BuildState state = 3;
+  int32 exit_code = 4;
+  string error_message = 5;
+  int64 started_at = 6;  // Unix timestamp
+  int64 completed_at = 7; // Unix timestamp
+  string config_path = 8;
+}
+
+// BuildState represents the current state of a build
+enum BuildState {
+  BUILD_STATE_UNKNOWN = 0;
+  BUILD_STATE_QUEUED = 1;
+  BUILD_STATE_PREPARING = 2;
+  BUILD_STATE_BUILDING = 3;
+  BUILD_STATE_EXTRACTING_ARTIFACTS = 4;
+  BUILD_STATE_COMPLETED = 5;
+  BUILD_STATE_FAILED = 6;
+  BUILD_STATE_CANCELLED = 7;
+}
+
+// StreamLogsRequest requests log streaming for a specific build
+message StreamLogsRequest {
+  string build_id = 1;
+  bool follow = 2; // Continue streaming new logs
+}
+
+// LogLine represents a single log line
+message LogLine {
+  int64 timestamp = 1;  // Unix timestamp in nanoseconds
+  string stream = 2;     // "stdout" or "stderr"
+  string content = 3;    // Log line content
+}
+
+// ListArtifactsRequest requests artifacts for a specific build
+message ListArtifactsRequest {
+  string build_id = 1;
+}
+
+// ArtifactsList contains all artifacts from a build
+message ArtifactsList {
+  string build_id = 1;
+  repeated Artifact artifacts = 2;
+}
+
+// Artifact represents a single build artifact
+message Artifact {
+  string name = 1;
+  string path = 2;
+  int64 size = 3;
+  string checksum = 4;
+}
+
+// CancelBuildRequest requests cancellation of a build
+message CancelBuildRequest {
+  string build_id = 1;
+}
+
+// CancelResult indicates the result of a cancellation request
+message CancelResult {
+  bool success = 1;
+  string message = 2;
+}
+
+// ListBuildsRequest requests a list of builds
+message ListBuildsRequest {
+  // Filter by state (empty = all states)
+  repeated BuildState states = 1;
+
+  // Maximum number of results
+  int32 limit = 2;
+}
+
+// BuildsList contains a list of builds
+message BuildsList {
+  repeated BuildStatus builds = 1;
+}

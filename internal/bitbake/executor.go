@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/intrik8-labs/smidr/internal/config"
-	"github.com/intrik8-labs/smidr/internal/container"
+	"github.com/schererja/smidr/internal/config"
+	"github.com/schererja/smidr/internal/container"
 )
 
 // BuildExecutor handles bitbake build execution

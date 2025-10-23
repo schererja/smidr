@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/intrik8-labs/smidr/internal/cli"
+	"github.com/schererja/smidr/internal/cli"
 )
 
 func main() {

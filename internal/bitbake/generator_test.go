@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intrik8-labs/smidr/internal/config"
+	"github.com/schererja/smidr/internal/config"
 )
 
 func minimalConfig() *config.Config {
