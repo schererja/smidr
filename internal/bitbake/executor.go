@@ -381,10 +381,16 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 				}
 			}
 
-			// Targeted cleanup for shared area file conflicts (sstate-cache RPM conflicts)
+			// Targeted cleanup for shared area file conflicts (sstate-cache package conflicts)
 			if strings.Contains(stderrText, "trying to install files into a shared area when those files already exist") {
 				fmt.Printf("🧹 Detected shared area file conflict for recipe '%s' — removing stale deploy artifacts...\n", failedRecipe)
-				cleanDeployCmd := []string{"bash", "-c", fmt.Sprintf("rm -rf /home/builder/build/deploy/rpm/*/%s-*.rpm 2>/dev/null || true", failedRecipe)}
+
+				// Clean up all package formats to be thorough (rpm, ipk, deb)
+				cleanDeployCmd := []string{"bash", "-c", fmt.Sprintf(
+					"rm -rf /home/builder/build/deploy/rpm/*/%s-*.rpm /home/builder/build/deploy/ipk/*/%s-*.ipk /home/builder/build/deploy/deb/*/%s-*.deb 2>/dev/null || true",
+					failedRecipe, failedRecipe, failedRecipe,
+				)}
+
 				cleanDeployResult, cleanDeployErr := e.containerMgr.ExecStream(ctx, e.containerID, cleanDeployCmd, 1*time.Minute)
 				if logWriter != nil {
 					for _, line := range strings.Split(string(cleanDeployResult.Stdout), "\n") {
@@ -593,11 +599,11 @@ func (e *BuildExecutor) generateLocalConfContent() string {
 	}
 
 	// Package management
-	if e.config.Build.PackageClasses != "" {
-		content.WriteString(fmt.Sprintf("PACKAGE_CLASSES = \"%s\"\n", e.config.Build.PackageClasses))
-	} else {
-		content.WriteString("PACKAGE_CLASSES = \"package_rpm\"\n")
+	packageClasses := "package_rpm"
+	if e.config.Packages.Classes != "" {
+		packageClasses = e.config.Packages.Classes
 	}
+	content.WriteString(fmt.Sprintf("PACKAGE_CLASSES = \"%s\"\n", packageClasses))
 
 	// Extra image features
 	if e.config.Build.ExtraImageFeatures != "" {
