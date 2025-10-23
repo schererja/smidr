@@ -250,6 +250,22 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 		bbThreads = 2
 	}
 	// Use sed to update the values in local.conf right before running bitbake
+	// Build the sed commands for config updates
+	sedCmds := fmt.Sprintf(`sed -i 's/^BB_NUMBER_THREADS.*/BB_NUMBER_THREADS = "%d"/' conf/local.conf && \
+		sed -i 's/^PARALLEL_MAKE.*/PARALLEL_MAKE = "-j %d"/' conf/local.conf`, bbThreads, parallelMake)
+
+	// Add EULA acceptance if configured
+	if e.config.Advanced.AcceptFSLEULA {
+		sedCmds += ` && \
+		if ! grep -q '^ACCEPT_FSL_EULA' conf/local.conf; then echo 'ACCEPT_FSL_EULA = "1"' >> conf/local.conf; else sed -i 's/^ACCEPT_FSL_EULA.*/ACCEPT_FSL_EULA = "1"/' conf/local.conf; fi`
+	}
+
+	// Build verification command
+	verifyCmd := `grep -E 'BB_NUMBER_THREADS|PARALLEL_MAKE' conf/local.conf`
+	if e.config.Advanced.AcceptFSLEULA {
+		verifyCmd += ` && echo "=== EULA Acceptance ===" && grep ACCEPT_FSL_EULA conf/local.conf`
+	}
+
 	bitbakeCmd := fmt.Sprintf(`set -x && \
 		echo "=== Starting build setup ===" && \
 		cd /home/builder/build && \
@@ -258,12 +274,11 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 		echo "=== Sourcing environment ===" && \
 		source /home/builder/layers/poky/oe-init-build-env . && \
 		echo "=== Updating config ===" && \
-		sed -i 's/^BB_NUMBER_THREADS.*/BB_NUMBER_THREADS = "%d"/' conf/local.conf && \
-		sed -i 's/^PARALLEL_MAKE.*/PARALLEL_MAKE = "-j %d"/' conf/local.conf && \
+		%s && \
 		echo "=== Verifying settings ===" && \
-		grep -E 'BB_NUMBER_THREADS|PARALLEL_MAKE' conf/local.conf && \
+		%s && \
 		echo "=== Starting bitbake ===" && \
-		bitbake %s`, bbThreads, parallelMake, imageName)
+		bitbake %s`, sedCmds, verifyCmd, imageName)
 
 	cmd := []string{"bash", "-c", bitbakeCmd}
 
@@ -588,7 +603,9 @@ func (e *BuildExecutor) generateLocalConfContent() string {
 	content.WriteString("CONF_VERSION = \"2\"\n")
 	content.WriteString("USER_CLASSES ?= \"buildstats\"\n")
 	content.WriteString("PATCHRESOLVE = \"noop\"\n")
-
+	if e.config.Advanced.AcceptFSLEULA {
+		content.WriteString("ACCEPT_FSL_EULA = \"1\"\n")
+	}
 	return content.String()
 }
 

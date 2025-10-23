@@ -65,6 +65,22 @@ smidr status
 smidr artifacts list
 ```
 
+### Use an alternate config file
+
+By default Smidr loads `smidr.yaml` in the current directory. You can point to any config file with `--config`:
+
+```bash
+smidr --config smidr-toradex-ci.yaml build --customer acme
+```
+
+Common per-build overrides are available via environment variables in the CI configs:
+
+- `YOCTO_LAYERS_DIR` — cache of cloned layer repositories (default: `~/.smidr/layers`)
+- `YOCTO_DL_DIR` — shared downloads (default: `~/.smidr/downloads`)
+- `YOCTO_SSTATE_DIR` — shared sstate cache (default: `~/.smidr/sstate`)
+- `YOCTO_TMP_DIR` — build tmpdir (default: per-build under `~/.smidr/builds/.../tmp`)
+- `YOCTO_DEPLOY_DIR` — deploy artifacts (default: per-build under `~/.smidr/builds/.../deploy`)
+
 ### Example Configuration
 
 ```yaml
@@ -96,6 +112,15 @@ artifacts:
   - "*.wic"
   - "*.tar.bz2"
   - "*-sdk-*.sh"
+
+build:
+  # Control parallelism (defaults fall back to 2 if not set)
+  bb_number_threads: 8
+  parallel_make: 8
+
+directories:
+  # Explicitly wiring the layers dir is recommended for CI and local caching
+  layers: ${YOCTO_LAYERS_DIR:-~/.smidr/layers}
 ```
 
 ---
@@ -169,10 +194,44 @@ artifacts:
 - CI/CD integration
 - Multi-vendor BSP support
 - Cloud build service
+- Smidr daemon (gRPC server)
 
 ---
 
 ## 🏢 Built by Jason Scherer
+
+---
+
+## 🛰️ Smidr Daemon (gRPC Server)
+
+The Smidr daemon is a planned gRPC server that exposes Smidr’s build and artifact management capabilities over a network API. This enables remote orchestration, integration with CI/CD systems, and future web UI or automation tools.
+
+### Purpose
+
+- Provide a persistent service for build requests, status queries, and artifact retrieval
+- Enable remote clients (CLI, web UI, CI/CD) to interact with Smidr
+- Support streaming logs and build events
+
+### Core APIs (planned)
+
+- `StartBuild`: Launch a new build with config and parameters
+- `GetBuildStatus`: Query status and logs for a build
+- `ListArtifacts`: Enumerate available build outputs
+- `StreamLogs`: Real-time log streaming for active builds
+- `CancelBuild`: Stop a running build
+
+### Security & Deployment
+
+- Runs as a system daemon or container
+- Auth via mTLS or token (planned)
+- Designed for local or remote use in CI/CD, developer workstations, or build farms
+
+### Implementation
+
+- Written in Go, using the same Smidr engine as the CLI
+- Uses protobuf for API definition (see `docs/daemon.md` for proto outline)
+
+See [docs/daemon.md](docs/daemon.md) for deeper details and API examples.
 
 Smidr is developed by Jason Scherer, a software engineer focused on solving real problems in embedded systems development and DevOps automation.
 
@@ -216,13 +275,74 @@ Nightly or scheduled jobs can perform a full build once and publish sstate/downl
 
 ---
 
-## 🤝 Contributing
+## � Troubleshooting
+
+- Duplicate BBFILE_COLLECTIONS or meta-layer collisions
+  - Cause: auto-discovered test or skeleton layers polluting `BBLAYERS`.
+  - Fix: Smidr now filters `/tests/`, `/testdata/`, `meta-selftest`, and `meta-skeleton` automatically. If you still see duplicates, wipe any hand-edited `conf/bblayers.conf` and re-run, or clean your `directories.layers` cache of stale repos.
+
+- EULA required for NXP/Freescale components
+  - Symptom: build errors referencing FSL EULA or i.MX GPU/VPU recipes.
+  - Fix: set `advanced.accept_fsl_eula: true` in your config (or use the Toradex CI sample). Smidr writes `ACCEPT_FSL_EULA = "1"` to `local.conf`.
+
+- Threads stuck at 2 in local.conf
+  - Cause: wrong config loaded or unset parallelism.
+  - Fix: pass the intended file with `--config`, and set `build.bb_number_threads` and `build.parallel_make`. Smidr logs the parsed values in container setup for easy verification.
+
+- Permission errors under TMPDIR or DEPLOY in containers
+  - Fix: set `directories.tmp` and `directories.deploy` to host-writable paths (see env overrides in Quick Start). Smidr maps these into the container (`/home/builder/tmp`, `.../deploy`) and writes `TMPDIR` accordingly.
+
+- Sstate-only validation produces no new artifacts
+  - Intentional: restore-from-sstate runs are optimized to validate builds quickly.
+  - To generate fresh artifacts: disable or change `advanced.sstate_mirrors` for that job, or run a cleansstate/full build tier. Nightly jobs often publish sstate/downloads for the fast PR tiers.
+
+---
+
+## �🤝 Contributing
 
 We welcome contributions! Smidr is built by embedded developers, for embedded developers.
 
 1. Check our [Contributing Guide](CONTRIBUTING.md)
 2. Look at [open issues](https://github.com/schereja/smidr/issues)
 3. Join the discussion in [GitHub Discussions](https://github.com/schereja/smidr/discussions)
+
+## ⚙️ Configuration essentials
+
+A few key settings make Smidr builds fast, reproducible, and CI-friendly:
+
+- Base selection
+  - Set `base.provider`, `base.machine`, `base.distro`, and `base.version` to match your BSP.
+  - If you select a Toradex machine like `verdin-imx8mp` without the required BSP layers present, Smidr safely falls back to `qemux86-64` in container preflights to keep CI green while you wire the layers.
+
+- Layers discovery
+  - Smidr recurses each repo under `directories.layers` to auto-include sublayers with a valid `conf/layer.conf`.
+  - It skips test/example layers automatically: `/tests/`, `/testdata/`, `meta-selftest`, `meta-skeleton`.
+  - If you set `yocto_series` (e.g. `kirkstone`), Smidr includes only layers compatible with that series via `LAYERSERIES_COMPAT_*` checks.
+
+- Parallelism
+  - Control with `build.bb_number_threads` and `build.parallel_make`. Values <= 0 default to 2 for safety in constrained runners.
+  - Recommended: 8 on modern CI executors; tune to your runner’s CPU/memory.
+
+- Package format
+  - Default is `package_rpm`. For smaller artifacts and common OE setups, use IPK: `packages.classes: package_ipk` (the CI configs already do this).
+
+- Licenses and EULA
+  - For NXP/Freescale GPU/VPU components (e.g., Toradex i.MX), set `advanced.accept_fsl_eula: true` to write `ACCEPT_FSL_EULA = "1"`.
+  - This is opt‑in; Smidr never auto‑accepts on your behalf.
+
+- Directories and mounts
+  - Pin these to speed up CI and share caches across builds:
+    - `directories.layers` — shared clone cache of layer repos
+    - `directories.downloads` — BitBake `DL_DIR`
+    - `directories.sstate` — shared state cache (`SSTATE_DIR` or `SSTATE_MIRRORS`)
+    - `directories.tmp` — `TMPDIR`; mount as a writable host path to avoid container permission issues
+    - `directories.deploy` — where artifacts are written
+  - In containers, Smidr prefers `SSTATE_MIRRORS` to a bind-mounted `SSTATE_DIR`, mapping to `/home/builder/sstate-cache` by default for fast restores.
+
+### Validation vs. artifact builds
+
+- Fast validation: rely on `SSTATE_MIRRORS` to hit caches and complete quickly.
+- Clean artifact run: perform a cleansstate or use a job that doesn’t have the sstate available to force full builds and produce fresh artifacts.
 
 ---
 
