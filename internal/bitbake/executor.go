@@ -315,10 +315,9 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 	// If forceImage is set, force regeneration of rootfs and image tasks only (not packages)
 	if e.forceImage {
 		fmt.Printf("🔄 Forcing image regeneration (rootfs + image tasks only)...\n")
-		// Remove only the image task stamps to force re-execution
+		// Use 'clean' to remove only image/rootfs tasks, not the packages they depend on
 		forceCmd := []string{"bash", "-c", fmt.Sprintf(`cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && \
-			bitbake -c clean %s && \
-			bitbake -c cleanall %s`, imageName, imageName)}
+			bitbake -c clean %s`, imageName)}
 		forceResult, forceErr := e.containerMgr.ExecStream(ctx, e.containerID, forceCmd, 10*time.Minute)
 		if logWriter != nil {
 			for _, line := range strings.Split(string(forceResult.Stdout), "\n") {
