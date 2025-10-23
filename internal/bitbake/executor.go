@@ -381,6 +381,23 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 				}
 			}
 
+			// Targeted cleanup for shared area file conflicts (sstate-cache RPM conflicts)
+			if strings.Contains(stderrText, "trying to install files into a shared area when those files already exist") {
+				fmt.Printf("🧹 Detected shared area file conflict for recipe '%s' — removing stale deploy artifacts...\n", failedRecipe)
+				cleanDeployCmd := []string{"bash", "-c", fmt.Sprintf("rm -rf /home/builder/build/deploy/rpm/*/%s-*.rpm 2>/dev/null || true", failedRecipe)}
+				cleanDeployResult, cleanDeployErr := e.containerMgr.ExecStream(ctx, e.containerID, cleanDeployCmd, 1*time.Minute)
+				if logWriter != nil {
+					for _, line := range strings.Split(string(cleanDeployResult.Stdout), "\n") {
+						if line != "" {
+							logWriter.WriteLog("stdout", line)
+						}
+					}
+				}
+				if cleanDeployErr != nil {
+					fmt.Printf("[WARN] Deploy directory cleanup had issues: %v (continuing)\n", cleanDeployErr)
+				}
+			}
+
 			cleansstateCmd := []string{"bash", "-c", fmt.Sprintf("cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && bitbake -c cleansstate %s", failedRecipe)}
 			fmt.Printf("🧹 Running bitbake -c cleansstate %s\n", failedRecipe)
 			cleanResult, cleanErr := e.containerMgr.ExecStream(ctx, e.containerID, cleansstateCmd, 2*time.Hour)
