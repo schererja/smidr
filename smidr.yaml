@@ -51,8 +51,8 @@
       - vim
 
     # Build options
-    parallel_make: 2
-    bb_number_threads: 2
+    parallel_make: 8
+    bb_number_threads: 8
 
   # Output artifacts to extract
   artifacts:
@@ -78,4 +78,3 @@
     # Resource limits
     memory: "8g"
     cpu_count: 2
-  

@@ -27,15 +27,15 @@ build:
   # Build a minimal image to exercise full deploy artifacts
   image: core-image-minimal
   machine: verdin-imx8mp
-  bb_number_threads: 2
-  parallel_make: 2
+  bb_number_threads: 8
+  parallel_make: 8
 artifacts:
-  - "*.rpm"
   - "*.ipk"
-  - "*.deb"
   - "*.tar.bz2"
-  - "*.log"
+  - "*.wic*"
+  - "*.manifest"
 directories:
+  layers: ${YOCTO_LAYERS_DIR:-~/.smidr/layers}
   downloads: ${YOCTO_DL_DIR:-~/.smidr/downloads}
   sstate: ${YOCTO_SSTATE_DIR:-~/.smidr/sstate}
   tmp: ${YOCTO_TMP_DIR:-~/.smidr/tmp}
@@ -49,7 +49,10 @@ advanced:
   premirrors: ${YOCTO_PREMIRRORS:-}
   bb_no_network: ${YOCTO_BB_NO_NETWORK:-false}
   bb_fetch_premirroronly: ${YOCTO_BB_FETCH_PREMIRRORONLY:-false}
+  # IMPORTANT: By setting this to true, you accept the Freescale EULA
+  # Please read it at: https://github.com/Freescale/meta-freescale/blob/kirkstone/EULA
+  accept_fsl_eula: true
 packages:
-  classes: package_rpm
+  classes: package_ipk
 features:
   extra_image_features: ["debug-tweaks"]

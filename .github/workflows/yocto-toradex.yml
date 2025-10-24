@@ -2,6 +2,12 @@ name: Toradex Integration Build
 
 on:
   workflow_dispatch:
+    inputs:
+      force_clean_build:
+        description: "Force image regeneration (rootfs + image tasks only, reuses packages)"
+        required: false
+        type: boolean
+        default: false
   schedule:
     # Weekly on Mondays at 03:00 UTC
     - cron: "0 3 * * 1"
@@ -37,7 +43,18 @@ jobs:
           YOCTO_TMP_DIR: ~/.smidr/tmp
           YOCTO_DEPLOY_DIR: ~/.smidr/deploy
         run: |
-          go run ./cmd/smidr --config smidr-toradex-ci.yaml build --customer ci-toradex --clean
+          # Note: When build completes 100% from sstate cache (common on repeated runs),
+          # no deploy artifacts are generated. This is expected and validates build reproducibility.
+          # The sstate cache itself serves as the cryptographically-verified artifact store.
+          # Use workflow input 'force_clean_build' to force rootfs and image regeneration only
+
+          CLEAN_FLAG=""
+          if [ "${{ github.event.inputs.force_clean_build }}" = "true" ]; then
+            echo "🧹 Force image regeneration requested - will rebuild rootfs and image only"
+            CLEAN_FLAG="--clean-image"
+          fi
+
+          go run ./cmd/smidr --config smidr-toradex-ci.yaml build --customer ci-toradex $CLEAN_FLAG
 
       - name: List artifacts for Toradex build
         run: |

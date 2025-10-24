@@ -2,6 +2,13 @@ name: Multi-Layer Combination Tests
 
 on:
   workflow_dispatch:
+    inputs:
+      force_clean_build:
+        description: "Force image regeneration (rootfs + image tasks only, reuses packages)"
+        required: false
+        type: boolean
+        default: false
+
   schedule:
     # Weekly on Saturdays at 04:00 UTC
     - cron: "0 4 * * 6"
@@ -58,8 +65,17 @@ jobs:
         run: |
           # Note: Sstate-only builds (100% cache hit) will not generate deploy artifacts
           # This validates build reproducibility and layer compatibility
+          # Use workflow input 'force_clean_build' to generate artifacts on first run
           echo "Testing layer combination: ${{ matrix.config.name }}"
-          go run ./cmd/smidr --config ${{ matrix.config.file }} build --customer ${{ matrix.config.customer }}
+
+          CLEAN_FLAG=""
+          if [ "${{ github.event.inputs.force_clean_build }}" = "true" ]; then
+            echo "🧹 Force image regeneration requested - will rebuild rootfs and image only"
+            CLEAN_FLAG="--clean-image"
+          fi
+
+          go run ./cmd/smidr --config ${{ matrix.config.file }} build --customer ${{ matrix.config.customer }} $CLEAN_FLAG
+
 
       - name: List artifacts
         if: always()

@@ -18,6 +18,7 @@ type BuildExecutor struct {
 	containerMgr container.ContainerManager
 	containerID  string
 	workspaceDir string
+	forceImage   bool // If true, force image regeneration without rebuilding packages
 }
 
 // NewBuildExecutor creates a new build executor
@@ -28,6 +29,11 @@ func NewBuildExecutor(cfg *config.Config, containerMgr container.ContainerManage
 		containerID:  containerID,
 		workspaceDir: workspaceDir,
 	}
+}
+
+// SetForceImage sets whether to force image regeneration (rootfs + image tasks only)
+func (e *BuildExecutor) SetForceImage(force bool) {
+	e.forceImage = force
 }
 
 // BuildResult contains the results of a build execution
@@ -244,6 +250,22 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 		bbThreads = 2
 	}
 	// Use sed to update the values in local.conf right before running bitbake
+	// Build the sed commands for config updates
+	sedCmds := fmt.Sprintf(`sed -i 's/^BB_NUMBER_THREADS.*/BB_NUMBER_THREADS = "%d"/' conf/local.conf && \
+		sed -i 's/^PARALLEL_MAKE.*/PARALLEL_MAKE = "-j %d"/' conf/local.conf`, bbThreads, parallelMake)
+
+	// Add EULA acceptance if configured
+	if e.config.Advanced.AcceptFSLEULA {
+		sedCmds += ` && \
+		if ! grep -q '^ACCEPT_FSL_EULA' conf/local.conf; then echo 'ACCEPT_FSL_EULA = "1"' >> conf/local.conf; else sed -i 's/^ACCEPT_FSL_EULA.*/ACCEPT_FSL_EULA = "1"/' conf/local.conf; fi`
+	}
+
+	// Build verification command
+	verifyCmd := `grep -E 'BB_NUMBER_THREADS|PARALLEL_MAKE' conf/local.conf`
+	if e.config.Advanced.AcceptFSLEULA {
+		verifyCmd += ` && echo "=== EULA Acceptance ===" && grep ACCEPT_FSL_EULA conf/local.conf`
+	}
+
 	bitbakeCmd := fmt.Sprintf(`set -x && \
 		echo "=== Starting build setup ===" && \
 		cd /home/builder/build && \
@@ -252,12 +274,11 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 		echo "=== Sourcing environment ===" && \
 		source /home/builder/layers/poky/oe-init-build-env . && \
 		echo "=== Updating config ===" && \
-		sed -i 's/^BB_NUMBER_THREADS.*/BB_NUMBER_THREADS = "%d"/' conf/local.conf && \
-		sed -i 's/^PARALLEL_MAKE.*/PARALLEL_MAKE = "-j %d"/' conf/local.conf && \
+		%s && \
 		echo "=== Verifying settings ===" && \
-		grep -E 'BB_NUMBER_THREADS|PARALLEL_MAKE' conf/local.conf && \
+		%s && \
 		echo "=== Starting bitbake ===" && \
-		bitbake %s`, bbThreads, parallelMake, imageName)
+		bitbake %s`, sedCmds, verifyCmd, imageName)
 
 	cmd := []string{"bash", "-c", bitbakeCmd}
 
@@ -289,6 +310,32 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 	}
 	if fetchResult.ExitCode != 0 {
 		return &BuildResult{Success: false, ExitCode: fetchResult.ExitCode, Output: string(fetchResult.Stdout) + "\n" + string(fetchResult.Stderr)}, fmt.Errorf("pre-fetch failed with exit code %d", fetchResult.ExitCode)
+	}
+
+	// If forceImage is set, force regeneration of rootfs and image tasks only (not packages)
+	if e.forceImage {
+		fmt.Printf("🔄 Forcing image regeneration (rootfs + image tasks only)...\n")
+		// Use 'clean' to remove only image/rootfs tasks, not the packages they depend on
+		forceCmd := []string{"bash", "-c", fmt.Sprintf(`cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && \
+			bitbake -c clean %s`, imageName)}
+		forceResult, forceErr := e.containerMgr.ExecStream(ctx, e.containerID, forceCmd, 10*time.Minute)
+		if logWriter != nil {
+			for _, line := range strings.Split(string(forceResult.Stdout), "\n") {
+				if line != "" {
+					logWriter.WriteLog("stdout", line)
+				}
+			}
+			for _, line := range strings.Split(string(forceResult.Stderr), "\n") {
+				if line != "" {
+					logWriter.WriteLog("stderr", line)
+				}
+			}
+		}
+		if forceErr != nil || forceResult.ExitCode != 0 {
+			fmt.Printf("⚠️  Force image tasks warning (continuing): %v\n", forceErr)
+		} else {
+			fmt.Printf("✅ Image task stamps removed - will regenerate rootfs and image\n")
+		}
 	}
 
 	fmt.Println("📺 Streaming build output...")
@@ -528,11 +575,11 @@ func (e *BuildExecutor) generateLocalConfContent() string {
 	}
 
 	// Package management
-	if e.config.Build.PackageClasses != "" {
-		content.WriteString(fmt.Sprintf("PACKAGE_CLASSES = \"%s\"\n", e.config.Build.PackageClasses))
-	} else {
-		content.WriteString("PACKAGE_CLASSES = \"package_rpm\"\n")
+	packageClasses := "package_rpm"
+	if e.config.Packages.Classes != "" {
+		packageClasses = e.config.Packages.Classes
 	}
+	content.WriteString(fmt.Sprintf("PACKAGE_CLASSES = \"%s\"\n", packageClasses))
 
 	// Extra image features
 	if e.config.Build.ExtraImageFeatures != "" {
@@ -555,7 +602,9 @@ func (e *BuildExecutor) generateLocalConfContent() string {
 	content.WriteString("CONF_VERSION = \"2\"\n")
 	content.WriteString("USER_CLASSES ?= \"buildstats\"\n")
 	content.WriteString("PATCHRESOLVE = \"noop\"\n")
-
+	if e.config.Advanced.AcceptFSLEULA {
+		content.WriteString("ACCEPT_FSL_EULA = \"1\"\n")
+	}
 	return content.String()
 }
 
@@ -590,6 +639,15 @@ func (e *BuildExecutor) generateBBLayersConfContent() string {
 				continue
 			}
 			layerDir := strings.TrimSuffix(confPath, "/conf/layer.conf")
+
+			// Skip test, example, and skeleton layers
+			if strings.Contains(layerDir, "/tests/") ||
+				strings.Contains(layerDir, "/testdata/") ||
+				strings.Contains(layerDir, "/meta-selftest") ||
+				strings.Contains(layerDir, "/meta-skeleton") {
+				continue
+			}
+
 			catCmd := []string{"sh", "-c", fmt.Sprintf("cat '%s'", confPath)}
 			catResult, err := e.containerMgr.Exec(ctx, e.containerID, catCmd, 2*time.Second)
 			confContent := string(catResult.Stdout)

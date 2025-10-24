@@ -64,6 +64,7 @@ func init() {
 	buildCmd.Flags().Bool("fetch-only", false, "Only fetch layers but don't build it")
 	buildCmd.Flags().String("customer", "", "Optional: customer/user name for build directory grouping")
 	buildCmd.Flags().Bool("clean", false, "If set, deletes the build directory before building (for a full rebuild)")
+	buildCmd.Flags().Bool("clean-image", false, "If set, runs 'bitbake -c clean <image>' to regenerate only image artifacts without rebuilding dependencies")
 }
 
 func runBuild(cmd *cobra.Command) error {
@@ -121,6 +122,7 @@ func runBuild(cmd *cobra.Command) error {
 		return fmt.Errorf("error loading configuration: %w", err)
 	}
 	fmt.Printf("✅ Loaded project: %s\n", cfg.Name)
+	fmt.Printf("[DEBUG] Config BBNumberThreads: %d, ParallelMake: %d\n", cfg.Build.BBNumberThreads, cfg.Build.ParallelMake)
 	fmt.Println()
 
 	workDir, err := os.Getwd()
@@ -154,6 +156,14 @@ func runBuild(cmd *cobra.Command) error {
 	var tmpDir string
 	if cfg.Directories.Tmp != "" {
 		tmpDir = expandPath(cfg.Directories.Tmp)
+		// If --clean was requested and we're using a configured (potentially shared) TMPDIR,
+		// clean it to ensure a fresh build with artifacts
+		if clean && customer != "" {
+			// Create a customer-specific subdir in the configured TMPDIR to avoid cleaning shared state
+			tmpDir = fmt.Sprintf("%s/%s-%s", tmpDir, customer, imageName)
+			os.RemoveAll(tmpDir)
+			fmt.Printf("🧹 Cleaned TMPDIR: %s\n", tmpDir)
+		}
 	} else {
 		tmpDir = fmt.Sprintf("%s/tmp", buildDir)
 	}
@@ -503,6 +513,13 @@ func runBuild(cmd *cobra.Command) error {
 		}
 
 		executor := bitbake.NewBuildExecutor(cfg, dm, containerID, containerConfig.WorkspaceDir)
+
+		// Set clean-image flag if requested to force image regeneration
+		cleanImage, _ := cmd.Flags().GetBool("clean-image")
+		if cleanImage {
+			executor.SetForceImage(true)
+		}
+
 		buildResult, err := executor.ExecuteBuild(ctx, logWriter)
 
 		if err != nil {

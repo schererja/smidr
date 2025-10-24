@@ -14,9 +14,10 @@ layers:
     branch: kirkstone
 build:
   image: core-image-minimal
-  bb_number_threads: 2
-  parallel_make: 2
+  bb_number_threads: 8
+  parallel_make: 8
 directories:
+  layers: ${YOCTO_LAYERS_DIR:-~/.smidr/layers}
   downloads: ${YOCTO_DL_DIR:-~/.smidr/downloads}
   sstate: ${YOCTO_SSTATE_DIR:-~/.smidr/sstate}
   tmp: ${YOCTO_TMP_DIR:-~/.smidr/tmp}
@@ -36,6 +37,6 @@ advanced:
   bb_no_network: ${YOCTO_BB_NO_NETWORK:-false}
   bb_fetch_premirroronly: ${YOCTO_BB_FETCH_PREMIRRORONLY:-false}
 packages:
-  classes: package_rpm
+  classes: package_ipk
 features:
   extra_image_features: ["debug-tweaks"]
