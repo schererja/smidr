@@ -8,6 +8,7 @@ on:
         required: false
         type: boolean
         default: false
+
   schedule:
     # Weekly on Saturdays at 04:00 UTC
     - cron: "0 4 * * 6"
@@ -74,6 +75,7 @@ jobs:
           fi
 
           go run ./cmd/smidr --config ${{ matrix.config.file }} build --customer ${{ matrix.config.customer }} $CLEAN_FLAG
+
 
       - name: List artifacts
         if: always()
