@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        v6.33.0
-// source: api/proto/smidr.proto
+// source: smidr.proto
 
 package v1
 
@@ -70,11 +70,11 @@ func (x BuildState) String() string {
 }
 
 func (BuildState) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_proto_smidr_proto_enumTypes[0].Descriptor()
+	return file_smidr_proto_enumTypes[0].Descriptor()
 }
 
 func (BuildState) Type() protoreflect.EnumType {
-	return &file_api_proto_smidr_proto_enumTypes[0]
+	return &file_smidr_proto_enumTypes[0]
 }
 
 func (x BuildState) Number() protoreflect.EnumNumber {
@@ -83,7 +83,7 @@ func (x BuildState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BuildState.Descriptor instead.
 func (BuildState) EnumDescriptor() ([]byte, []int) {
-	return file_api_proto_smidr_proto_rawDescGZIP(), []int{0}
+	return file_smidr_proto_rawDescGZIP(), []int{0}
 }
 
 // StartBuildRequest contains the configuration for starting a new build
@@ -98,14 +98,16 @@ type StartBuildRequest struct {
 	// Force image regeneration only
 	ForceImage bool `protobuf:"varint,4,opt,name=force_image,json=forceImage,proto3" json:"force_image,omitempty"`
 	// Additional environment variables
-	EnvVars       map[string]string `protobuf:"bytes,5,rep,name=env_vars,json=envVars,proto3" json:"env_vars,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	EnvVars map[string]string `protobuf:"bytes,5,rep,name=env_vars,json=envVars,proto3" json:"env_vars,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Optional customer/project name for build ID grouping
+	Customer      string `protobuf:"bytes,6,opt,name=customer,proto3" json:"customer,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *StartBuildRequest) Reset() {
 	*x = StartBuildRequest{}
-	mi := &file_api_proto_smidr_proto_msgTypes[0]
+	mi := &file_smidr_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -117,7 +119,7 @@ func (x *StartBuildRequest) String() string {
 func (*StartBuildRequest) ProtoMessage() {}
 
 func (x *StartBuildRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_smidr_proto_msgTypes[0]
+	mi := &file_smidr_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -130,7 +132,7 @@ func (x *StartBuildRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartBuildRequest.ProtoReflect.Descriptor instead.
 func (*StartBuildRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_smidr_proto_rawDescGZIP(), []int{0}
+	return file_smidr_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *StartBuildRequest) GetConfig() string {
@@ -168,6 +170,13 @@ func (x *StartBuildRequest) GetEnvVars() map[string]string {
 	return nil
 }
 
+func (x *StartBuildRequest) GetCustomer() string {
+	if x != nil {
+		return x.Customer
+	}
+	return ""
+}
+
 // BuildStatusRequest requests status for a specific build
 type BuildStatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -178,7 +187,7 @@ type BuildStatusRequest struct {
 
 func (x *BuildStatusRequest) Reset() {
 	*x = BuildStatusRequest{}
-	mi := &file_api_proto_smidr_proto_msgTypes[1]
+	mi := &file_smidr_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -190,7 +199,7 @@ func (x *BuildStatusRequest) String() string {
 func (*BuildStatusRequest) ProtoMessage() {}
 
 func (x *BuildStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_smidr_proto_msgTypes[1]
+	mi := &file_smidr_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -203,7 +212,7 @@ func (x *BuildStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildStatusRequest.ProtoReflect.Descriptor instead.
 func (*BuildStatusRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_smidr_proto_rawDescGZIP(), []int{1}
+	return file_smidr_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *BuildStatusRequest) GetBuildId() string {
@@ -230,7 +239,7 @@ type BuildStatus struct {
 
 func (x *BuildStatus) Reset() {
 	*x = BuildStatus{}
-	mi := &file_api_proto_smidr_proto_msgTypes[2]
+	mi := &file_smidr_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -242,7 +251,7 @@ func (x *BuildStatus) String() string {
 func (*BuildStatus) ProtoMessage() {}
 
 func (x *BuildStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_smidr_proto_msgTypes[2]
+	mi := &file_smidr_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -255,7 +264,7 @@ func (x *BuildStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildStatus.ProtoReflect.Descriptor instead.
 func (*BuildStatus) Descriptor() ([]byte, []int) {
-	return file_api_proto_smidr_proto_rawDescGZIP(), []int{2}
+	return file_smidr_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *BuildStatus) GetBuildId() string {
@@ -325,7 +334,7 @@ type StreamLogsRequest struct {
 
 func (x *StreamLogsRequest) Reset() {
 	*x = StreamLogsRequest{}
-	mi := &file_api_proto_smidr_proto_msgTypes[3]
+	mi := &file_smidr_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -337,7 +346,7 @@ func (x *StreamLogsRequest) String() string {
 func (*StreamLogsRequest) ProtoMessage() {}
 
 func (x *StreamLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_smidr_proto_msgTypes[3]
+	mi := &file_smidr_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -350,7 +359,7 @@ func (x *StreamLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamLogsRequest.ProtoReflect.Descriptor instead.
 func (*StreamLogsRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_smidr_proto_rawDescGZIP(), []int{3}
+	return file_smidr_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *StreamLogsRequest) GetBuildId() string {
@@ -379,7 +388,7 @@ type LogLine struct {
 
 func (x *LogLine) Reset() {
 	*x = LogLine{}
-	mi := &file_api_proto_smidr_proto_msgTypes[4]
+	mi := &file_smidr_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -391,7 +400,7 @@ func (x *LogLine) String() string {
 func (*LogLine) ProtoMessage() {}
 
 func (x *LogLine) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_smidr_proto_msgTypes[4]
+	mi := &file_smidr_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -404,7 +413,7 @@ func (x *LogLine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogLine.ProtoReflect.Descriptor instead.
 func (*LogLine) Descriptor() ([]byte, []int) {
-	return file_api_proto_smidr_proto_rawDescGZIP(), []int{4}
+	return file_smidr_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *LogLine) GetTimestamp() int64 {
@@ -438,7 +447,7 @@ type ListArtifactsRequest struct {
 
 func (x *ListArtifactsRequest) Reset() {
 	*x = ListArtifactsRequest{}
-	mi := &file_api_proto_smidr_proto_msgTypes[5]
+	mi := &file_smidr_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -450,7 +459,7 @@ func (x *ListArtifactsRequest) String() string {
 func (*ListArtifactsRequest) ProtoMessage() {}
 
 func (x *ListArtifactsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_smidr_proto_msgTypes[5]
+	mi := &file_smidr_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -463,7 +472,7 @@ func (x *ListArtifactsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListArtifactsRequest.ProtoReflect.Descriptor instead.
 func (*ListArtifactsRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_smidr_proto_rawDescGZIP(), []int{5}
+	return file_smidr_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ListArtifactsRequest) GetBuildId() string {
@@ -484,7 +493,7 @@ type ArtifactsList struct {
 
 func (x *ArtifactsList) Reset() {
 	*x = ArtifactsList{}
-	mi := &file_api_proto_smidr_proto_msgTypes[6]
+	mi := &file_smidr_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -496,7 +505,7 @@ func (x *ArtifactsList) String() string {
 func (*ArtifactsList) ProtoMessage() {}
 
 func (x *ArtifactsList) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_smidr_proto_msgTypes[6]
+	mi := &file_smidr_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -509,7 +518,7 @@ func (x *ArtifactsList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArtifactsList.ProtoReflect.Descriptor instead.
 func (*ArtifactsList) Descriptor() ([]byte, []int) {
-	return file_api_proto_smidr_proto_rawDescGZIP(), []int{6}
+	return file_smidr_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ArtifactsList) GetBuildId() string {
@@ -539,7 +548,7 @@ type Artifact struct {
 
 func (x *Artifact) Reset() {
 	*x = Artifact{}
-	mi := &file_api_proto_smidr_proto_msgTypes[7]
+	mi := &file_smidr_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -551,7 +560,7 @@ func (x *Artifact) String() string {
 func (*Artifact) ProtoMessage() {}
 
 func (x *Artifact) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_smidr_proto_msgTypes[7]
+	mi := &file_smidr_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -564,7 +573,7 @@ func (x *Artifact) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Artifact.ProtoReflect.Descriptor instead.
 func (*Artifact) Descriptor() ([]byte, []int) {
-	return file_api_proto_smidr_proto_rawDescGZIP(), []int{7}
+	return file_smidr_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Artifact) GetName() string {
@@ -605,7 +614,7 @@ type CancelBuildRequest struct {
 
 func (x *CancelBuildRequest) Reset() {
 	*x = CancelBuildRequest{}
-	mi := &file_api_proto_smidr_proto_msgTypes[8]
+	mi := &file_smidr_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -617,7 +626,7 @@ func (x *CancelBuildRequest) String() string {
 func (*CancelBuildRequest) ProtoMessage() {}
 
 func (x *CancelBuildRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_smidr_proto_msgTypes[8]
+	mi := &file_smidr_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -630,7 +639,7 @@ func (x *CancelBuildRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelBuildRequest.ProtoReflect.Descriptor instead.
 func (*CancelBuildRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_smidr_proto_rawDescGZIP(), []int{8}
+	return file_smidr_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CancelBuildRequest) GetBuildId() string {
@@ -651,7 +660,7 @@ type CancelResult struct {
 
 func (x *CancelResult) Reset() {
 	*x = CancelResult{}
-	mi := &file_api_proto_smidr_proto_msgTypes[9]
+	mi := &file_smidr_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -663,7 +672,7 @@ func (x *CancelResult) String() string {
 func (*CancelResult) ProtoMessage() {}
 
 func (x *CancelResult) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_smidr_proto_msgTypes[9]
+	mi := &file_smidr_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -676,7 +685,7 @@ func (x *CancelResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelResult.ProtoReflect.Descriptor instead.
 func (*CancelResult) Descriptor() ([]byte, []int) {
-	return file_api_proto_smidr_proto_rawDescGZIP(), []int{9}
+	return file_smidr_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *CancelResult) GetSuccess() bool {
@@ -706,7 +715,7 @@ type ListBuildsRequest struct {
 
 func (x *ListBuildsRequest) Reset() {
 	*x = ListBuildsRequest{}
-	mi := &file_api_proto_smidr_proto_msgTypes[10]
+	mi := &file_smidr_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -718,7 +727,7 @@ func (x *ListBuildsRequest) String() string {
 func (*ListBuildsRequest) ProtoMessage() {}
 
 func (x *ListBuildsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_smidr_proto_msgTypes[10]
+	mi := &file_smidr_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -731,7 +740,7 @@ func (x *ListBuildsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBuildsRequest.ProtoReflect.Descriptor instead.
 func (*ListBuildsRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_smidr_proto_rawDescGZIP(), []int{10}
+	return file_smidr_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListBuildsRequest) GetStates() []BuildState {
@@ -758,7 +767,7 @@ type BuildsList struct {
 
 func (x *BuildsList) Reset() {
 	*x = BuildsList{}
-	mi := &file_api_proto_smidr_proto_msgTypes[11]
+	mi := &file_smidr_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -770,7 +779,7 @@ func (x *BuildsList) String() string {
 func (*BuildsList) ProtoMessage() {}
 
 func (x *BuildsList) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_smidr_proto_msgTypes[11]
+	mi := &file_smidr_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -783,7 +792,7 @@ func (x *BuildsList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildsList.ProtoReflect.Descriptor instead.
 func (*BuildsList) Descriptor() ([]byte, []int) {
-	return file_api_proto_smidr_proto_rawDescGZIP(), []int{11}
+	return file_smidr_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *BuildsList) GetBuilds() []*BuildStatus {
@@ -793,11 +802,11 @@ func (x *BuildsList) GetBuilds() []*BuildStatus {
 	return nil
 }
 
-var File_api_proto_smidr_proto protoreflect.FileDescriptor
+var File_smidr_proto protoreflect.FileDescriptor
 
-const file_api_proto_smidr_proto_rawDesc = "" +
+const file_smidr_proto_rawDesc = "" +
 	"\n" +
-	"\x15api/proto/smidr.proto\x12\bsmidr.v1\"\x86\x02\n" +
+	"\vsmidr.proto\x12\bsmidr.v1\"\xa2\x02\n" +
 	"\x11StartBuildRequest\x12\x16\n" +
 	"\x06config\x18\x01 \x01(\tR\x06config\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\tR\x06target\x12\x1f\n" +
@@ -805,7 +814,8 @@ const file_api_proto_smidr_proto_rawDesc = "" +
 	"forceClean\x12\x1f\n" +
 	"\vforce_image\x18\x04 \x01(\bR\n" +
 	"forceImage\x12C\n" +
-	"\benv_vars\x18\x05 \x03(\v2(.smidr.v1.StartBuildRequest.EnvVarsEntryR\aenvVars\x1a:\n" +
+	"\benv_vars\x18\x05 \x03(\v2(.smidr.v1.StartBuildRequest.EnvVarsEntryR\aenvVars\x12\x1a\n" +
+	"\bcustomer\x18\x06 \x01(\tR\bcustomer\x1a:\n" +
 	"\fEnvVarsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"/\n" +
@@ -872,20 +882,20 @@ const file_api_proto_smidr_proto_rawDesc = "" +
 	"ListBuilds\x12\x1b.smidr.v1.ListBuildsRequest\x1a\x14.smidr.v1.BuildsListB)Z'github.com/schererja/smidr/api/proto/v1b\x06proto3"
 
 var (
-	file_api_proto_smidr_proto_rawDescOnce sync.Once
-	file_api_proto_smidr_proto_rawDescData []byte
+	file_smidr_proto_rawDescOnce sync.Once
+	file_smidr_proto_rawDescData []byte
 )
 
-func file_api_proto_smidr_proto_rawDescGZIP() []byte {
-	file_api_proto_smidr_proto_rawDescOnce.Do(func() {
-		file_api_proto_smidr_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_api_proto_smidr_proto_rawDesc), len(file_api_proto_smidr_proto_rawDesc)))
+func file_smidr_proto_rawDescGZIP() []byte {
+	file_smidr_proto_rawDescOnce.Do(func() {
+		file_smidr_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_smidr_proto_rawDesc), len(file_smidr_proto_rawDesc)))
 	})
-	return file_api_proto_smidr_proto_rawDescData
+	return file_smidr_proto_rawDescData
 }
 
-var file_api_proto_smidr_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_proto_smidr_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
-var file_api_proto_smidr_proto_goTypes = []any{
+var file_smidr_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_smidr_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_smidr_proto_goTypes = []any{
 	(BuildState)(0),              // 0: smidr.v1.BuildState
 	(*StartBuildRequest)(nil),    // 1: smidr.v1.StartBuildRequest
 	(*BuildStatusRequest)(nil),   // 2: smidr.v1.BuildStatusRequest
@@ -901,7 +911,7 @@ var file_api_proto_smidr_proto_goTypes = []any{
 	(*BuildsList)(nil),           // 12: smidr.v1.BuildsList
 	nil,                          // 13: smidr.v1.StartBuildRequest.EnvVarsEntry
 }
-var file_api_proto_smidr_proto_depIdxs = []int32{
+var file_smidr_proto_depIdxs = []int32{
 	13, // 0: smidr.v1.StartBuildRequest.env_vars:type_name -> smidr.v1.StartBuildRequest.EnvVarsEntry
 	0,  // 1: smidr.v1.BuildStatus.state:type_name -> smidr.v1.BuildState
 	8,  // 2: smidr.v1.ArtifactsList.artifacts:type_name -> smidr.v1.Artifact
@@ -926,27 +936,27 @@ var file_api_proto_smidr_proto_depIdxs = []int32{
 	0,  // [0:5] is the sub-list for field type_name
 }
 
-func init() { file_api_proto_smidr_proto_init() }
-func file_api_proto_smidr_proto_init() {
-	if File_api_proto_smidr_proto != nil {
+func init() { file_smidr_proto_init() }
+func file_smidr_proto_init() {
+	if File_smidr_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_smidr_proto_rawDesc), len(file_api_proto_smidr_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_smidr_proto_rawDesc), len(file_smidr_proto_rawDesc)),
 			NumEnums:      1,
 			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_api_proto_smidr_proto_goTypes,
-		DependencyIndexes: file_api_proto_smidr_proto_depIdxs,
-		EnumInfos:         file_api_proto_smidr_proto_enumTypes,
-		MessageInfos:      file_api_proto_smidr_proto_msgTypes,
+		GoTypes:           file_smidr_proto_goTypes,
+		DependencyIndexes: file_smidr_proto_depIdxs,
+		EnumInfos:         file_smidr_proto_enumTypes,
+		MessageInfos:      file_smidr_proto_msgTypes,
 	}.Build()
-	File_api_proto_smidr_proto = out.File
-	file_api_proto_smidr_proto_goTypes = nil
-	file_api_proto_smidr_proto_depIdxs = nil
+	File_smidr_proto = out.File
+	file_smidr_proto_goTypes = nil
+	file_smidr_proto_depIdxs = nil
 }

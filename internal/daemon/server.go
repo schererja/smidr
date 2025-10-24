@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 
 	v1 "github.com/schererja/smidr/api/proto"
+	buildpkg "github.com/schererja/smidr/internal/build"
 	"github.com/schererja/smidr/internal/config"
 )
 
@@ -25,20 +28,20 @@ type Server struct {
 
 // BuildInfo holds information about an active or completed build
 type BuildInfo struct {
-	ID            string
-	Target        string
-	State         v1.BuildState
-	ExitCode      int32
-	ErrorMsg      string
-	StartedAt     time.Time
-	CompletedAt   time.Time
-	ConfigPath    string
-	Config        *config.Config
-	LogBuffer     []v1.LogLine
-	LogMutex      sync.RWMutex
+	ID             string
+	Target         string
+	State          v1.BuildState
+	ExitCode       int32
+	ErrorMsg       string
+	StartedAt      time.Time
+	CompletedAt    time.Time
+	ConfigPath     string
+	Config         *config.Config
+	LogBuffer      []*v1.LogLine
+	LogMutex       sync.RWMutex
 	LogSubscribers map[chan *v1.LogLine]bool
-	cancel        context.CancelFunc
-	ArtifactPaths []string
+	cancel         context.CancelFunc
+	ArtifactPaths  []string
 }
 
 // LogWriter implements bitbake.BuildLogWriter for streaming logs
@@ -57,7 +60,7 @@ func (lw *LogWriter) WriteLog(stream, content string) {
 	defer lw.buildInfo.LogMutex.Unlock()
 
 	// Add to buffer
-	lw.buildInfo.LogBuffer = append(lw.buildInfo.LogBuffer, *logLine)
+	lw.buildInfo.LogBuffer = append(lw.buildInfo.LogBuffer, logLine)
 
 	// Send to all subscribers
 	for ch := range lw.buildInfo.LogSubscribers {
@@ -75,6 +78,11 @@ func NewServer(address string) *Server {
 		address: address,
 		builds:  make(map[string]*BuildInfo),
 	}
+}
+
+// generateShortID creates a short unique identifier (first 8 chars of UUID)
+func generateShortID() string {
+	return uuid.New().String()[:8]
 }
 
 // Start starts the gRPC server
@@ -106,14 +114,33 @@ func (s *Server) Stop() {
 
 // StartBuild handles build start requests
 func (s *Server) StartBuild(ctx context.Context, req *v1.StartBuildRequest) (*v1.BuildStatus, error) {
-	// Load configuration
-	cfg, err := config.Load(req.Config)
+	if req.Config == "" {
+		return nil, fmt.Errorf("config is required (path or inline YAML/JSON content)")
+	}
+
+	// Load configuration: treat req.Config as path if it exists; otherwise as inline content
+	var (
+		cfg             *config.Config
+		err             error
+		configPathLabel string
+	)
+	if st, statErr := os.Stat(req.Config); statErr == nil && !st.IsDir() {
+		cfg, err = config.Load(req.Config)
+		configPathLabel = req.Config
+	} else {
+		cfg, err = config.LoadFromBytes([]byte(req.Config))
+		configPathLabel = "<inline>"
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Generate a unique build ID
-	buildID := fmt.Sprintf("build-%d", time.Now().UnixNano())
+	// Generate a unique build ID using customer name (or config name fallback) and short UUID suffix
+	buildIDPrefix := req.Customer
+	if buildIDPrefix == "" {
+		buildIDPrefix = cfg.Name
+	}
+	buildID := fmt.Sprintf("%s-%s", buildIDPrefix, generateShortID())
 
 	buildCtx, cancel := context.WithCancel(context.Background())
 
@@ -123,9 +150,9 @@ func (s *Server) StartBuild(ctx context.Context, req *v1.StartBuildRequest) (*v1
 		Target:         req.Target,
 		State:          v1.BuildState_BUILD_STATE_QUEUED,
 		StartedAt:      time.Now(),
-		ConfigPath:     req.Config,
+		ConfigPath:     configPathLabel,
 		Config:         cfg,
-		LogBuffer:      make([]v1.LogLine, 0),
+		LogBuffer:      make([]*v1.LogLine, 0),
 		LogSubscribers: make(map[chan *v1.LogLine]bool),
 		cancel:         cancel,
 	}
@@ -140,7 +167,7 @@ func (s *Server) StartBuild(ctx context.Context, req *v1.StartBuildRequest) (*v1
 		Target:     req.Target,
 		State:      v1.BuildState_BUILD_STATE_QUEUED,
 		StartedAt:  buildInfo.StartedAt.Unix(),
-		ConfigPath: req.Config,
+		ConfigPath: configPathLabel,
 	}, nil
 }
 
@@ -152,20 +179,56 @@ func (s *Server) executeBuild(ctx context.Context, buildInfo *BuildInfo, req *v1
 	s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_PREPARING)
 
 	logWriter.WriteLog("stdout", "🚀 Starting build process...")
-	logWriter.WriteLog("stdout", fmt.Sprintf("📝 Config: %s", req.Config))
+	logWriter.WriteLog("stdout", fmt.Sprintf("📝 Config: %s", buildInfo.ConfigPath))
 	logWriter.WriteLog("stdout", fmt.Sprintf("🎯 Target: %s", req.Target))
 
-	// TODO: Implement full build workflow similar to CLI
-	// For now, just mark as completed
-	time.Sleep(2 * time.Second) // Simulate some work
+	// Build options for runner
+	opts := buildpkg.BuildOptions{
+		Target:     req.Target,
+		Customer:   req.Customer,
+		ForceClean: req.ForceClean,
+		ForceImage: req.ForceImage,
+	}
 
-	s.buildsMutex.Lock()
-	buildInfo.State = v1.BuildState_BUILD_STATE_COMPLETED
+	// Bridge for runner logs -> gRPC stream subscribers
+	sink := &runnerLogSink{lw: logWriter}
+
+	// Mark as BUILDING
+	s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_BUILDING)
+
+	// Use runner to execute build
+	runner := buildpkg.NewRunner()
+	result, err := runner.Run(ctx, buildInfo.Config, opts, sink)
+	if err != nil {
+		// Failed
+		buildInfo.ExitCode = 1
+		buildInfo.ErrorMsg = err.Error()
+		buildInfo.CompletedAt = time.Now()
+		s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_FAILED)
+		logWriter.WriteLog("stderr", fmt.Sprintf("❌ Build failed: %v", err))
+		return
+	}
+
+	// Success or non-zero exit
+	buildInfo.ExitCode = int32(result.ExitCode)
 	buildInfo.CompletedAt = time.Now()
-	buildInfo.ExitCode = 0
-	s.buildsMutex.Unlock()
+	if result.Success {
+		s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_COMPLETED)
+		logWriter.WriteLog("stdout", fmt.Sprintf("✅ Build completed in %v", result.Duration))
+	} else {
+		s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_FAILED)
+		logWriter.WriteLog("stderr", fmt.Sprintf("❌ Build finished with errors in %v (exit=%d)", result.Duration, result.ExitCode))
+	}
+}
 
-	logWriter.WriteLog("stdout", "✅ Build completed successfully (stub implementation)!")
+// runnerLogSink adapts daemon LogWriter to the Runner LogSink interface
+type runnerLogSink struct{ lw *LogWriter }
+
+func (s *runnerLogSink) Write(stream string, line string) {
+	if s == nil || s.lw == nil {
+		return
+	}
+	s.lw.WriteLog(stream, line)
 }
 
 // updateBuildState updates the state of a build
@@ -237,7 +300,7 @@ func (s *Server) StreamLogs(req *v1.StreamLogsRequest, stream v1.Smidr_StreamLog
 	// Send existing logs
 	build.LogMutex.RLock()
 	for _, logLine := range build.LogBuffer {
-		if err := stream.Send(&logLine); err != nil {
+		if err := stream.Send(logLine); err != nil {
 			build.LogMutex.RUnlock()
 			return err
 		}

@@ -103,6 +103,12 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	return LoadFromBytes(data)
+}
+
+// LoadFromBytes parses configuration from YAML or JSON bytes, performing
+// environment variable substitution and full validation.
+func LoadFromBytes(data []byte) (*Config, error) {
 	// Perform environment variable substitution
 	data = substituteEnvVars(data)
 
@@ -110,8 +116,6 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
-
-	// Cache block removed; Directories.* is canonical
 
 	// Validate the configuration
 	if err := cfg.Validate(); err != nil {

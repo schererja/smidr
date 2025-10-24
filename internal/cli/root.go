@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	buildcmd "github.com/schererja/smidr/internal/cli/build"
+	clientcmd "github.com/schererja/smidr/internal/cli/client"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -36,6 +38,10 @@ func init() {
 
 	viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
 	viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
+
+	// Add commands from subpackages
+	rootCmd.AddCommand(buildcmd.New())
+	rootCmd.AddCommand(clientcmd.New())
 }
 
 func initConfig() {

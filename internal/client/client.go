@@ -45,10 +45,11 @@ func (c *Client) Close() error {
 }
 
 // StartBuild starts a new build on the daemon
-func (c *Client) StartBuild(ctx context.Context, configPath, target string, forceClean, forceImage bool) (*v1.BuildStatus, error) {
+func (c *Client) StartBuild(ctx context.Context, configPath, target, customer string, forceClean, forceImage bool) (*v1.BuildStatus, error) {
 	req := &v1.StartBuildRequest{
 		Config:     configPath,
 		Target:     target,
+		Customer:   customer,
 		ForceClean: forceClean,
 		ForceImage: forceImage,
 	}

@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v6.33.0
-// source: api/proto/smidr.proto
+// source: smidr.proto
 
 package v1
 
@@ -327,5 +327,5 @@ var Smidr_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "api/proto/smidr.proto",
+	Metadata: "smidr.proto",
 }

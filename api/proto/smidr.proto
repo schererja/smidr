@@ -41,6 +41,9 @@ message StartBuildRequest {
 
   // Additional environment variables
   map<string, string> env_vars = 5;
+
+  // Optional customer/project name for build ID grouping
+  string customer = 6;
 }
 
 // BuildStatusRequest requests status for a specific build

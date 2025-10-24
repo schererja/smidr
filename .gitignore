@@ -30,7 +30,7 @@ go.work.sum
 # Editor/IDE
 # .idea/
 .vscode/
-build/
+/build/
 meta-smidr-custom/
 
 # macOS junk
