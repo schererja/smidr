@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SMIDR Web UI (dev)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <h1>SMIDR Web UI</h1>
+    <div class="env">Daemon: <code id="daemonAddr">localhost:50051</code></div>
+  </header>
+
+  <main>
+    <section class="start">
+      <h2>Start Build</h2>
+      <div class="row">
+        <label>Config (path or inline YAML/JSON)</label>
+        <textarea id="config" rows="6" placeholder="/path/to/config.yaml or paste inline YAML/JSON"></textarea>
+      </div>
+      <div class="row">
+        <label>Target</label>
+        <input id="target" placeholder="core-image-minimal" />
+      </div>
+      <div class="row">
+        <label>Customer</label>
+        <input id="customer" placeholder="acme" />
+      </div>
+      <div class="row flags">
+        <label><input type="checkbox" id="forceClean" /> Force Clean</label>
+        <label><input type="checkbox" id="forceImage" /> Force Image</label>
+      </div>
+      <button id="startBtn">Start</button>
+      <div id="startResult" class="mono"></div>
+    </section>
+
+    <section class="builds">
+      <h2>Builds</h2>
+      <button id="refreshBuilds">Refresh</button>
+      <table id="buildsTable">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>State</th>
+            <th>Target</th>
+            <th>Started</th>
+            <th>Exit</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="logs">
+      <h2>Logs: <span id="logsTitle">none</span></h2>
+      <pre id="logs" class="mono"></pre>
+    </section>
+
+    <section class="artifacts">
+      <h2>Artifacts: <span id="artTitle">none</span></h2>
+      <table id="artifactsTable">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Size</th>
+            <th>Checksum</th>
+            <th>Path</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
