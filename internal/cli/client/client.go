@@ -34,6 +34,7 @@ Examples:
 	clientCmd.AddCommand(clientLogsCmd)
 	clientCmd.AddCommand(clientCancelCmd)
 	clientCmd.AddCommand(clientListCmd)
+	clientCmd.AddCommand(clientArtifactsCmd)
 
 	return clientCmd
 }

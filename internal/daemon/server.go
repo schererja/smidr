@@ -2,9 +2,12 @@ package daemon
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -12,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 
 	v1 "github.com/schererja/smidr/api/proto"
+	"github.com/schererja/smidr/internal/artifacts"
 	buildpkg "github.com/schererja/smidr/internal/build"
 	"github.com/schererja/smidr/internal/config"
 )
@@ -24,6 +28,7 @@ type Server struct {
 	grpcServer  *grpc.Server
 	builds      map[string]*BuildInfo
 	buildsMutex sync.RWMutex
+	artifactMgr *artifacts.ArtifactManager
 }
 
 // BuildInfo holds information about an active or completed build
@@ -74,9 +79,18 @@ func (lw *LogWriter) WriteLog(stream, content string) {
 
 // NewServer creates a new daemon server
 func NewServer(address string) *Server {
+	// Initialize artifact manager with default location
+	artifactMgr, err := artifacts.NewArtifactManager("")
+	if err != nil {
+		// Fall back to a temporary directory if we can't create default location
+		fmt.Printf("[WARNING] Failed to initialize artifact manager: %v\n", err)
+		artifactMgr = nil
+	}
+
 	return &Server{
-		address: address,
-		builds:  make(map[string]*BuildInfo),
+		address:     address,
+		builds:      make(map[string]*BuildInfo),
+		artifactMgr: artifactMgr,
 	}
 }
 
@@ -213,6 +227,19 @@ func (s *Server) executeBuild(ctx context.Context, buildInfo *BuildInfo, req *v1
 	buildInfo.ExitCode = int32(result.ExitCode)
 	buildInfo.CompletedAt = time.Now()
 	if result.Success {
+		// Extract artifacts if artifact manager is available and build succeeded
+		if s.artifactMgr != nil {
+			s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_EXTRACTING_ARTIFACTS)
+			logWriter.WriteLog("stdout", "📦 Extracting artifacts...")
+
+			if err := s.extractArtifacts(ctx, buildInfo, result, logWriter); err != nil {
+				logWriter.WriteLog("stderr", fmt.Sprintf("⚠️ Failed to extract artifacts: %v", err))
+				// Don't fail the build just because artifact extraction failed
+			} else {
+				logWriter.WriteLog("stdout", "✅ Artifacts extracted successfully")
+			}
+		}
+
 		s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_COMPLETED)
 		logWriter.WriteLog("stdout", fmt.Sprintf("✅ Build completed in %v", result.Duration))
 	} else {
@@ -229,6 +256,125 @@ func (s *runnerLogSink) Write(stream string, line string) {
 		return
 	}
 	s.lw.WriteLog(stream, line)
+}
+
+// extractArtifacts extracts build artifacts from the build result
+func (s *Server) extractArtifacts(ctx context.Context, buildInfo *BuildInfo, result *buildpkg.BuildResult, logWriter *LogWriter) error {
+	// Get current user for metadata
+	user := "unknown"
+	if u := os.Getenv("USER"); u != "" {
+		user = u
+	}
+
+	// Create build metadata for artifact manager
+	metadata := artifacts.BuildMetadata{
+		BuildID:       buildInfo.ID,
+		ProjectName:   buildInfo.Target, // Use target as project name
+		User:          user,
+		Timestamp:     buildInfo.StartedAt,
+		ConfigUsed:    map[string]string{"target": buildInfo.Target},
+		BuildDuration: time.Since(buildInfo.StartedAt),
+		TargetImage:   buildInfo.Target,
+		ArtifactSizes: make(map[string]int64),
+		Status:        "success",
+	}
+
+	// We need to create a temporary container to extract artifacts from the deploy directory
+	// Since the original build container is cleaned up, we'll copy artifacts directly from host filesystem
+
+	// For now, let's extract artifacts directly from the build result's deploy directory
+	if result.DeployDir == "" {
+		return fmt.Errorf("no deploy directory specified in build result")
+	}
+
+	// Check if deploy directory exists and has contents
+	deployPath := result.DeployDir
+	if _, err := os.Stat(deployPath); os.IsNotExist(err) {
+		return fmt.Errorf("deploy directory does not exist: %s", deployPath)
+	}
+
+	// Create artifact storage directory
+	artifactPath := s.artifactMgr.GetArtifactPath(buildInfo.ID)
+	if err := os.MkdirAll(artifactPath, 0755); err != nil {
+		return fmt.Errorf("failed to create artifact directory: %w", err)
+	}
+
+	// Copy deploy directory contents to artifact storage
+	logWriter.WriteLog("stdout", fmt.Sprintf("📁 Copying artifacts from %s to %s", deployPath, artifactPath))
+
+	if err := s.copyDirectory(deployPath, filepath.Join(artifactPath, "deploy"), &metadata); err != nil {
+		return fmt.Errorf("failed to copy deploy directory: %w", err)
+	}
+
+	// Save metadata
+	if err := s.artifactMgr.SaveMetadata(metadata); err != nil {
+		return fmt.Errorf("failed to save artifact metadata: %w", err)
+	}
+
+	// Store artifact paths in BuildInfo for later retrieval
+	artifacts, err := s.artifactMgr.ListArtifacts(buildInfo.ID)
+	if err != nil {
+		logWriter.WriteLog("stderr", fmt.Sprintf("Failed to list artifacts: %v", err))
+	} else {
+		buildInfo.ArtifactPaths = artifacts
+	}
+
+	return nil
+}
+
+// copyDirectory recursively copies a directory and calculates file sizes
+func (s *Server) copyDirectory(src, dst string, metadata *artifacts.BuildMetadata) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Calculate relative path from source
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+
+		dstPath := filepath.Join(dst, relPath)
+
+		if info.IsDir() {
+			// Create directory
+			return os.MkdirAll(dstPath, info.Mode())
+		} else {
+			// Copy file
+			if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+				return err
+			}
+
+			srcFile, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer srcFile.Close()
+
+			dstFile, err := os.Create(dstPath)
+			if err != nil {
+				return err
+			}
+			defer dstFile.Close()
+
+			_, err = io.Copy(dstFile, srcFile)
+			if err != nil {
+				return err
+			}
+
+			// Calculate checksum and store size
+			srcFile.Seek(0, 0)
+			hash := sha256.New()
+			io.Copy(hash, srcFile)
+
+			// Store in metadata
+			artifactRelPath := filepath.Join("deploy", relPath)
+			metadata.ArtifactSizes[artifactRelPath] = info.Size()
+		}
+
+		return nil
+	})
 }
 
 // updateBuildState updates the state of a build
@@ -375,11 +521,65 @@ func (s *Server) ListArtifacts(ctx context.Context, req *v1.ListArtifactsRequest
 		return nil, fmt.Errorf("build %s is not completed", req.BuildId)
 	}
 
-	// TODO: Actually list artifacts from the build
+	// Return empty list if artifact manager is not available
+	if s.artifactMgr == nil {
+		return &v1.ArtifactsList{
+			BuildId:   req.BuildId,
+			Artifacts: []*v1.Artifact{},
+		}, nil
+	}
+
+	// Get artifacts from artifact manager
+	artifactFiles, err := s.artifactMgr.ListArtifacts(req.BuildId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list artifacts: %w", err)
+	}
+
+	// Load metadata to get file sizes
+	metadata, err := s.artifactMgr.LoadMetadata(req.BuildId)
+	if err != nil {
+		// If we can't load metadata, just return files without sizes
+		metadata = &artifacts.BuildMetadata{ArtifactSizes: make(map[string]int64)}
+	}
+
+	// Convert to protobuf artifacts
+	var protoArtifacts []*v1.Artifact
+	for _, artifactFile := range artifactFiles {
+		artifact := &v1.Artifact{
+			Name: filepath.Base(artifactFile),
+			Path: artifactFile,
+			Size: metadata.ArtifactSizes[artifactFile],
+		}
+
+		// Calculate checksum if file exists
+		fullPath := filepath.Join(s.artifactMgr.GetArtifactPath(req.BuildId), artifactFile)
+		if checksum, err := s.calculateChecksum(fullPath); err == nil {
+			artifact.Checksum = checksum
+		}
+
+		protoArtifacts = append(protoArtifacts, artifact)
+	}
+
 	return &v1.ArtifactsList{
 		BuildId:   req.BuildId,
-		Artifacts: []*v1.Artifact{},
+		Artifacts: protoArtifacts,
 	}, nil
+}
+
+// calculateChecksum calculates SHA256 checksum of a file
+func (s *Server) calculateChecksum(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
 // CancelBuild cancels a running build

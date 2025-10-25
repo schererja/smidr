@@ -54,3 +54,6 @@ coverage.out
 *.swp
 .env.local
 PR*.md
+# Web UI
+gui/node_modules/
+gui/*.log
