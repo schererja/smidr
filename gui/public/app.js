@@ -50,6 +50,7 @@ const els = {
   refreshBuilds: document.getElementById("refreshBuilds"),
   buildsTable: document.getElementById("buildsTable").querySelector("tbody"),
   logs: document.getElementById("logs"),
+  clearLogs: document.getElementById("clearLogs"),
   logsTitle: document.getElementById("logsTitle"),
   artTitle: document.getElementById("artTitle"),
   artifactsTable: document
@@ -58,6 +59,13 @@ const els = {
 };
 
 let currentLogStream = null;
+// Buffered logging to avoid UI lock-ups on high-volume streams
+const LOG_FLUSH_INTERVAL_MS = 100; // throttle flush
+const LOG_MAX_LINES = 3000; // keep last N lines
+let logBuffer = [];
+let logLines = [];
+let logFlushScheduled = false;
+let logsPaused = false;
 
 function fmtUnixSeconds(s) {
   if (!s) return "";
@@ -70,10 +78,31 @@ function setLogsTitle(id) {
 function setArtTitle(id) {
   els.artTitle.textContent = id || "none";
 }
+function scheduleLogFlush() {
+  if (logFlushScheduled) return;
+  logFlushScheduled = true;
+  setTimeout(() => {
+    logFlushScheduled = false;
+    if (logsPaused) return;
+    if (logBuffer.length === 0) return;
+    // Append buffered lines into main ring buffer
+    for (const s of logBuffer) {
+      logLines.push(s);
+      if (logLines.length > LOG_MAX_LINES) {
+        logLines.splice(0, logLines.length - LOG_MAX_LINES);
+      }
+    }
+    logBuffer = [];
+    // Single DOM write
+    els.logs.textContent = logLines.join("");
+    els.logs.scrollTop = els.logs.scrollHeight;
+  }, LOG_FLUSH_INTERVAL_MS);
+}
+
 function appendLog(line) {
   const s = `[${line.stream || "stdout"}] ${line.content || ""}\n`;
-  els.logs.textContent += s;
-  els.logs.scrollTop = els.logs.scrollHeight;
+  logBuffer.push(s);
+  scheduleLogFlush();
 }
 function renderBuilds(list) {
   els.buildsTable.innerHTML = "";
@@ -95,9 +124,19 @@ function renderBuilds(list) {
     els.buildsTable.appendChild(tr);
   });
 }
+let refreshingBuilds = false;
 async function refreshBuilds() {
-  const data = await api.listBuilds();
-  renderBuilds(data);
+  if (refreshingBuilds) return;
+  refreshingBuilds = true;
+  try {
+    const data = await api.listBuilds();
+    renderBuilds(data);
+  } catch (e) {
+    // best-effort render; ignore transient errors
+    console.error("refreshBuilds failed", e);
+  } finally {
+    refreshingBuilds = false;
+  }
 }
 async function showArtifacts(id) {
   setArtTitle(id);
@@ -136,6 +175,13 @@ function bind() {
 
   els.refreshBuilds.addEventListener("click", refreshBuilds);
 
+  // Clear logs
+  els.clearLogs.addEventListener("click", () => {
+    logBuffer = [];
+    logLines = [];
+    els.logs.textContent = "";
+  });
+
   els.buildsTable.addEventListener("click", async (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
@@ -143,7 +189,10 @@ function bind() {
     const act = btn.getAttribute("data-act");
     if (act === "logs") {
       setLogsTitle(id);
+      // Reset buffers
       els.logs.textContent = "";
+      logBuffer = [];
+      logLines = [];
       if (currentLogStream) currentLogStream.close();
       currentLogStream = api.streamLogs(id, appendLog);
     } else if (act === "status") {
@@ -164,3 +213,10 @@ function bind() {
   await refreshBuilds();
   bind();
 })();
+
+// Ensure we close SSE stream on unload to avoid zombie connections
+window.addEventListener("beforeunload", () => {
+  try {
+    if (currentLogStream) currentLogStream.close();
+  } catch {}
+});
