@@ -182,10 +182,15 @@ func (d *DockerManager) CreateContainer(ctx context.Context, cfg smidrContainer.
 				_ = os.Chmod(deployDir, 0777)
 			}
 		}
+		// Use unique workspace mount target if specified, otherwise default to /home/builder/build
+		workspaceTarget := cfg.WorkspaceMountTarget
+		if workspaceTarget == "" {
+			workspaceTarget = "/home/builder/build"
+		}
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeBind,
 			Source: cfg.BuildDir,
-			Target: "/home/builder/build",
+			Target: workspaceTarget,
 		})
 	}
 

@@ -25,6 +25,7 @@ type LogSink interface {
 
 // BuildOptions captures caller-provided options
 type BuildOptions struct {
+	BuildID    string
 	Target     string
 	Customer   string
 	ForceClean bool
@@ -69,10 +70,15 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 
 	// Determine working directory (not strictly needed since we mount cfg.Directories.Build as workspace)
 	// Basic defaults similar to CLI
+	// IMPORTANT: Use BuildID to ensure each build has isolated directories
 	if cfg.Directories.Build == "" {
 		h, _ := os.UserHomeDir()
-		if opts.Customer != "" {
-			cfg.Directories.Build = filepath.Join(h, ".smidr", "builds", fmt.Sprintf("build-%s", opts.Customer))
+		if opts.BuildID != "" {
+			// Use the unique build ID to prevent concurrent build collisions
+			cfg.Directories.Build = filepath.Join(h, ".smidr", "builds", opts.BuildID)
+		} else if opts.Customer != "" {
+			// Fallback: use customer name + UUID for uniqueness
+			cfg.Directories.Build = filepath.Join(h, ".smidr", "builds", fmt.Sprintf("build-%s-%s", opts.Customer, uuid.New().String()[:8]))
 		} else {
 			cfg.Directories.Build = filepath.Join(h, ".smidr", "builds", fmt.Sprintf("build-%s", uuid.New().String()))
 		}
@@ -151,24 +157,50 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 		}
 	}
 
-	// Container environment
-	env := os.Environ()
-	env = append(env, fmt.Sprintf("TMPDIR=%s", cfg.Directories.Tmp))
+	// Container environment - only pass specific variables, not all host env vars
+	// IMPORTANT: Do NOT export host TMPDIR into the container. BitBake interprets
+	// TMPDIR and will then try to use that path inside the container, which can
+	// point to a non-existent/unwritable host path (e.g. /home/<host>/.smidr/tmp)
+	// and stall the build. Let oe-init-build-env set TMPDIR to "tmp" under the
+	// per-build workspace instead.
+	env := []string{
+		"HOME=/home/builder",
+		"USER=builder",
+	}
+	// Optionally pass through specific needed vars (e.g., proxy settings)
+	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"} {
+		if val := os.Getenv(key); val != "" {
+			env = append(env, fmt.Sprintf("%s=%s", key, val))
+		}
+	}
+
+	// Assign a unique container name based on build ID to prevent collisions
+	containerName := ""
+	containerWorkspace := "/home/builder/build" // default workspace path inside container
+	if opts.BuildID != "" {
+		containerName = fmt.Sprintf("smidr-build-%s", opts.BuildID)
+		// CRITICAL: Use unique workspace path inside container to prevent BitBake server collisions
+		// Each build gets its own workspace so BitBake lock files don't conflict
+		containerWorkspace = fmt.Sprintf("/home/builder/build-%s", opts.BuildID)
+	}
 
 	containerCfg := smidrcontainer.ContainerConfig{
-		Image:          imageToUse,
-		Name:           "", // let Docker assign unless tests override later
-		Env:            env,
-		Cmd:            []string{"echo 'Container ready' && sleep 86400"},
-		DownloadsDir:   cfg.Directories.Downloads,
-		SstateCacheDir: cfg.Directories.SState,
-		BuildDir:       cfg.Directories.Build,
-		WorkspaceDir:   cfg.Directories.Build,
-		LayerDirs:      layerDirs,
-		LayerNames:     layerNames,
-		MemoryLimit:    cfg.Container.Memory,
-		CPUCount:       cfg.Container.CPUCount,
-		TmpDir:         cfg.Directories.Tmp,
+		Image:                imageToUse,
+		Name:                 containerName, // unique per build to prevent Docker name conflicts
+		Env:                  env,
+		Cmd:                  []string{"echo 'Container ready' && sleep 86400"},
+		DownloadsDir:         cfg.Directories.Downloads,
+		SstateCacheDir:       cfg.Directories.SState,
+		BuildDir:             cfg.Directories.Build,
+		WorkspaceDir:         cfg.Directories.Build,
+		WorkspaceMountTarget: containerWorkspace, // unique path inside container prevents BitBake collisions
+		LayerDirs:            layerDirs,
+		LayerNames:           layerNames,
+		MemoryLimit:          cfg.Container.Memory,
+		CPUCount:             cfg.Container.CPUCount,
+		// Keep host tmp mounted if configured by user for auxiliary tooling,
+		// but it will NOT be used by BitBake unless explicitly set in local.conf.
+		TmpDir:               cfg.Directories.Tmp,
 	}
 
 	dm, err := docker.NewDockerManager()
@@ -200,15 +232,29 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 	}
 
 	// Run bitbake
-	executor := bitbake.NewBuildExecutor(cfg, dm, containerID, containerCfg.WorkspaceDir)
+	// Pass the container's workspace path (not host path) so BitBake runs in the right directory
+	executor := bitbake.NewBuildExecutor(cfg, dm, containerID, containerWorkspace)
 	executor.SetForceImage(opts.ForceImage)
 
+	// Set build prefix for log identification (e.g., "[customer/build-abc123]")
+	if opts.Customer != "" && opts.BuildID != "" {
+		executor.SetBuildPrefix(fmt.Sprintf("[%s/%s]", opts.Customer, opts.BuildID[:8]))
+	} else if opts.BuildID != "" {
+		executor.SetBuildPrefix(fmt.Sprintf("[%s]", opts.BuildID[:8]))
+	}
+
 	// Log adapter to forward bitbake output into LogSink
+	// Only forward important messages (errors, warnings, summaries) to reduce noise
 	bbLog := &bitbake.BuildLogWriter{
 		PlainWriter: logWriterFunc(func(p []byte) (int, error) {
 			// Split and forward lines to provided sink
 			for _, line := range strings.Split(string(p), "\n") {
-				if strings.TrimSpace(line) != "" {
+				trimmed := strings.TrimSpace(line)
+				if trimmed == "" {
+					continue
+				}
+				// Only log important lines: errors, warnings, summaries, and key status updates
+				if shouldLogLine(trimmed) {
 					log.Write("stdout", line)
 				}
 			}
@@ -232,3 +278,71 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 type logWriterFunc func(p []byte) (n int, err error)
 
 func (f logWriterFunc) Write(p []byte) (n int, err error) { return f(p) }
+
+// shouldLogLine determines if a BitBake log line should be forwarded to the daemon
+// Only logs errors, warnings, summaries, and key status updates to reduce noise
+func shouldLogLine(line string) bool {
+	// Always log errors and warnings
+	if strings.Contains(line, "ERROR") ||
+		strings.Contains(line, "FAILED") ||
+		strings.Contains(line, "WARNING") ||
+		strings.Contains(line, "WARN") {
+		return true
+	}
+
+	// Log summary and completion messages
+	if strings.HasPrefix(line, "Summary:") ||
+		strings.HasPrefix(line, "NOTE: Tasks Summary:") ||
+		strings.Contains(line, "Build completed") ||
+		strings.Contains(line, "succeeded.") {
+		return true
+	}
+
+	// Log key status markers (emoji-prefixed messages from our scripts)
+	if strings.HasPrefix(line, "🚀") ||
+		strings.HasPrefix(line, "✅") ||
+		strings.HasPrefix(line, "❌") ||
+		strings.HasPrefix(line, "📦") ||
+		strings.HasPrefix(line, "⬇️") ||
+		strings.HasPrefix(line, "📺") ||
+		strings.HasPrefix(line, "===") {
+		return true
+	}
+
+	// Log Initialising and Sstate summary (high-level progress)
+	if strings.HasPrefix(line, "Initialising tasks") ||
+		strings.HasPrefix(line, "Sstate summary:") ||
+		strings.HasPrefix(line, "NOTE: Executing Tasks") {
+		return true
+	}
+
+	// Skip verbose task-by-task "NOTE: Running task N of M" and "NOTE: recipe X: task Y: Started/Succeeded"
+	// These create hundreds of lines of noise
+	if strings.HasPrefix(line, "NOTE: Running task") ||
+		strings.HasPrefix(line, "NOTE: recipe") ||
+		strings.HasPrefix(line, "NOTE: Reconnecting") ||
+		strings.HasPrefix(line, "NOTE: No reply") ||
+		strings.HasPrefix(line, "NOTE: Retrying") {
+		return false
+	}
+
+	// Skip shell command echoes and environment setup noise
+	if strings.HasPrefix(line, "+") ||
+		strings.HasPrefix(line, "++") ||
+		strings.HasPrefix(line, "+++") {
+		return false
+	}
+
+	// Skip layer metadata and config dumps
+	if strings.Contains(line, "meta-") && strings.Contains(line, "=") {
+		return false
+	}
+
+	// Skip empty bitbake status messages
+	if strings.HasPrefix(line, "Bitbake still alive") {
+		return false
+	}
+
+	// Default: skip (most BitBake output is verbose noise)
+	return false
+}

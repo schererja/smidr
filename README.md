@@ -250,6 +250,7 @@ Smidr is developed by Jason Scherer, a software engineer focused on solving real
 - [Architecture Overview](docs/architecture.md)
 - [Contributing Guide](CONTRIBUTING.md)
 - [Cache & Source Management](docs/cache.md)
+- [Concurrent Builds](docs/concurrent-builds.md) — Run multiple builds with shared caches
 
 ### Fast Yocto CI tiers
 

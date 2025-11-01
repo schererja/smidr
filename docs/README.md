@@ -28,6 +28,9 @@ Smidr streamlines Yocto/BitBake builds with containerized execution, shared cach
 ## References
 
 - [Cache & Source Management](cache.md)
+- [Concurrent Builds](concurrent-builds.md) — Running multiple builds with shared caches
+- [Container Backend Design](container-backend-design.md)
+- [Daemon Architecture](daemon.md)
 - [Troubleshooting](troubleshooting.md)
 
 - [Smidr Daemon (gRPC Server)](daemon.md)

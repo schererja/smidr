@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -38,11 +39,12 @@ func init() {
 }
 
 func runDaemon(cmd *cobra.Command, args []string) error {
-	fmt.Println("🚀 Starting Smidr daemon...")
-	fmt.Printf("📡 Listening on %s\n", daemonAddress)
+	log := GetLogger()
+	log.Info("🚀 Starting Smidr daemon...")
+	log.Info("📡 Listening", slog.String("address", daemonAddress))
 
 	// Create the gRPC server
-	server := daemon.NewServer(daemonAddress)
+	server := daemon.NewServer(daemonAddress, log)
 
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -62,7 +64,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	// Wait for shutdown signal or error
 	select {
 	case <-sigCh:
-		fmt.Println("\n🛑 Received shutdown signal")
+		log.Info("\n🛑 Received shutdown signal")
 		server.Stop()
 		return nil
 	case err := <-errCh:

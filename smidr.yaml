@@ -77,4 +77,4 @@
 
     # Resource limits
     memory: "8g"
-    cpu_count: 2
+    cpu_count: 8

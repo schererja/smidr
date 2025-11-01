@@ -7,21 +7,22 @@ import (
 
 // ContainerConfig holds configuration for creating a container
 type ContainerConfig struct {
-	Image          string
-	Name           string
-	Env            []string
-	Cmd            []string
-	Entrypoint     []string
-	Mounts         []Mount
-	DownloadsDir   string   // Host path to mount as /home/builder/downloads
-	SstateCacheDir string   // Host path to mount as /home/builder/sstate-cache
-	BuildDir       string   // Host path to mount as /home/builder/build (persistent Yocto build dir)
-	WorkspaceDir   string   // Host path to mount as /home/builder/work (main workspace)
-	LayerDirs      []string // Host paths to Yocto meta-layers to inject into /home/builder/layers
-	LayerNames     []string // Names corresponding to LayerDirs for proper mounting
-	MemoryLimit    string   `yaml:"memory"`    // e.g. "2g"
-	CPUCount       int      `yaml:"cpu_count"` // Number of CPUs to allocate
-	TmpDir         string   // Host path to mount as /home/builder/tmp
+	Image            string
+	Name             string
+	Env              []string
+	Cmd              []string
+	Entrypoint       []string
+	Mounts           []Mount
+	DownloadsDir     string   // Host path to mount as /home/builder/downloads
+	SstateCacheDir   string   // Host path to mount as /home/builder/sstate-cache
+	BuildDir         string   // Host path to mount as /home/builder/build (persistent Yocto build dir)
+	WorkspaceDir     string   // Host path to mount as /home/builder/work (main workspace)
+	WorkspaceMountTarget string // Container path where WorkspaceDir/BuildDir should be mounted (defaults to /home/builder/build if empty)
+	LayerDirs        []string // Host paths to Yocto meta-layers to inject into /home/builder/layers
+	LayerNames       []string // Names corresponding to LayerDirs for proper mounting
+	MemoryLimit      string   `yaml:"memory"`    // e.g. "2g"
+	CPUCount         int      `yaml:"cpu_count"` // Number of CPUs to allocate
+	TmpDir           string   // Host path to mount as /home/builder/tmp
 }
 
 type Mount struct {

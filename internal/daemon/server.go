@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -18,17 +19,22 @@ import (
 	"github.com/schererja/smidr/internal/artifacts"
 	buildpkg "github.com/schererja/smidr/internal/build"
 	"github.com/schererja/smidr/internal/config"
+	"github.com/schererja/smidr/pkg/logger"
 )
 
 // Server implements the Smidr gRPC service
 type Server struct {
 	v1.UnimplementedSmidrServer
 
-	address     string
-	grpcServer  *grpc.Server
-	builds      map[string]*BuildInfo
-	buildsMutex sync.RWMutex
-	artifactMgr *artifacts.ArtifactManager
+	address        string
+	grpcServer     *grpc.Server
+	builds         map[string]*BuildInfo
+	buildsMutex    sync.RWMutex
+	artifactMgr    *artifacts.ArtifactManager
+	buildSemaphore chan struct{}            // global semaphore to limit concurrent builds based on available resources
+	customerQueues map[string]chan struct{} // per-customer queues for serializing builds within the same customer
+	queuesMutex    sync.RWMutex             // protects customerQueues map
+	logger         *logger.Logger           // structured logger
 }
 
 // BuildInfo holds information about an active or completed build
@@ -51,7 +57,8 @@ type BuildInfo struct {
 
 // LogWriter implements bitbake.BuildLogWriter for streaming logs
 type LogWriter struct {
-	buildInfo *BuildInfo
+	buildInfo   *BuildInfo
+	buildLogger *logger.Logger // structured logger with build context
 }
 
 func (lw *LogWriter) WriteLog(stream, content string) {
@@ -75,23 +82,52 @@ func (lw *LogWriter) WriteLog(stream, content string) {
 			// Don't block if subscriber is slow
 		}
 	}
+
+	// Also log to structured logger if available
+	if lw.buildLogger != nil {
+		if stream == "stderr" {
+			lw.buildLogger.Warn(content, slog.String("stream", stream))
+		} else {
+			lw.buildLogger.Info(content, slog.String("stream", stream))
+		}
+	}
 }
 
 // NewServer creates a new daemon server
-func NewServer(address string) *Server {
+func NewServer(address string, log *logger.Logger) *Server {
 	// Initialize artifact manager with default location
 	artifactMgr, err := artifacts.NewArtifactManager("")
 	if err != nil {
 		// Fall back to a temporary directory if we can't create default location
-		fmt.Printf("[WARNING] Failed to initialize artifact manager: %v\n", err)
+		log.Warn("Failed to initialize artifact manager", slog.String("error", err.Error()))
 		artifactMgr = nil
 	}
 
 	return &Server{
-		address:     address,
-		builds:      make(map[string]*BuildInfo),
-		artifactMgr: artifactMgr,
+		address:        address,
+		builds:         make(map[string]*BuildInfo),
+		artifactMgr:    artifactMgr,
+		customerQueues: make(map[string]chan struct{}),
+		logger:         log,
 	}
+}
+
+// getOrCreateCustomerQueue returns a semaphore channel for the given customer.
+// Each customer gets their own queue to allow parallel builds across customers
+// while serializing builds within the same customer to prevent BitBake deadlocks.
+func (s *Server) getOrCreateCustomerQueue(customer string) chan struct{} {
+	s.queuesMutex.Lock()
+	defer s.queuesMutex.Unlock()
+
+	if queue, exists := s.customerQueues[customer]; exists {
+		return queue
+	}
+
+	// Create new queue with capacity 1 (one build at a time per customer)
+	queue := make(chan struct{}, 1)
+	queue <- struct{}{} // initialize with one token
+	s.customerQueues[customer] = queue
+	return queue
 }
 
 // generateShortID creates a short unique identifier (first 8 chars of UUID)
@@ -109,7 +145,7 @@ func (s *Server) Start() error {
 	s.grpcServer = grpc.NewServer()
 	v1.RegisterSmidrServer(s.grpcServer, s)
 
-	fmt.Printf("🚀 Smidr daemon listening on %s\n", s.address)
+	s.logger.Info("🚀 Smidr daemon listening", slog.String("address", s.address))
 
 	if err := s.grpcServer.Serve(lis); err != nil {
 		return fmt.Errorf("failed to serve: %w", err)
@@ -118,12 +154,36 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// Stop gracefully stops the gRPC server
+// Stop gracefully stops the gRPC server and cancels all running builds
 func (s *Server) Stop() {
+	s.logger.Info("🛑 Stopping daemon...")
+
+	// Cancel all running builds
+	s.buildsMutex.Lock()
+	s.logger.Info("📋 Cancelling active builds", slog.Int("count", len(s.builds)))
+	for buildID, build := range s.builds {
+		if build.State == v1.BuildState_BUILD_STATE_BUILDING ||
+			build.State == v1.BuildState_BUILD_STATE_PREPARING ||
+			build.State == v1.BuildState_BUILD_STATE_QUEUED {
+			s.logger.Info("🚫 Cancelling build",
+				slog.String("buildID", buildID),
+				slog.String("state", build.State.String()))
+			if build.cancel != nil {
+				build.cancel()
+			}
+		}
+	}
+	s.buildsMutex.Unlock()
+
+	// Give builds a moment to clean up
+	time.Sleep(2 * time.Second)
+
+	// Stop the gRPC server
 	if s.grpcServer != nil {
-		fmt.Println("🛑 Stopping daemon...")
 		s.grpcServer.GracefulStop()
 	}
+
+	s.logger.Info("✅ Daemon stopped")
 }
 
 // StartBuild handles build start requests
@@ -187,7 +247,44 @@ func (s *Server) StartBuild(ctx context.Context, req *v1.StartBuildRequest) (*v1
 
 // executeBuild runs the actual build process
 func (s *Server) executeBuild(ctx context.Context, buildInfo *BuildInfo, req *v1.StartBuildRequest) {
-	logWriter := &LogWriter{buildInfo: buildInfo}
+	// Determine the customer key for queuing (use customer name or config name as fallback)
+	customerKey := req.Customer
+	if customerKey == "" {
+		customerKey = buildInfo.Config.Name
+	}
+	if customerKey == "" {
+		customerKey = "default"
+	}
+
+	// Create a build-specific logger with context
+	buildLogger := s.logger.With(
+		slog.String("buildID", buildInfo.ID),
+		slog.String("customer", customerKey),
+		slog.String("target", req.Target),
+	)
+
+	// Create log writer with structured logger
+	logWriter := &LogWriter{
+		buildInfo:   buildInfo,
+		buildLogger: buildLogger,
+	}
+
+	// Get or create a queue for this customer
+	queue := s.getOrCreateCustomerQueue(customerKey)
+
+	// Acquire the customer's build queue token to serialize builds per customer
+	logWriter.WriteLog("stdout", fmt.Sprintf("⏳ Waiting for build slot for customer '%s'...", customerKey))
+	select {
+	case <-queue:
+		// Got the token, proceed with build
+		defer func() {
+			queue <- struct{}{} // return token when done
+		}()
+		logWriter.WriteLog("stdout", "✅ Build slot acquired, proceeding...")
+	case <-ctx.Done():
+		s.failBuild(buildInfo.ID, "Build cancelled while waiting for queue slot")
+		return
+	}
 
 	// Update state to preparing
 	s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_PREPARING)
@@ -198,6 +295,7 @@ func (s *Server) executeBuild(ctx context.Context, buildInfo *BuildInfo, req *v1
 
 	// Build options for runner
 	opts := buildpkg.BuildOptions{
+		BuildID:    buildInfo.ID,
 		Target:     req.Target,
 		Customer:   req.Customer,
 		ForceClean: req.ForceClean,

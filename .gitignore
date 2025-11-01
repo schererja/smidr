@@ -57,3 +57,5 @@ PR*.md
 # Web UI
 gui/node_modules/
 gui/*.log
+
+# (reserved for future SDK artifacts)

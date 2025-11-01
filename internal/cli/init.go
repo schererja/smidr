@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -36,6 +37,8 @@ func init() {
 }
 
 func initProject(projectName string) error {
+	log := GetLogger()
+
 	configPath := "smidr.yaml"
 	if _, err := os.Stat(configPath); err == nil {
 		return fmt.Errorf("configuration file %s already exists", configPath)
@@ -46,9 +49,9 @@ func initProject(projectName string) error {
 	if err := os.WriteFile(configPath, []byte(template), 0644); err != nil {
 		return fmt.Errorf("failed to write configuration file: %w", err)
 	}
-	fmt.Printf("✅ Initialized Smidr project: %s\n", projectName)
-	fmt.Println("📝 Edit smidr.yaml to configure your build")
-	fmt.Println("🚀 Run 'smidr build' to start building")
+	log.Info("✅ Initialized Smidr project: %s\n", slog.String("projectName", projectName))
+	log.Info("📝 Edit smidr.yaml to configure your build")
+	log.Info("🚀 Run 'smidr build' to start building")
 	return nil
 }
 
