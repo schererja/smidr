@@ -309,7 +309,7 @@ func (s *Server) executeBuild(ctx context.Context, buildInfo *BuildInfo, req *v1
 	s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_BUILDING)
 
 	// Use runner to execute build
-	runner := buildpkg.NewRunner()
+	runner := buildpkg.NewRunner(logWriter.buildLogger)
 	result, err := runner.Run(ctx, buildInfo.Config, opts, sink)
 	if err != nil {
 		// Failed
@@ -435,34 +435,34 @@ func (s *Server) copyDirectory(src, dst string, metadata *artifacts.BuildMetadat
 
 		dstPath := filepath.Join(dst, relPath)
 
-	    // Preserve symlinks to avoid dereferencing directory links (e.g., deploy/licenses/*-<machine>)
-	    if info.Mode()&os.ModeSymlink != 0 {
-		    // Read the symlink target and recreate the symlink at destination
-		    target, err := os.Readlink(path)
-		    if err != nil {
-			    return err
-		    }
-		    // Ensure destination parent exists
-		    if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
-			    return err
-		    }
-		    // Best-effort remove an existing file/dir at dstPath before creating the symlink
-		    _ = os.RemoveAll(dstPath)
-		    if err := os.Symlink(target, dstPath); err != nil {
-			    return err
-		    }
-		    // Record size as 0 for symlinks in metadata (content tracked at target path if also copied)
-		    if metadata != nil {
-			    artifactRelPath := filepath.Join("deploy", relPath)
-			    metadata.ArtifactSizes[artifactRelPath] = 0
-		    }
-		    return nil
-	    }
+		// Preserve symlinks to avoid dereferencing directory links (e.g., deploy/licenses/*-<machine>)
+		if info.Mode()&os.ModeSymlink != 0 {
+			// Read the symlink target and recreate the symlink at destination
+			target, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			// Ensure destination parent exists
+			if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+				return err
+			}
+			// Best-effort remove an existing file/dir at dstPath before creating the symlink
+			_ = os.RemoveAll(dstPath)
+			if err := os.Symlink(target, dstPath); err != nil {
+				return err
+			}
+			// Record size as 0 for symlinks in metadata (content tracked at target path if also copied)
+			if metadata != nil {
+				artifactRelPath := filepath.Join("deploy", relPath)
+				metadata.ArtifactSizes[artifactRelPath] = 0
+			}
+			return nil
+		}
 
-	    if info.IsDir() {
-		    // Create directory
-		    return os.MkdirAll(dstPath, info.Mode())
-	    } else {
+		if info.IsDir() {
+			// Create directory
+			return os.MkdirAll(dstPath, info.Mode())
+		} else {
 			// Copy file
 			if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
 				return err

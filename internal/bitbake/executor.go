@@ -10,6 +10,7 @@ import (
 
 	"github.com/schererja/smidr/internal/config"
 	"github.com/schererja/smidr/internal/container"
+	"github.com/schererja/smidr/pkg/logger"
 )
 
 // BuildExecutor handles bitbake build execution
@@ -20,10 +21,11 @@ type BuildExecutor struct {
 	workspaceDir string
 	forceImage   bool   // If true, force image regeneration without rebuilding packages
 	buildPrefix  string // Prefix for log messages (e.g., "[customer/build-123]")
+	logger       *logger.Logger
 }
 
 // NewBuildExecutor creates a new build executor
-func NewBuildExecutor(cfg *config.Config, containerMgr container.ContainerManager, containerID string, workspaceDir string) *BuildExecutor {
+func NewBuildExecutor(cfg *config.Config, containerMgr container.ContainerManager, containerID string, workspaceDir string, logger *logger.Logger) *BuildExecutor {
 	return &BuildExecutor{
 		config:       cfg,
 		containerMgr: containerMgr,
@@ -572,12 +574,15 @@ func (e *BuildExecutor) generateLocalConfContent() string {
 	fmt.Printf("[INFO] Container build config: BB_NUMBER_THREADS=%d, PARALLEL_MAKE=-j%d\n", bbThreads, parallelMake)
 
 	// Directory settings
+	// Always share downloads and sstate across builds to maximize cache hits.
 	content.WriteString("DL_DIR = \"/home/builder/downloads\"\n")
-	// Use SSTATE_MIRRORS instead of SSTATE_DIR to avoid permission issues. Allow override via config.
+	// Write sstate to the shared, bind-mounted cache so subsequent builds reuse artifacts.
+	// This prevents unnecessary recompiles when nothing changed.
+	content.WriteString("SSTATE_DIR = \"/home/builder/sstate-cache\"\n")
+	// Optional: allow users to add mirrors (e.g., corporate or remote) via config.
+	// By default we avoid setting SSTATE_MIRRORS to silence hash equivalence warnings when not needed.
 	if strings.TrimSpace(e.config.Advanced.SStateMirrors) != "" {
 		content.WriteString(fmt.Sprintf("SSTATE_MIRRORS = \"%s\"\n", e.config.Advanced.SStateMirrors))
-	} else {
-		content.WriteString("SSTATE_MIRRORS = \"file://.* file:///home/builder/sstate-cache/PATH\"\n")
 	}
 
 	// If a host tmp directory is mounted, direct TMPDIR to it so BitBake writes under a writable path

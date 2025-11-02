@@ -15,6 +15,7 @@ import (
 	smidrcontainer "github.com/schererja/smidr/internal/container"
 	"github.com/schererja/smidr/internal/container/docker"
 	"github.com/schererja/smidr/internal/source"
+	"github.com/schererja/smidr/pkg/logger"
 )
 
 // LogSink is a minimal interface for streaming logs
@@ -43,10 +44,14 @@ type BuildResult struct {
 }
 
 // Runner executes the Yocto build pipeline
-type Runner struct{}
+type Runner struct {
+	logger *logger.Logger
+}
 
 // NewRunner creates a new build Runner
-func NewRunner() *Runner { return &Runner{} }
+func NewRunner(logger *logger.Logger) *Runner {
+	return &Runner{logger: logger}
+}
 
 // Run orchestrates directory setup, layer fetch, container start, bitbake execution, and cleanup
 func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions, log LogSink) (*BuildResult, error) {
@@ -200,7 +205,7 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 		CPUCount:             cfg.Container.CPUCount,
 		// Keep host tmp mounted if configured by user for auxiliary tooling,
 		// but it will NOT be used by BitBake unless explicitly set in local.conf.
-		TmpDir:               cfg.Directories.Tmp,
+		TmpDir: cfg.Directories.Tmp,
 	}
 
 	dm, err := docker.NewDockerManager()
@@ -233,7 +238,7 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 
 	// Run bitbake
 	// Pass the container's workspace path (not host path) so BitBake runs in the right directory
-	executor := bitbake.NewBuildExecutor(cfg, dm, containerID, containerWorkspace)
+	executor := bitbake.NewBuildExecutor(cfg, dm, containerID, containerWorkspace, r.logger)
 	executor.SetForceImage(opts.ForceImage)
 
 	// Set build prefix for log identification (e.g., "[customer/build-abc123]")

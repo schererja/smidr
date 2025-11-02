@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"os/user"
@@ -21,6 +22,7 @@ import (
 	config "github.com/schererja/smidr/internal/config"
 	"github.com/schererja/smidr/internal/container"
 	docker "github.com/schererja/smidr/internal/container/docker"
+	"github.com/schererja/smidr/pkg/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -67,6 +69,9 @@ func New() *cobra.Command {
 }
 
 func runBuild(cmd *cobra.Command) error {
+	// Initialize logger
+	log := logger.NewLogger()
+
 	// Set up signal handling for graceful cancellation
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
@@ -75,8 +80,8 @@ func runBuild(cmd *cobra.Command) error {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		sig := <-sigChan
-		fmt.Printf("\n🛑 Received signal %v, initiating graceful shutdown...\n", sig)
+		<-sigChan
+		log.Info("🛑 Received signal, initiating graceful shutdown")
 		cancel()
 	}()
 
@@ -148,21 +153,21 @@ func runBuildOld(cmd *cobra.Command) error {
 		cancel()
 	}()
 
-	fmt.Println("🔨 Starting Smidr build...")
-	fmt.Println()
+	log := logger.NewLogger()
+
+	log.Info("🔨 Starting Smidr build")
 	configFile := viper.GetString("config")
 	if configFile == "" {
 		configFile = "smidr.yaml"
 	}
 
-	fmt.Printf("📄 Loading configuration from %s...\n", configFile)
+	log.Info("📄 Loading configuration", slog.String("file", configFile))
 	cfg, err := config.Load(configFile)
 	if err != nil {
 		return fmt.Errorf("error loading configuration: %w", err)
 	}
-	fmt.Printf("✅ Loaded project: %s\n", cfg.Name)
-	fmt.Printf("[DEBUG] Config BBNumberThreads: %d, ParallelMake: %d\n", cfg.Build.BBNumberThreads, cfg.Build.ParallelMake)
-	fmt.Println()
+	log.Info("✅ Loaded project", slog.String("name", cfg.Name))
+	log.Debug("Config loaded", slog.Int("bb_threads", cfg.Build.BBNumberThreads), slog.Int("parallel_make", cfg.Build.ParallelMake))
 
 	workDir, err := os.Getwd()
 	if err != nil {
@@ -183,7 +188,7 @@ func runBuildOld(cmd *cobra.Command) error {
 		if clean {
 			// Remove the build dir for a full rebuild
 			os.RemoveAll(buildDir)
-			fmt.Printf("🧹 Cleaned build directory: %s\n", buildDir)
+			log.Info("🧹 Cleaned build directory", slog.String("path", buildDir))
 		}
 	} else {
 		// Use default unique build directory
@@ -201,7 +206,7 @@ func runBuildOld(cmd *cobra.Command) error {
 			// Create a customer-specific subdir in the configured TMPDIR to avoid cleaning shared state
 			tmpDir = fmt.Sprintf("%s/%s-%s", tmpDir, customer, imageName)
 			os.RemoveAll(tmpDir)
-			fmt.Printf("🧹 Cleaned TMPDIR: %s\n", tmpDir)
+			log.Info("🧹 Cleaned TMPDIR", slog.String("path", tmpDir))
 		}
 	} else {
 		tmpDir = fmt.Sprintf("%s/tmp", buildDir)
@@ -224,10 +229,10 @@ func runBuildOld(cmd *cobra.Command) error {
 	cfg.Directories.Tmp = tmpDir
 	cfg.Directories.Deploy = deployDir
 
-	fmt.Println("🔒 Using:")
-	fmt.Printf("    TMPDIR: %s\n", tmpDir)
-	fmt.Printf("    DEPLOY_DIR: %s\n", deployDir)
-	fmt.Printf("    BUILD_DIR: %s\n", buildDir)
+	log.Info("🔒 Build directories configured",
+		slog.String("tmpdir", tmpDir),
+		slog.String("deploy_dir", deployDir),
+		slog.String("build_dir", buildDir))
 
 	// Expand and resolve all relevant directories
 	// Prefer directories.downloads; fallback to directories.source
@@ -248,12 +253,12 @@ func runBuildOld(cmd *cobra.Command) error {
 
 	// If --fetch-only was requested, stop here to keep CI fast
 	if ok, _ := cmd.Flags().GetBool("fetch-only"); ok {
-		fmt.Println("🛑 Fetch-only mode enabled — skipping container start and build")
+		log.Info("🛑 Fetch-only mode enabled, skipping container start and build")
 		return nil
 	}
 
 	// Step 2: Prepare container config
-	fmt.Println("🐳 Preparing container environment...")
+	log.Info("🐳 Preparing container environment")
 	// Allow tests to override container name and mounts for verification
 	testName := os.Getenv("SMIDR_TEST_CONTAINER_NAME")
 	testDownloads := os.Getenv("SMIDR_TEST_DOWNLOADS_DIR")
@@ -409,51 +414,38 @@ func runBuildOld(cmd *cobra.Command) error {
 		// If the directory exists (even if empty), proceed silently
 	}
 
-	// Print resolved host<->container mappings for clarity
-	fmt.Println()
-	fmt.Printf("🔧 Resolved mounts:\n")
-	fmt.Printf("   Host downloads (DL_DIR): %s -> /home/builder/downloads\n", containerConfig.DownloadsDir)
-	fmt.Printf("   Host sstate-cache: %s -> /home/builder/sstate-cache\n", containerConfig.SstateCacheDir)
-	fmt.Printf("   Host workspace: %s -> /home/builder/work\n", containerConfig.WorkspaceDir)
-	if containerConfig.TmpDir != "" {
-		fmt.Printf("   Host tmp: %s -> /home/builder/tmp\n", containerConfig.TmpDir)
-	}
-	// Print layers directory mount if set, using real layer names
+	// Log resolved host<->container mappings
+	log.Info("🔧 Container mounts configured",
+		slog.String("downloads", containerConfig.DownloadsDir),
+		slog.String("sstate", containerConfig.SstateCacheDir),
+		slog.String("workspace", containerConfig.WorkspaceDir),
+		slog.String("tmp", containerConfig.TmpDir))
+	// Log layers
 	if len(containerConfig.LayerDirs) > 0 {
-		for i, dir := range containerConfig.LayerDirs {
-			// Use the corresponding layer name if available
-			var layerName string
-			if i < len(containerConfig.LayerNames) && containerConfig.LayerNames[i] != "" {
-				layerName = containerConfig.LayerNames[i]
-			} else {
-				layerName = fmt.Sprintf("layer-%d", i)
-			}
-			fmt.Printf("   Host layer %s: %s -> /home/builder/layers/%s\n", layerName, dir, layerName)
-		}
+		log.Debug("Layers mounted", slog.Int("count", len(containerConfig.LayerDirs)))
 	}
 	if containerConfig.DownloadsDir == cfg.Directories.Source && containerConfig.DownloadsDir != "" {
-		fmt.Println("⚠️  Note: downloads and sources are the same path on host — this can cause confusion. Consider setting directories.downloads and directories.source to distinct paths in smidr.yaml.")
+		log.Warn("⚠️ Downloads and sources use same path, consider separating them in smidr.yaml")
 	}
 
 	// Step 4: Pull image (skip pulling if a test image override is provided or image exists locally)
 	if testImage == "" {
 		// Check if image exists locally first
 		if dm.ImageExists(ctx, containerConfig.Image) {
-			fmt.Printf("🐳 Using local image: %s\n", containerConfig.Image)
+			log.Info("🐳 Using local image", slog.String("image", containerConfig.Image))
 		} else {
 			// Image doesn't exist locally, try to pull it
-			fmt.Println("🐳 Pulling container image...")
+			log.Info("🐳 Pulling container image", slog.String("image", containerConfig.Image))
 			if err := dm.PullImage(ctx, containerConfig.Image); err != nil {
 				return fmt.Errorf("failed to pull image: %w", err)
 			}
 		}
 	} else {
-		fmt.Printf("🐳 Using prebuilt test image: %s\n", containerConfig.Image)
+		log.Info("🐳 Using prebuilt test image", slog.String("image", containerConfig.Image))
 	}
 
 	// Step 5: Create container
-	fmt.Printf("🧭 Mounting host downloads dir: %s -> /home/builder/downloads\n", containerConfig.DownloadsDir)
-	fmt.Println("🐳 Creating container...")
+	log.Info("🐳 Creating container")
 	containerID, err := dm.CreateContainer(ctx, containerConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create container: %w", err)
@@ -463,46 +455,39 @@ func runBuildOld(cmd *cobra.Command) error {
 	// But skip cleanup if SMIDR_DEBUG_KEEP_CONTAINER is set
 	defer func() {
 		if os.Getenv("SMIDR_DEBUG_KEEP_CONTAINER") != "" {
-			fmt.Printf("⚠️  DEBUG MODE: Container %s is being kept for inspection\n", containerID)
-			fmt.Printf("    Inspect with: docker inspect %s\n", containerID)
-			fmt.Printf("    Check logs with: docker logs %s\n", containerID)
-			fmt.Printf("    Remove with: docker rm -f %s\n", containerID)
+			log.Warn("⚠️ DEBUG MODE: Container kept for inspection", slog.String("container_id", containerID))
 			return
 		}
-		fmt.Println("🧹 Cleaning up container...")
-		os.Stdout.Sync() // Flush stdout to ensure log is written
+		log.Info("🧹 Cleaning up container")
 		stopErr := dm.StopContainer(ctx, containerID, 2*time.Second)
 		if stopErr != nil {
-			fmt.Printf("⚠️  Failed to stop container: %v\n", stopErr)
+			log.Warn("Failed to stop container", slog.String("error", stopErr.Error()))
 		}
 		removeErr := dm.RemoveContainer(ctx, containerID, true)
 		if removeErr != nil {
-			fmt.Printf("⚠️  Failed to remove container: %v\n", removeErr)
+			log.Warn("Failed to remove container", slog.String("error", removeErr.Error()))
 		}
-		os.Stdout.Sync() // Flush again after cleanup
 	}()
 
 	// Step 7: Start container
-	fmt.Println("🐳 Starting container...")
+	log.Info("🐳 Starting container", slog.String("id", containerID))
 	if err := dm.StartContainer(ctx, containerID); err != nil {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
-	// Print container ID for debugging
-	fmt.Printf("📦 Container ID: %s\n", containerID)
-	fmt.Printf("   Monitor with: docker stats %s\n", containerID)
+	log.Debug("Container started", slog.String("id", containerID))
 
 	// Add a short delay if debugging to allow user to start monitoring
 	if os.Getenv("SMIDR_DEBUG_KEEP_CONTAINER") != "" {
-		fmt.Println("⏳ Pausing 5 seconds for monitoring setup...")
+		log.Info("⏳ Pausing 5 seconds for monitoring setup")
 		time.Sleep(5 * time.Second)
 	}
 
 	// Step 8: Execute the actual build
 	if os.Getenv("SMIDR_TEST_WRITE_MARKERS") != "1" {
 		// Only run real build if not in test mode
-		fmt.Println("🚀 Starting Yocto build...")
-		fmt.Println("💡 Use Ctrl+C to gracefully cancel the build at any time")
+		log.Info("🚀 Starting Yocto build")
+		log.Info("💡 Use Ctrl+C to gracefully cancel the build")
 
 		// Prepare log files in the build directory
 		logDir := cfg.Directories.Build
@@ -525,7 +510,7 @@ func runBuildOld(cmd *cobra.Command) error {
 			JSONLWriter: jsonlLogFile,
 		}
 
-		executor := bitbake.NewBuildExecutor(cfg, dm, containerID, containerConfig.WorkspaceDir)
+		executor := bitbake.NewBuildExecutor(cfg, dm, containerID, containerConfig.WorkspaceDir, log)
 
 		// Set clean-image flag if requested to force image regeneration
 		cleanImage, _ := cmd.Flags().GetBool("clean-image")
@@ -538,48 +523,39 @@ func runBuildOld(cmd *cobra.Command) error {
 		if err != nil {
 			// Check if the error was due to context cancellation (signal handling)
 			if ctx.Err() == context.Canceled {
-				fmt.Printf("🛑 Build was cancelled by user signal\n")
+				log.Info("🛑 Build cancelled by user signal")
 				if buildResult != nil {
-					fmt.Printf("Build was running for: %v before cancellation\n", buildResult.Duration)
+					log.Info("Build duration before cancel", slog.Duration("duration", buildResult.Duration))
 				}
 				return fmt.Errorf("build cancelled by user")
 			}
 
-			fmt.Printf("❌ Build failed: %v\n", err)
+			log.Error("❌ Build failed", err)
 			if buildResult != nil {
-				fmt.Printf("Build took: %v\n", buildResult.Duration)
-				if buildResult.Error != "" {
-					fmt.Printf("Error details: %s\n", buildResult.Error)
-				}
-				// Show both stdout and stderr for better debugging
-				if buildResult.Output != "" {
-					fmt.Printf("Build output (last 3000 chars):\n%s\n", getTailString(buildResult.Output, 3000))
-				}
-				if buildResult.Error != "" && buildResult.Error != buildResult.Output {
-					fmt.Printf("Build error output:\n%s\n", buildResult.Error)
-				}
+				log.Info("Build duration", slog.Duration("duration", buildResult.Duration))
 			}
 			return fmt.Errorf("build execution failed: %w", err)
 		}
 
-		fmt.Printf("✅ Build completed successfully in %v\n", buildResult.Duration)
-		fmt.Printf("Exit code: %d\n", buildResult.ExitCode)
+		log.Info("✅ Build completed successfully",
+			slog.Duration("duration", buildResult.Duration),
+			slog.Int("exit_code", buildResult.ExitCode))
 
 		// Extract build artifacts
-		fmt.Println("📦 Extracting build artifacts...")
+		log.Info("📦 Extracting build artifacts")
 		if err := extractBuildArtifacts(ctx, dm, containerID, cfg, buildResult.Duration); err != nil {
-			fmt.Printf("[WARNING] Failed to extract artifacts: %v\n", err)
+			log.Warn("Failed to extract artifacts", slog.String("error", err.Error()))
 			// Don't fail the build for artifact extraction errors
 		}
 	} else {
 		// Test mode - run marker validation logic
-		fmt.Println("🚀 Build process running in test mode (SMIDR_TEST_WRITE_MARKERS=1)")
+		log.Info("🚀 Build process running in test mode")
 		if err := runTestMarkerValidation(ctx, dm, containerID, containerConfig, cfg); err != nil {
 			return fmt.Errorf("test marker validation failed: %w", err)
 		}
 	}
 
-	fmt.Println("💡 Use 'smidr artifacts list' to view build artifacts once available")
+	log.Info("💡 Use 'smidr artifacts list' to view build artifacts")
 
 	return nil // Build completed successfully
 }

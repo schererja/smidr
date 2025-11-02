@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -17,10 +18,12 @@ import (
 	buildpkg "github.com/schererja/smidr/internal/build"
 	config "github.com/schererja/smidr/internal/config"
 	docker "github.com/schererja/smidr/internal/container/docker"
+	"github.com/schererja/smidr/pkg/logger"
 )
 
 // runBuildRefactored is a simplified version using the shared runner
 func runBuildRefactored(ctx context.Context, configFile string, flags buildFlags) error {
+	log := logger.NewLogger()
 	// Helper to expand ~ and make absolute
 	expandPath := func(path string) string {
 		if path == "" {
@@ -157,12 +160,12 @@ func runBuildRefactored(ctx context.Context, configFile string, flags buildFlags
 		stdout: io.MultiWriter(os.Stdout, plainLogFile),
 	}
 
-	fmt.Println("🚀 Starting Yocto build via runner...")
-	fmt.Println("💡 Use Ctrl+C to gracefully cancel the build at any time")
-	fmt.Printf("Project: %s - %s\n", cfg.Name, cfg.Description)
+	log.Info("🚀 Starting Yocto build via runner")
+	log.Info("💡 Use Ctrl+C to gracefully cancel the build")
+	log.Info("Project loaded", slog.String("name", cfg.Name), slog.String("description", cfg.Description))
 
 	// Use the shared runner
-	runner := buildpkg.NewRunner()
+	runner := buildpkg.NewRunner(log)
 	buildResult, err := runner.Run(ctx, cfg, opts, logSink)
 
 	if err != nil {
