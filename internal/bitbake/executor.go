@@ -222,12 +222,23 @@ func (e *BuildExecutor) sourceEnvironment(ctx context.Context) error {
 			return fmt.Errorf("build environment not available: poky not found in layers directory. Please ensure layers are properly fetched and mounted")
 		}
 
-		// Check for meta-openembedded (meta-oe etc.)
-		checkOE := []string{"sh", "-c", "if [ -d /home/builder/layers/meta-openembedded/meta-oe ]; then echo present; else echo missing; fi"}
-		oeRes, _ := e.containerMgr.Exec(ctx, e.containerID, checkOE, 5*time.Second)
-		if strings.Contains(string(oeRes.Stdout), "missing") {
-			return fmt.Errorf("build environment not available: meta-openembedded not found in layers directory. Please ensure layers are properly fetched and mounted")
-		}
+	    // Only require meta-openembedded if configured in smidr.yaml layers
+	    requiresMetaOE := false
+	    for _, l := range e.config.Layers {
+		    if strings.EqualFold(l.Name, "meta-openembedded") {
+			    requiresMetaOE = true
+			    break
+		    }
+	    }
+	    if requiresMetaOE {
+		    checkOE := []string{"sh", "-c", "if [ -d /home/builder/layers/meta-openembedded/meta-oe ]; then echo present; else echo missing; fi"}
+		    oeRes, _ := e.containerMgr.Exec(ctx, e.containerID, checkOE, 5*time.Second)
+		    if strings.Contains(string(oeRes.Stdout), "missing") {
+			    return fmt.Errorf("build environment not available: meta-openembedded not found in layers directory. Please ensure layers are properly fetched and mounted")
+		    }
+	    } else {
+		    e.logger.Debug("meta-openembedded not configured; skipping presence check")
+	    }
 
 		sourceCmd := []string{"bash", "-c", fmt.Sprintf("mkdir -p %s && cd %s && source /home/builder/layers/poky/oe-init-build-env . && which bitbake", e.workspaceDir, e.workspaceDir)}
 		result, err = e.containerMgr.Exec(ctx, e.containerID, sourceCmd, 30*time.Second)
