@@ -2,6 +2,8 @@ package build
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -16,6 +18,7 @@ import (
 	"github.com/schererja/smidr/internal/config"
 	smidrcontainer "github.com/schererja/smidr/internal/container"
 	"github.com/schererja/smidr/internal/container/docker"
+	"github.com/schererja/smidr/internal/db"
 	"github.com/schererja/smidr/internal/source"
 	"github.com/schererja/smidr/pkg/logger"
 )
@@ -79,11 +82,12 @@ type BuildResult struct {
 // Runner executes the Yocto build pipeline
 type Runner struct {
 	logger *logger.Logger
+	db     *db.DB
 }
 
 // NewRunner creates a new build Runner
-func NewRunner(logger *logger.Logger) *Runner {
-	return &Runner{logger: logger}
+func NewRunner(logger *logger.Logger, database *db.DB) *Runner {
+	return &Runner{logger: logger, db: database}
 }
 
 // Run orchestrates directory setup, layer fetch, container start, bitbake execution, and cleanup
@@ -165,6 +169,73 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 	}
 	if cfg.Directories.SState != "" {
 		_ = os.MkdirAll(cfg.Directories.SState, 0o777)
+	}
+
+	// If DB persistence is enabled, create initial build record and mark as running
+	if r.db != nil {
+		// Ensure a build ID exists
+		if opts.BuildID == "" {
+			opts.BuildID = generateBuildID(opts.Customer)
+		}
+
+		configSnapshot, err := json.Marshal(cfg)
+		if err != nil {
+			r.logger.Warn("failed to serialize config snapshot", slog.String("error", err.Error()))
+			configSnapshot = []byte("{}")
+		}
+
+		hostname, _ := os.Hostname()
+		username := os.Getenv("USER")
+		if username == "" {
+			username = os.Getenv("USERNAME")
+		}
+
+		buildDir := cfg.Directories.Build
+		if buildDir == "" {
+			h, _ := os.UserHomeDir()
+			buildDir = filepath.Join(h, ".smidr", "builds", opts.BuildID)
+		}
+
+		deployDir := cfg.Directories.Deploy
+		if deployDir == "" {
+			deployDir = filepath.Join(buildDir, "deploy")
+		}
+
+		logFilePlain := filepath.Join(buildDir, "build-log.txt")
+		logFileJSONL := filepath.Join(buildDir, "build-log.jsonl")
+
+		build := &db.Build{
+			ID:             opts.BuildID,
+			Customer:       opts.Customer,
+			ProjectName:    cfg.Name,
+			TargetImage:    opts.Target,
+			Machine:        cfg.Base.Machine,
+			Status:         db.StatusQueued,
+			BuildDir:       buildDir,
+			DeployDir:      deployDir,
+			LogFilePlain:   logFilePlain,
+			LogFileJSONL:   logFileJSONL,
+			ConfigSnapshot: string(configSnapshot),
+			User:           username,
+			Host:           hostname,
+			CreatedAt:      start,
+		}
+
+		if err := r.db.CreateBuild(build); err != nil {
+			r.logger.Error("failed to create build record", err)
+		}
+
+		if err := r.db.StartBuild(opts.BuildID); err != nil {
+			r.logger.Error("failed to mark build as running", err)
+		}
+
+		// Ensure build state is updated even if panic occurs
+		defer func() {
+			if rec := recover(); rec != nil {
+				_ = r.db.CompleteBuild(opts.BuildID, db.StatusFailed, 1, time.Since(start), fmt.Sprintf("panic: %v", rec))
+				panic(rec)
+			}
+		}()
 	}
 
 	// Fetch layers
@@ -410,6 +481,31 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 		exitCode = result.ExitCode
 	}
 	br := &BuildResult{Success: err == nil && result != nil && result.Success, ExitCode: exitCode, Duration: time.Since(start), BuildDir: cfg.Directories.Build, TmpDir: cfg.Directories.Tmp, DeployDir: cfg.Directories.Deploy}
+
+	// If DB persistence is available, update completion status and record artifacts
+	if r.db != nil {
+		duration := time.Since(start)
+		var status db.BuildStatus
+		var errorMsg string
+		if err != nil {
+			status = db.StatusFailed
+			errorMsg = err.Error()
+		} else if result != nil && result.Success {
+			status = db.StatusCompleted
+		} else {
+			status = db.StatusFailed
+			if result != nil {
+				errorMsg = fmt.Sprintf("build failed with exit code %d", result.ExitCode)
+			}
+		}
+		if cerr := r.db.CompleteBuild(opts.BuildID, status, exitCode, duration, errorMsg); cerr != nil {
+			r.logger.Error("failed to update build completion", cerr)
+		}
+		if status == db.StatusCompleted && result != nil {
+			r.recordArtifacts(opts.BuildID, cfg.Directories.Deploy)
+		}
+	}
+
 	if err != nil {
 		return br, err
 	}
@@ -509,4 +605,63 @@ func shouldLogLine(line string) bool {
 
 	// Default: skip (most BitBake output is verbose noise)
 	return false
+}
+
+// recordArtifacts scans the deploy directory and records artifacts in the database
+func (r *Runner) recordArtifacts(buildID string, deployDir string) {
+	if r.db == nil || deployDir == "" {
+		return
+	}
+
+	// Walk deploy directory and record files
+	err := filepath.Walk(deployDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+
+		// Get relative path
+		relPath, _ := filepath.Rel(deployDir, path)
+
+		// Determine artifact type from extension
+		artifactType := "unknown"
+		ext := filepath.Ext(path)
+		switch ext {
+		case ".wic", ".img":
+			artifactType = "image"
+		case ".tar", ".gz", ".bz2", ".xz":
+			artifactType = "archive"
+		case ".txt", ".log":
+			artifactType = "text"
+		case ".json", ".xml":
+			artifactType = "metadata"
+		}
+
+		artifact := &db.BuildArtifact{
+			BuildID:      buildID,
+			ArtifactPath: relPath,
+			ArtifactType: artifactType,
+			SizeBytes:    info.Size(),
+			Checksum:     "",
+			CreatedAt:    time.Now(),
+		}
+
+		if err := r.db.AddArtifact(artifact); err != nil {
+			r.logger.Warn("failed to record artifact", slog.String("path", relPath), slog.String("error", err.Error()))
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		r.logger.Error("failed to scan artifacts", err)
+	}
+}
+
+// generateBuildID creates a unique build identifier
+func generateBuildID(customer string) string {
+	timestamp := time.Now().Format("20060102-150405")
+	if customer != "" {
+		return fmt.Sprintf("%s-%s", customer, timestamp)
+	}
+	return fmt.Sprintf("build-%s", timestamp)
 }

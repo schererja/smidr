@@ -19,6 +19,7 @@ import (
 	"github.com/schererja/smidr/internal/artifacts"
 	buildpkg "github.com/schererja/smidr/internal/build"
 	"github.com/schererja/smidr/internal/config"
+	"github.com/schererja/smidr/internal/db"
 	"github.com/schererja/smidr/pkg/logger"
 )
 
@@ -35,6 +36,7 @@ type Server struct {
 	customerQueues map[string]chan struct{} // per-customer queues for serializing builds within the same customer
 	queuesMutex    sync.RWMutex             // protects customerQueues map
 	logger         *logger.Logger           // structured logger
+	database       *db.DB                   // optional database for build persistence
 }
 
 // BuildInfo holds information about an active or completed build
@@ -94,7 +96,7 @@ func (lw *LogWriter) WriteLog(stream, content string) {
 }
 
 // NewServer creates a new daemon server
-func NewServer(address string, log *logger.Logger) *Server {
+func NewServer(address string, log *logger.Logger, database *db.DB) *Server {
 	// Initialize artifact manager with default location
 	artifactMgr, err := artifacts.NewArtifactManager("")
 	if err != nil {
@@ -109,6 +111,7 @@ func NewServer(address string, log *logger.Logger) *Server {
 		artifactMgr:    artifactMgr,
 		customerQueues: make(map[string]chan struct{}),
 		logger:         log,
+		database:       database,
 	}
 }
 
@@ -308,8 +311,8 @@ func (s *Server) executeBuild(ctx context.Context, buildInfo *BuildInfo, req *v1
 	// Mark as BUILDING
 	s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_BUILDING)
 
-	// Use runner to execute build
-	runner := buildpkg.NewRunner(logWriter.buildLogger)
+	// Use runner to execute build with DB persistence if available
+	runner := buildpkg.NewRunner(logWriter.buildLogger, s.database)
 	result, err := runner.Run(ctx, buildInfo.Config, opts, sink)
 	if err != nil {
 		// Failed

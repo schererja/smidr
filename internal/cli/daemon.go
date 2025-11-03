@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/schererja/smidr/internal/daemon"
+	"github.com/schererja/smidr/internal/db"
 	"github.com/spf13/cobra"
 )
 
@@ -43,8 +44,13 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	log.Info("Starting Smidr daemon...")
 	log.Info("📡 Listening", slog.String("address", daemonAddress))
 
+	// TODO: Initialize database for build persistence
+	// For now, pass nil to maintain backward compatibility
+	// Future: add --db-path flag and initialize DB here
+	var database *db.DB = nil
+
 	// Create the gRPC server
-	server := daemon.NewServer(daemonAddress, log)
+	server := daemon.NewServer(daemonAddress, log, database)
 
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
