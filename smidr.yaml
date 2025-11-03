@@ -77,4 +77,8 @@
 
     # Resource limits
     memory: "8g"
+<<<<<<< HEAD
     cpu_count: 8
+=======
+    cpu_count: 2
+>>>>>>> main
