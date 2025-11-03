@@ -1,5 +1,41 @@
 # Smidr MVP - TODO List
 
+## Daemon (gRPC) – Initial Interface Priorities
+
+Tracked priorities for making the daemon interface production‑ready. Items reflect current status and next concrete steps.
+
+- [ ] Priority 1: Artifact Management
+  - [x] Extract artifacts after successful builds (copy from deploy dir into per‑build store)
+  - [x] Save artifact metadata (sizes) alongside build metadata
+  - [ ] Implement ListArtifacts RPC to read artifacts from store and return full details
+    - [ ] Include size (from metadata) and checksum (compute on demand or precompute)
+    - [ ] Error handling for non‑completed builds and missing artifact sets
+  - [ ] CLI: add download support (DownloadArtifact RPC) and `smidr client download`
+  - [ ] Web UI: add download links once RPC is available
+
+- [ ] Priority 2: Improve Build Cancellation
+  - [ ] Ensure context cancellation fully propagates through Runner and bitbake executor
+  - [ ] Robust cleanup: stop/remove container, clean temp dirs, release resources
+  - [ ] State transitions: set CANCELLED deterministically and emit terminal logs
+  - [ ] Return clear CancelResult messages (already cancelled, not found, completed)
+
+- [ ] Priority 3: Persistence
+  - [ ] Persist build history (SQLite or lightweight bolt/Badger). Schema: builds, states, timings
+  - [ ] Persist logs to disk per build; stream from file for historical access
+  - [ ] Recovery on startup: reload recent builds, reconcile terminal states
+
+- [ ] Priority 4: Authentication & Security
+  - [ ] TLS/mTLS for gRPC transport (configurable cert/key paths)
+  - [ ] Optional token‑based auth for clients
+  - [ ] Configurable bind address; document firewalling and network exposure
+
+### Nice‑to‑have next (post‑initial interface)
+
+- [ ] Concurrent build queue with max‑parallel limit and fair scheduling
+- [ ] Health/metrics endpoints (gRPC health; Prometheus metrics)
+- [ ] Retention policy in daemon for artifact store (reuse artifacts package policies)
+- [ ] Better error surfaces and log categorization in client and Web UI
+
 ## Phase 1: Project Setup & Foundation
 
 - [X] Initialize Go project structure
@@ -131,3 +167,16 @@
 - [ ] Support for alternative container runtimes (e.g., Podman)
 - [ ] Enhanced error reporting with actionable suggestions
 - [ ] Support for custom build scripts/hooks
+
+## Look into
+
+1. Should we offer the ability in the config to do shared or per-build sstate-cache directories?
+2. Should we offer the ability in the config to do shared or per-build downloads directories?
+
+## Optional things for elixir
+
+Trim logger filters: If logs are quiet now, we can remove or guard the translator and Erlang primary filter behind dev-only config to keep production signal clean.
+Fast health check: Add a tiny “ping” helper that does a cheap RPC (or checks channel state) for readiness probes and admin dashboards.
+Resilience polish: Add a modest exponential backoff on reconnect and a couple of telemetry events so we can observe reconnects without noise.
+Docs: Note SMIDR_CLIENT_TYPE=grpc and the dns:// normalization, plus a short “why one channel” rationale for future us.
+Test: Add an integration test asserting the client reuses the same channel across calls (prevents regressions).

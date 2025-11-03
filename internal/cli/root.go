@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 
+	buildcmd "github.com/schererja/smidr/internal/cli/build"
+	clientcmd "github.com/schererja/smidr/internal/cli/client"
+	"github.com/schererja/smidr/pkg/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -11,6 +14,7 @@ import (
 var (
 	cfgFile string
 	verbose bool
+	log     *logger.Logger
 )
 var rootCmd = &cobra.Command{
 	Use:   "smidr",
@@ -22,11 +26,17 @@ custom Linux distributions for embedded devices.`,
 	Version: "0.1.0-dev",
 }
 
-func Execute() error {
+func Execute(logger *logger.Logger) error {
+	log = logger
 	if err := rootCmd.Execute(); err != nil {
 		return fmt.Errorf("RootCommand failure: %v", err)
 	}
 	return nil
+}
+
+// GetLogger returns the global logger instance for use in subcommands
+func GetLogger() *logger.Logger {
+	return log
 }
 
 func init() {
@@ -36,6 +46,10 @@ func init() {
 
 	viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
 	viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
+
+	// Add commands from subpackages
+	rootCmd.AddCommand(buildcmd.New())
+	rootCmd.AddCommand(clientcmd.New())
 }
 
 func initConfig() {

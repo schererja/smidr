@@ -1,14 +1,15 @@
 package main
 
 import (
-	"fmt"
-
-	"github.com/intrik8-labs/smidr/internal/cli"
+	"github.com/schererja/smidr/internal/cli"
+	"github.com/schererja/smidr/pkg/logger"
 )
 
 func main() {
-	err := cli.Execute()
+	log := logger.NewLogger()
+
+	err := cli.Execute(log)
 	if err != nil {
-		fmt.Printf("Error running Smidr: %v\n", err)
+		log.Fatal("Error running Smidr", err)
 	}
 }

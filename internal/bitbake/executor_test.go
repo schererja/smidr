@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intrik8-labs/smidr/internal/config"
-	"github.com/intrik8-labs/smidr/internal/container"
+	"github.com/schererja/smidr/internal/config"
+	"github.com/schererja/smidr/internal/container"
+	"github.com/schererja/smidr/pkg/logger"
 )
 
 type mockContainerManager struct {
@@ -61,9 +62,10 @@ func (m *mockContainerManager) StopContainer(ctx context.Context, containerID st
 }
 
 func TestNewBuildExecutor(t *testing.T) {
+	log := logger.NewLogger()
 	cfg := &config.Config{}
 	mgr := &mockContainerManager{}
-	be := NewBuildExecutor(cfg, mgr, "cid", "/tmp/workspace")
+	be := NewBuildExecutor(cfg, mgr, "cid", "/tmp/workspace", log)
 	if be.config != cfg || be.containerMgr != mgr || be.containerID != "cid" || be.workspaceDir != "/tmp/workspace" {
 		t.Errorf("NewBuildExecutor did not set fields correctly")
 	}
@@ -86,8 +88,10 @@ func (w *testWriter) Write(p []byte) (int, error) {
 }
 
 func TestBuildExecutor_setupBuildEnvironment_error(t *testing.T) {
+	log := logger.NewLogger()
+
 	mgr := &mockContainerManager{returnErr: errors.New("fail")}
-	be := NewBuildExecutor(&config.Config{}, mgr, "cid", "/tmp")
+	be := NewBuildExecutor(&config.Config{}, mgr, "cid", "/tmp", log)
 	err := be.setupBuildEnvironment(context.Background())
 	if err == nil {
 		t.Errorf("expected error from setupBuildEnvironment, got nil")
@@ -95,10 +99,11 @@ func TestBuildExecutor_setupBuildEnvironment_error(t *testing.T) {
 }
 
 func TestBuildExecutor_sourceEnvironment_success(t *testing.T) {
+	log := logger.NewLogger()
 	mgr := &mockContainerManager{
 		returnResult: container.ExecResult{ExitCode: 0},
 	}
-	be := NewBuildExecutor(&config.Config{}, mgr, "cid", "/tmp")
+	be := NewBuildExecutor(&config.Config{}, mgr, "cid", "/tmp", log)
 	err := be.sourceEnvironment(context.Background())
 	if err != nil {
 		t.Errorf("expected nil error, got %v", err)
@@ -106,10 +111,12 @@ func TestBuildExecutor_sourceEnvironment_success(t *testing.T) {
 }
 
 func TestBuildExecutor_sourceEnvironment_failure(t *testing.T) {
+	log := logger.NewLogger()
+
 	mgr := &mockContainerManager{
 		returnResult: container.ExecResult{ExitCode: 1, Stderr: []byte("fail")},
 	}
-	be := NewBuildExecutor(&config.Config{}, mgr, "cid", "/tmp")
+	be := NewBuildExecutor(&config.Config{}, mgr, "cid", "/tmp", log)
 	err := be.sourceEnvironment(context.Background())
 	if err == nil {
 		t.Errorf("expected error, got nil")
@@ -117,7 +124,9 @@ func TestBuildExecutor_sourceEnvironment_failure(t *testing.T) {
 }
 
 func TestBuildExecutor_generateLocalConfContent_defaults(t *testing.T) {
-	be := NewBuildExecutor(&config.Config{}, nil, "cid", "/tmp")
+	log := logger.NewLogger()
+
+	be := NewBuildExecutor(&config.Config{}, nil, "cid", "/tmp", log)
 	conf := be.generateLocalConfContent()
 	if !strings.Contains(conf, "BB_NUMBER_THREADS") || !strings.Contains(conf, "PARALLEL_MAKE") {
 		t.Errorf("local.conf content missing expected settings: %s", conf)
@@ -125,12 +134,14 @@ func TestBuildExecutor_generateLocalConfContent_defaults(t *testing.T) {
 }
 
 func TestBuildExecutor_generateLocalConfContent_Advanced(t *testing.T) {
+	log := logger.NewLogger()
+
 	cfg := &config.Config{}
 	cfg.Advanced.SStateMirrors = "file://.* file:///cache/sstate/PATH"
 	cfg.Advanced.PreMirrors = "https?://.*/.* http://mirror.local/"
 	cfg.Advanced.NoNetwork = true
 	cfg.Advanced.FetchPremirrorOnly = true
-	be := NewBuildExecutor(cfg, nil, "cid", "/tmp")
+	be := NewBuildExecutor(cfg, nil, "cid", "/tmp", log)
 	conf := be.generateLocalConfContent()
 	if !strings.Contains(conf, "SSTATE_MIRRORS = \"file://.* file:///cache/sstate/PATH\"") {
 		t.Fatalf("expected SSTATE_MIRRORS from config, got:\n%s", conf)
@@ -160,7 +171,8 @@ func TestBuildExecutor_executeBitbake_fetchFail(t *testing.T) {
 		returnErr:    errors.New("fetch error"),
 	}
 	cfg := &config.Config{Build: config.BuildConfig{Image: "core-image-minimal"}}
-	be := NewBuildExecutor(cfg, mgr, "cid", "/tmp")
+	log := logger.NewLogger()
+	be := NewBuildExecutor(cfg, mgr, "cid", "/tmp", log)
 	logWriter := &BuildLogWriter{PlainWriter: nil, JSONLWriter: nil}
 	res, err := be.executeBitbake(context.Background(), logWriter)
 	if err == nil || res.Success {
@@ -182,7 +194,8 @@ func TestBuildExecutor_generateBBLayersConfContent(t *testing.T) {
 		},
 		YoctoSeries: "scarthgap",
 	}
-	be := NewBuildExecutor(cfg, mgr, "cid", "/tmp")
+	log := logger.NewLogger()
+	be := NewBuildExecutor(cfg, mgr, "cid", "/tmp", log)
 	content := be.generateBBLayersConfContent()
 	if !strings.Contains(content, "BBLAYERS") {
 		t.Errorf("bblayers.conf content missing BBLAYERS: %s", content)
@@ -194,7 +207,8 @@ func TestBuildExecutor_ExecuteBuild_setupFail(t *testing.T) {
 		returnErr: errors.New("setup failed"),
 	}
 	cfg := &config.Config{Build: config.BuildConfig{Image: "core-image-minimal"}}
-	be := NewBuildExecutor(cfg, mgr, "cid", "/tmp")
+	log := logger.NewLogger()
+	be := NewBuildExecutor(cfg, mgr, "cid", "/tmp", log)
 	res, err := be.ExecuteBuild(context.Background(), nil)
 	if err == nil {
 		t.Errorf("expected error from ExecuteBuild, got nil")

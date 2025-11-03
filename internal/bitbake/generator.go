@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/intrik8-labs/smidr/internal/config"
+	"github.com/schererja/smidr/internal/config"
 )
 
 type Generator struct {

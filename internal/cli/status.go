@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/intrik8-labs/smidr/internal/artifacts"
+	"github.com/schererja/smidr/internal/artifacts"
 	"github.com/spf13/cobra"
 )
 

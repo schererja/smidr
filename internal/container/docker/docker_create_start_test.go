@@ -5,13 +5,15 @@ import (
 	"testing"
 	"time"
 
-	smidrContainer "github.com/intrik8-labs/smidr/internal/container"
+	smidrContainer "github.com/schererja/smidr/internal/container"
+	"github.com/schererja/smidr/pkg/logger"
 )
 
 // TestCreateStartContainer exercises CreateContainer and StartContainer success paths.
 // Skips when Docker is unavailable in the environment.
 func TestCreateStartContainer(t *testing.T) {
-	dm, err := NewDockerManager()
+	log := logger.NewLogger()
+	dm, err := NewDockerManager(log)
 	if err != nil {
 		t.Skipf("docker not available: %v", err)
 	}

@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
+	"os"
 	"strings"
 	"time"
 
-	"github.com/intrik8-labs/smidr/internal/config"
-	"github.com/intrik8-labs/smidr/internal/container"
+	"github.com/schererja/smidr/internal/config"
+	"github.com/schererja/smidr/internal/container"
+	"github.com/schererja/smidr/pkg/logger"
 )
 
 // BuildExecutor handles bitbake build execution
@@ -18,16 +21,28 @@ type BuildExecutor struct {
 	containerMgr container.ContainerManager
 	containerID  string
 	workspaceDir string
-	forceImage   bool // If true, force image regeneration without rebuilding packages
+	forceImage   bool   // If true, force image regeneration without rebuilding packages
+	buildPrefix  string // Prefix for log messages (e.g., "[customer/build-123]")
+	logger       *logger.Logger
 }
 
 // NewBuildExecutor creates a new build executor
-func NewBuildExecutor(cfg *config.Config, containerMgr container.ContainerManager, containerID string, workspaceDir string) *BuildExecutor {
+func NewBuildExecutor(cfg *config.Config, containerMgr container.ContainerManager, containerID string, workspaceDir string, logger *logger.Logger) *BuildExecutor {
 	return &BuildExecutor{
 		config:       cfg,
 		containerMgr: containerMgr,
 		containerID:  containerID,
 		workspaceDir: workspaceDir,
+		logger:       logger,
+	}
+}
+
+// SetBuildPrefix sets a prefix for all log messages to identify this build
+// It updates the logger with build context using With()
+func (e *BuildExecutor) SetBuildPrefix(prefix string) {
+	e.buildPrefix = prefix
+	if prefix != "" {
+		e.logger = e.logger.With(slog.String("build", prefix))
 	}
 }
 
@@ -73,7 +88,7 @@ func (w *BuildLogWriter) WriteLog(stream, line string) {
 func (e *BuildExecutor) ExecuteBuild(ctx context.Context, logWriter *BuildLogWriter) (*BuildResult, error) {
 	startTime := time.Now()
 
-	fmt.Println("🔧 Setting up Yocto build environment...")
+	e.logger.Info("Setting up Yocto build environment...")
 
 	// Step 1: Generate bitbake configuration files
 	if err := e.setupBuildEnvironment(ctx); err != nil {
@@ -82,6 +97,19 @@ func (e *BuildExecutor) ExecuteBuild(ctx context.Context, logWriter *BuildLogWri
 			Duration: time.Since(startTime),
 			Error:    fmt.Sprintf("Failed to setup build environment: %v", err),
 		}, err
+	}
+
+	// Smoke/test mode: when running CI smoke or local parse-only checks, skip sourcing and bitbake entirely
+	// Detect via test envs used by Makefile (SMIDR_TEST_ENTRYPOINT or SMIDR_TEST_WRITE_MARKERS)
+	if os.Getenv("SMIDR_TEST_ENTRYPOINT") != "" || os.Getenv("SMIDR_TEST_WRITE_MARKERS") == "1" {
+		e.logger.Info("Smoke/test mode detected — skipping environment source and BitBake execution")
+		return &BuildResult{
+			Success:  true,
+			ExitCode: 0,
+			Duration: time.Since(startTime),
+			Output:   "smoke/test mode: skipped bitbake",
+			Error:    "",
+		}, nil
 	}
 
 	// Step 2: Source the build environment
@@ -94,10 +122,8 @@ func (e *BuildExecutor) ExecuteBuild(ctx context.Context, logWriter *BuildLogWri
 	}
 
 	// Step 3: Execute the bitbake build
-	fmt.Printf("🚀 Starting bitbake build: %s\n", e.config.Build.Image)
-
-	// Check actual container memory limit using docker inspect
-	fmt.Printf("[DEBUG] Checking container memory limit with docker inspect...\n")
+	e.logger.Info("Starting bitbake build", slog.String("image", e.config.Build.Image))
+	e.logger.Debug("Checking container memory limit with docker inspect...")
 
 	buildResult, err := e.executeBitbake(ctx, logWriter)
 	buildResult.Duration = time.Since(startTime)
@@ -107,15 +133,15 @@ func (e *BuildExecutor) ExecuteBuild(ctx context.Context, logWriter *BuildLogWri
 		return buildResult, err
 	}
 
-	fmt.Printf("✅ Build completed successfully in %v\n", buildResult.Duration)
+	e.logger.Info("Build completed successfully", slog.Duration("duration", buildResult.Duration))
 	return buildResult, nil
 }
 
 // setupBuildEnvironment generates the necessary configuration files
 func (e *BuildExecutor) setupBuildEnvironment(ctx context.Context) error {
 	// First ensure we have the right working directory with proper permissions
-	// Use /home/builder/build initially, then we can move it to the mounted workspace
-	setupDirCmd := []string{"sh", "-c", "mkdir -p /home/builder/build/conf && whoami && pwd && ls -la /home/builder/"}
+	// Use the unique workspace directory passed from runner
+	setupDirCmd := []string{"sh", "-c", fmt.Sprintf("mkdir -p %s/conf && whoami && pwd && ls -la /home/builder/", e.workspaceDir)}
 
 	result, err := e.containerMgr.Exec(ctx, e.containerID, setupDirCmd, 10*time.Second)
 	if err != nil {
@@ -133,7 +159,7 @@ func (e *BuildExecutor) setupBuildEnvironment(ctx context.Context) error {
 	}
 
 	// Write local.conf to container in temporary location first
-	writeLocalConfCmd := []string{"sh", "-c", fmt.Sprintf("cat > /home/builder/build/conf/local.conf << 'EOF'\n%s\nEOF", localConfContent)}
+	writeLocalConfCmd := []string{"sh", "-c", fmt.Sprintf("cat > %s/conf/local.conf << 'EOF'\n%s\nEOF", e.workspaceDir, localConfContent)}
 
 	result, err = e.containerMgr.Exec(ctx, e.containerID, writeLocalConfCmd, 30*time.Second)
 	if err != nil {
@@ -144,15 +170,15 @@ func (e *BuildExecutor) setupBuildEnvironment(ctx context.Context) error {
 	}
 
 	// Verify the local.conf was written correctly
-	verifyCmd := []string{"sh", "-c", "cat /home/builder/build/conf/local.conf | grep -E 'BB_NUMBER_THREADS|PARALLEL_MAKE'"}
+	verifyCmd := []string{"sh", "-c", fmt.Sprintf("cat %s/conf/local.conf | grep -E 'BB_NUMBER_THREADS|PARALLEL_MAKE'", e.workspaceDir)}
 	verifyResult, _ := e.containerMgr.Exec(ctx, e.containerID, verifyCmd, 10*time.Second)
-	fmt.Printf("[DEBUG] Contents of local.conf in container:\n%s\n", string(verifyResult.Stdout))
+	e.logger.Debug("Contents of local.conf in container", slog.String("local_conf", string(verifyResult.Stdout)))
 
 	// Generate bblayers.conf content
 	bblayersContent := e.generateBBLayersConfContent()
 
 	// Write bblayers.conf to container
-	writeBBLayersCmd := []string{"sh", "-c", fmt.Sprintf("cat > /home/builder/build/conf/bblayers.conf << 'EOF'\n%s\nEOF", bblayersContent)}
+	writeBBLayersCmd := []string{"sh", "-c", fmt.Sprintf("cat > %s/conf/bblayers.conf << 'EOF'\n%s\nEOF", e.workspaceDir, bblayersContent)}
 
 	result, err = e.containerMgr.Exec(ctx, e.containerID, writeBBLayersCmd, 30*time.Second)
 	if err != nil {
@@ -161,10 +187,6 @@ func (e *BuildExecutor) setupBuildEnvironment(ctx context.Context) error {
 	if result.ExitCode != 0 {
 		return fmt.Errorf("failed to write bblayers.conf: %s", string(result.Stderr))
 	}
-
-	// Now try to copy to the mounted workspace if available
-	copyToWorkspaceCmd := []string{"sh", "-c", "if [ -d '/home/builder/work' ]; then cp -r /home/builder/build/* /home/builder/work/ 2>/dev/null || echo 'Failed to copy to workspace, will use /home/builder/build'; fi"}
-	_, _ = e.containerMgr.Exec(ctx, e.containerID, copyToWorkspaceCmd, 10*time.Second)
 
 	return nil
 }
@@ -182,12 +204,12 @@ func (e *BuildExecutor) sourceEnvironment(ctx context.Context) error {
 	}
 	if result.ExitCode != 0 {
 		// Try to source the environment in a writable directory
-		// The oe-init-build-env script needs to create conf directory, so use /home/builder/build
+		// The oe-init-build-env script needs to create conf directory, so use the unique workspace dir
 		// First, check whether the expected oe-init-build-env exists in the layers dir
 		// Debug: List what's actually in the layers directory
 		debugCmd := []string{"sh", "-c", "echo 'DEBUG: Contents of /home/builder/layers:' && ls -la /home/builder/layers/ || echo 'layers dir does not exist'"}
 		debugRes, _ := e.containerMgr.Exec(ctx, e.containerID, debugCmd, 5*time.Second)
-		fmt.Printf("Container layers directory contents:\n%s\n", string(debugRes.Stdout))
+		e.logger.Debug("Container layers directory contents", slog.String("output", string(debugRes.Stdout)))
 
 		checkOoCmd := []string{"sh", "-c", "if [ -f /home/builder/layers/poky/oe-init-build-env ]; then echo present; else echo missing; fi"}
 		chkRes, _ := e.containerMgr.Exec(ctx, e.containerID, checkOoCmd, 5*time.Second)
@@ -195,19 +217,30 @@ func (e *BuildExecutor) sourceEnvironment(ctx context.Context) error {
 			// Additional debug: check if poky directory exists at all
 			pokyDebugCmd := []string{"sh", "-c", "echo 'DEBUG: Checking poky dir:' && ls -la /home/builder/layers/poky/ || echo 'poky dir does not exist'"}
 			pokyDebugRes, _ := e.containerMgr.Exec(ctx, e.containerID, pokyDebugCmd, 5*time.Second)
-			fmt.Printf("Container poky directory debug:\n%s\n", string(pokyDebugRes.Stdout))
+			e.logger.Debug("Container poky directory debug", slog.String("output", string(pokyDebugRes.Stdout)))
 
 			return fmt.Errorf("build environment not available: poky not found in layers directory. Please ensure layers are properly fetched and mounted")
 		}
 
-		// Check for meta-openembedded (meta-oe etc.)
-		checkOE := []string{"sh", "-c", "if [ -d /home/builder/layers/meta-openembedded/meta-oe ]; then echo present; else echo missing; fi"}
-		oeRes, _ := e.containerMgr.Exec(ctx, e.containerID, checkOE, 5*time.Second)
-		if strings.Contains(string(oeRes.Stdout), "missing") {
-			return fmt.Errorf("build environment not available: meta-openembedded not found in layers directory. Please ensure layers are properly fetched and mounted")
-		}
+	    // Only require meta-openembedded if configured in smidr.yaml layers
+	    requiresMetaOE := false
+	    for _, l := range e.config.Layers {
+		    if strings.EqualFold(l.Name, "meta-openembedded") {
+			    requiresMetaOE = true
+			    break
+		    }
+	    }
+	    if requiresMetaOE {
+		    checkOE := []string{"sh", "-c", "if [ -d /home/builder/layers/meta-openembedded/meta-oe ]; then echo present; else echo missing; fi"}
+		    oeRes, _ := e.containerMgr.Exec(ctx, e.containerID, checkOE, 5*time.Second)
+		    if strings.Contains(string(oeRes.Stdout), "missing") {
+			    return fmt.Errorf("build environment not available: meta-openembedded not found in layers directory. Please ensure layers are properly fetched and mounted")
+		    }
+	    } else {
+		    e.logger.Debug("meta-openembedded not configured; skipping presence check")
+	    }
 
-		sourceCmd := []string{"bash", "-c", "mkdir -p /home/builder/build && cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && which bitbake"}
+		sourceCmd := []string{"bash", "-c", fmt.Sprintf("mkdir -p %s && cd %s && source /home/builder/layers/poky/oe-init-build-env . && which bitbake", e.workspaceDir, e.workspaceDir)}
 		result, err = e.containerMgr.Exec(ctx, e.containerID, sourceCmd, 30*time.Second)
 		if err != nil {
 			return fmt.Errorf("failed to source build environment: %w", err)
@@ -236,7 +269,7 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 	}
 	if machine == "qemux86-64" && imageName == "core-image-weston" {
 		imageName = "core-image-minimal"
-		fmt.Printf("⚠️  Using core-image-minimal instead of core-image-weston for qemu machine\n")
+		e.logger.Warn("Using core-image-minimal instead of core-image-weston for qemu machine", slog.String("machine", machine))
 	}
 
 	// Build the command with proper environment sourcing in writable directory
@@ -266,9 +299,11 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 		verifyCmd += ` && echo "=== EULA Acceptance ===" && grep ACCEPT_FSL_EULA conf/local.conf`
 	}
 
+	// Use -B flag to force BitBake to start its own server instance, avoiding conflicts with other concurrent builds
+	// This ensures each build has its own isolated BitBake server even when using shared sstate-cache and downloads
 	bitbakeCmd := fmt.Sprintf(`set -x && \
 		echo "=== Starting build setup ===" && \
-		cd /home/builder/build && \
+		cd %s && \
 		echo "=== Checking memory limit ===" && \
 		cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "Cannot read cgroup v1/v2 memory limit" && \
 		echo "=== Sourcing environment ===" && \
@@ -277,8 +312,14 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 		%s && \
 		echo "=== Verifying settings ===" && \
 		%s && \
-		echo "=== Starting bitbake ===" && \
-		bitbake %s`, sedCmds, verifyCmd, imageName)
+		echo "=== Configuring BitBake server keepalive ===" && \
+		export BB_SERVER_TIMEOUT=600 && \
+		export BB_HEARTBEAT_EVENT=60 && \
+		echo "BB_SERVER_TIMEOUT=${BB_SERVER_TIMEOUT}" && \
+		echo "BB_HEARTBEAT_EVENT=${BB_HEARTBEAT_EVENT}" && \
+	echo "=== Starting bitbake (isolated server per TMPDIR) ===" && \
+	unset BBSERVER && \
+	bitbake %s`, e.workspaceDir, sedCmds, verifyCmd, imageName)
 
 	cmd := []string{"bash", "-c", bitbakeCmd}
 
@@ -290,8 +331,9 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 
 	// Pre-fetch sources to avoid checksum warnings and fail early if fetch fails
 	// Use `bitbake -c fetch` which is broadly supported for image targets.
-	fetchCmd := []string{"bash", "-c", fmt.Sprintf("cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && bitbake -c fetch %s", imageName)}
-	fmt.Println("⬇️  Running pre-fetch (bitbake -c fetch) to download sources before build...")
+	// Ensure we do not connect to any externally configured server
+	fetchCmd := []string{"bash", "-c", fmt.Sprintf("cd %s && source /home/builder/layers/poky/oe-init-build-env . && export BB_SERVER_TIMEOUT=600 && export BB_HEARTBEAT_EVENT=60 && unset BBSERVER && bitbake -c fetch %s", e.workspaceDir, imageName)}
+	e.logger.Info("⬇️  Running pre-fetch (bitbake -c fetch) to download sources before build...")
 	fetchResult, fetchErr := e.containerMgr.ExecStream(ctx, e.containerID, fetchCmd, timeout)
 	if logWriter != nil {
 		for _, line := range strings.Split(string(fetchResult.Stdout), "\n") {
@@ -314,10 +356,11 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 
 	// If forceImage is set, force regeneration of rootfs and image tasks only (not packages)
 	if e.forceImage {
-		fmt.Printf("🔄 Forcing image regeneration (rootfs + image tasks only)...\n")
+		e.logger.Info("Forcing image regeneration (rootfs + image tasks only)...")
 		// Use 'clean' to remove only image/rootfs tasks, not the packages they depend on
-		forceCmd := []string{"bash", "-c", fmt.Sprintf(`cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && \
-			bitbake -c clean %s`, imageName)}
+		// Ensure we do not connect to any externally configured server
+		forceCmd := []string{"bash", "-c", fmt.Sprintf(`cd %s && source /home/builder/layers/poky/oe-init-build-env . && export BB_SERVER_TIMEOUT=600 && export BB_HEARTBEAT_EVENT=60 && \
+			unset BBSERVER && bitbake -c clean %s`, e.workspaceDir, imageName)}
 		forceResult, forceErr := e.containerMgr.ExecStream(ctx, e.containerID, forceCmd, 10*time.Minute)
 		if logWriter != nil {
 			for _, line := range strings.Split(string(forceResult.Stdout), "\n") {
@@ -332,27 +375,47 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 			}
 		}
 		if forceErr != nil || forceResult.ExitCode != 0 {
-			fmt.Printf("⚠️  Force image tasks warning (continuing): %v\n", forceErr)
+			e.logger.Warn("Force image tasks warning (continuing)", slog.String("error", forceErr.Error()))
 		} else {
-			fmt.Printf("✅ Image task stamps removed - will regenerate rootfs and image\n")
+			e.logger.Info("Image task stamps removed - will regenerate rootfs and image")
 		}
 	}
 
-	fmt.Println("📺 Streaming build output...")
-	// Stream build output and write to logWriter if provided
-	result, err := e.containerMgr.ExecStream(ctx, e.containerID, cmd, timeout)
-	if logWriter != nil {
-		for _, line := range strings.Split(string(result.Stdout), "\n") {
-			if line != "" {
-				logWriter.WriteLog("stdout", line)
+	e.logger.Info("Streaming build output...")
+	// Stream build output using line callbacks if supported for real-time progress
+	result, err := func() (container.ExecResult, error) {
+		if streamer, ok := e.containerMgr.(container.ContainerManagerStreamer); ok {
+			e.logger.Debug("using line streaming for real-time progress")
+			// Define callbacks to forward each line to logWriter immediately
+			onStdout := func(line string) {
+				if logWriter != nil {
+					logWriter.WriteLog("stdout", line)
+				}
+			}
+			onStderr := func(line string) {
+				if logWriter != nil {
+					logWriter.WriteLog("stderr", line)
+				}
+			}
+			return streamer.ExecStreamLines(ctx, e.containerID, cmd, timeout, onStdout, onStderr)
+		}
+		// Fallback: buffer output until completion
+		e.logger.Debug("using standard streaming (buffered)")
+		res, err := e.containerMgr.ExecStream(ctx, e.containerID, cmd, timeout)
+		if err == nil && logWriter != nil {
+			for _, line := range strings.Split(string(res.Stdout), "\n") {
+				if line != "" {
+					logWriter.WriteLog("stdout", line)
+				}
+			}
+			for _, line := range strings.Split(string(res.Stderr), "\n") {
+				if line != "" {
+					logWriter.WriteLog("stderr", line)
+				}
 			}
 		}
-		for _, line := range strings.Split(string(result.Stderr), "\n") {
-			if line != "" {
-				logWriter.WriteLog("stderr", line)
-			}
-		}
-	}
+		return res, err
+	}()
 
 	buildResult := &BuildResult{
 		Success:  result.ExitCode == 0,
@@ -368,20 +431,20 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 
 	if result.ExitCode != 0 {
 		buildResult.Success = false
-		fmt.Println("🧹 BitBake build failed. Attempting targeted cleanup, cleansstate, and retry...")
+		e.logger.Warn("BitBake build failed. Attempting targeted cleanup, cleansstate, and retry...")
 		stderrText := string(result.Stderr)
 		failedRecipe := extractFailedRecipe(stderrText)
 		if failedRecipe != "" {
 			// Targeted cleanup for pseudo path mismatch
 			if strings.Contains(strings.ToLower(stderrText), "pseudo") && strings.Contains(strings.ToLower(stderrText), "path mismatch") {
-				fmt.Printf("🧹 Detected pseudo path mismatch for recipe '%s' — cleaning workdir artifacts before cleansstate...\n", failedRecipe)
+				e.logger.Warn("Detected pseudo path mismatch — cleaning workdir artifacts before cleansstate...", slog.String("recipe", failedRecipe))
 				if err := e.targetedCleanup(ctx, failedRecipe, logWriter); err != nil {
-					fmt.Printf("[WARN] Targeted cleanup had issues: %v (continuing)\n", err)
+					e.logger.Warn("Targeted cleanup had issues (continuing)", slog.String("error", err.Error()))
 				}
 			}
 
-			cleansstateCmd := []string{"bash", "-c", fmt.Sprintf("cd /home/builder/build && source /home/builder/layers/poky/oe-init-build-env . && bitbake -c cleansstate %s", failedRecipe)}
-			fmt.Printf("🧹 Running bitbake -c cleansstate %s\n", failedRecipe)
+			cleansstateCmd := []string{"bash", "-c", fmt.Sprintf("cd %s && source /home/builder/layers/poky/oe-init-build-env . && bitbake -c cleansstate %s", e.workspaceDir, failedRecipe)}
+			e.logger.Info("Running bitbake -c cleansstate", slog.String("recipe", failedRecipe))
 			cleanResult, cleanErr := e.containerMgr.ExecStream(ctx, e.containerID, cleansstateCmd, 2*time.Hour)
 			if logWriter != nil {
 				for _, line := range strings.Split(string(cleanResult.Stdout), "\n") {
@@ -396,12 +459,12 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 				}
 			}
 			if cleanErr != nil || cleanResult.ExitCode != 0 {
-				fmt.Printf("[ERROR] cleansstate failed for %s: %v\n", failedRecipe, cleanErr)
+				e.logger.Error("cleansstate failed", cleanErr, slog.String("recipe", failedRecipe))
 				return buildResult, fmt.Errorf("bitbake build failed, cleansstate also failed for %s", failedRecipe)
 			}
 
 			// Retry build once
-			fmt.Println("🔁 Retrying bitbake build after cleansstate...")
+			e.logger.Info("🔁 Retrying bitbake build after cleansstate...")
 			retryResult, retryErr := e.containerMgr.ExecStream(ctx, e.containerID, cmd, timeout)
 			if logWriter != nil {
 				for _, line := range strings.Split(string(retryResult.Stdout), "\n") {
@@ -417,15 +480,15 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 			}
 			buildResult.Output += "\n--- Cleansstate and retry output ---\n" + string(retryResult.Stdout) + "\n" + string(retryResult.Stderr)
 			if retryErr != nil || retryResult.ExitCode != 0 {
-				fmt.Printf("[ERROR] Retry build failed for %s: %v\n", failedRecipe, retryErr)
+				e.logger.Error("Retry build failed", retryErr, slog.String("recipe", failedRecipe))
 				return buildResult, fmt.Errorf("bitbake build failed after cleansstate/retry for %s", failedRecipe)
 			}
-			fmt.Println("✅ Build succeeded after cleansstate and retry.")
+			e.logger.Info("Build succeeded after cleansstate and retry.")
 			buildResult.Success = true
 			buildResult.ExitCode = retryResult.ExitCode
 			return buildResult, nil
 		} else {
-			fmt.Println("[WARN] Could not extract failed recipe for cleansstate. No retry attempted.")
+			e.logger.Warn("Could not extract failed recipe for cleansstate. No retry attempted.")
 			return buildResult, fmt.Errorf("bitbake build failed with exit code %d", result.ExitCode)
 		}
 	}
@@ -514,7 +577,7 @@ func (e *BuildExecutor) generateLocalConfContent() string {
 		}
 		if missing {
 			// Fall back only if we don't have the necessary BSP layers
-			fmt.Printf("⚠️  Required Toradex/NXP layers not all present; falling back MACHINE to qemux86-64 for portability\n")
+			e.logger.Warn("Required Toradex/NXP layers not all present; falling back MACHINE to qemux86-64 for portability")
 			machine = "qemux86-64"
 		}
 	}
@@ -527,35 +590,38 @@ func (e *BuildExecutor) generateLocalConfContent() string {
 	if distro != "" {
 		content.WriteString(fmt.Sprintf("DISTRO ?= \"%s\"\n", distro))
 	} else {
-		fmt.Printf("[WARN] No DISTRO set in config. Please set base.distro in smidr.yaml.\n")
+		e.logger.Warn("No DISTRO set in config. Please set base.distro in smidr.yaml.")
 	}
 
 	// Parallel build settings with safe defaults
 	parallelMake := e.config.Build.ParallelMake
-	fmt.Printf("[DEBUG] Config value for ParallelMake: %d\n", parallelMake)
+	e.logger.Debug("Config value for ParallelMake", slog.Int("parallel_make", parallelMake))
 	if parallelMake <= 0 {
 		parallelMake = 2 // default to 2 if not specified to avoid OOM
-		fmt.Printf("[INFO] Using default ParallelMake: %d\n", parallelMake)
+		e.logger.Info("Using default ParallelMake", slog.Int("parallel_make", parallelMake))
 	}
 	content.WriteString(fmt.Sprintf("PARALLEL_MAKE = \"-j %d\"\n", parallelMake))
 
 	bbThreads := e.config.Build.BBNumberThreads
-	fmt.Printf("[DEBUG] Config value for BBNumberThreads: %d\n", bbThreads)
+	e.logger.Debug("Config value for BBNumberThreads", slog.Int("bb_number_threads", bbThreads))
 	if bbThreads <= 0 {
 		bbThreads = 2 // default to 2 if not specified to avoid OOM
-		fmt.Printf("[INFO] Using default BBNumberThreads: %d\n", bbThreads)
+		e.logger.Info("Using default BBNumberThreads", slog.Int("bb_number_threads", bbThreads))
 	}
 	content.WriteString(fmt.Sprintf("BB_NUMBER_THREADS = \"%d\"\n", bbThreads))
 
-	fmt.Printf("[INFO] Container build config: BB_NUMBER_THREADS=%d, PARALLEL_MAKE=-j%d\n", bbThreads, parallelMake)
+	e.logger.Info("Container build config", slog.Int("bb_number_threads", bbThreads), slog.Int("parallel_make", parallelMake))
 
 	// Directory settings
+	// Always share downloads and sstate across builds to maximize cache hits.
 	content.WriteString("DL_DIR = \"/home/builder/downloads\"\n")
-	// Use SSTATE_MIRRORS instead of SSTATE_DIR to avoid permission issues. Allow override via config.
+	// Write sstate to the shared, bind-mounted cache so subsequent builds reuse artifacts.
+	// This prevents unnecessary recompiles when nothing changed.
+	content.WriteString("SSTATE_DIR = \"/home/builder/sstate-cache\"\n")
+	// Optional: allow users to add mirrors (e.g., corporate or remote) via config.
+	// By default we avoid setting SSTATE_MIRRORS to silence hash equivalence warnings when not needed.
 	if strings.TrimSpace(e.config.Advanced.SStateMirrors) != "" {
 		content.WriteString(fmt.Sprintf("SSTATE_MIRRORS = \"%s\"\n", e.config.Advanced.SStateMirrors))
-	} else {
-		content.WriteString("SSTATE_MIRRORS = \"file://.* file:///home/builder/sstate-cache/PATH\"\n")
 	}
 
 	// If a host tmp directory is mounted, direct TMPDIR to it so BitBake writes under a writable path
@@ -629,10 +695,10 @@ func (e *BuildExecutor) generateBBLayersConfContent() string {
 		findCmd := []string{"sh", "-c", fmt.Sprintf("find '%s' -type f -name layer.conf | grep '/conf/layer.conf'$", repoDir)}
 		findResult, err := e.containerMgr.Exec(ctx, e.containerID, findCmd, 5*time.Second)
 		if err != nil {
-			fmt.Printf("[WARN] Could not search for conf/layer.conf in %s: %v\n", repoDir, err)
+			e.logger.Warn("Could not search for conf/layer.conf", slog.String("repo", repoDir), slog.String("error", err.Error()))
 			continue
 		}
-		fmt.Printf("[DEBUG] find results for %s:\n%s\n", repoDir, string(findResult.Stdout))
+		e.logger.Debug("find results for conf/layer.conf", slog.String("repo", repoDir), slog.String("output", string(findResult.Stdout)))
 		layerConfs := strings.Split(strings.TrimSpace(string(findResult.Stdout)), "\n")
 		for _, confPath := range layerConfs {
 			if confPath == "" {
@@ -679,11 +745,11 @@ func (e *BuildExecutor) generateBBLayersConfContent() string {
 				}
 			}
 			if !compatible {
-				fmt.Printf("[WARN] Layer %s is not compatible with Yocto series '%s'\n", layerDir, yoctoSeries)
+				e.logger.Warn("Layer not compatible with Yocto series", slog.String("layer", layerDir), slog.String("yocto_series", yoctoSeries))
 				continue
 			}
 			if !added[layerDir] {
-				fmt.Printf("[INFO] Adding Yocto layer: %s\n", layerDir)
+				e.logger.Info("Adding Yocto layer", slog.String("layer", layerDir))
 				content.WriteString(fmt.Sprintf("  %s \\\n", layerDir))
 				added[layerDir] = true
 			}

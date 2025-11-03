@@ -7,21 +7,22 @@ import (
 
 // ContainerConfig holds configuration for creating a container
 type ContainerConfig struct {
-	Image          string
-	Name           string
-	Env            []string
-	Cmd            []string
-	Entrypoint     []string
-	Mounts         []Mount
-	DownloadsDir   string   // Host path to mount as /home/builder/downloads
-	SstateCacheDir string   // Host path to mount as /home/builder/sstate-cache
-	BuildDir       string   // Host path to mount as /home/builder/build (persistent Yocto build dir)
-	WorkspaceDir   string   // Host path to mount as /home/builder/work (main workspace)
-	LayerDirs      []string // Host paths to Yocto meta-layers to inject into /home/builder/layers
-	LayerNames     []string // Names corresponding to LayerDirs for proper mounting
-	MemoryLimit    string   `yaml:"memory"`    // e.g. "2g"
-	CPUCount       int      `yaml:"cpu_count"` // Number of CPUs to allocate
-	TmpDir         string   // Host path to mount as /home/builder/tmp
+	Image                string
+	Name                 string
+	Env                  []string
+	Cmd                  []string
+	Entrypoint           []string
+	Mounts               []Mount
+	DownloadsDir         string   // Host path to mount as /home/builder/downloads
+	SstateCacheDir       string   // Host path to mount as /home/builder/sstate-cache
+	BuildDir             string   // Host path to mount as /home/builder/build (persistent Yocto build dir)
+	WorkspaceDir         string   // Host path to mount as /home/builder/work (main workspace)
+	WorkspaceMountTarget string   // Container path where WorkspaceDir/BuildDir should be mounted (defaults to /home/builder/build if empty)
+	LayerDirs            []string // Host paths to Yocto meta-layers to inject into /home/builder/layers
+	LayerNames           []string // Names corresponding to LayerDirs for proper mounting
+	MemoryLimit          string   `yaml:"memory"`    // e.g. "2g"
+	CPUCount             int      `yaml:"cpu_count"` // Number of CPUs to allocate
+	TmpDir               string   // Host path to mount as /home/builder/tmp
 }
 
 type Mount struct {
@@ -49,6 +50,12 @@ type ContainerManager interface {
 	ExecStream(ctx context.Context, containerID string, cmd []string, timeout time.Duration) (ExecResult, error)
 	ImageExists(ctx context.Context, imageName string) bool
 	CopyFromContainer(ctx context.Context, containerID, containerPath, hostPath string) error
+}
+
+// ContainerManagerStreamer is an optional extension that supports line-by-line streaming callbacks.
+// Implementations may choose to provide this for real-time processing without buffering.
+type ContainerManagerStreamer interface {
+	ExecStreamLines(ctx context.Context, containerID string, cmd []string, timeout time.Duration, onStdout func(string), onStderr func(string)) (ExecResult, error)
 }
 
 // NewContainerConfig creates a new container configuration with defaults

@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intrik8-labs/smidr/internal/container"
+	"github.com/schererja/smidr/internal/container"
+	"github.com/schererja/smidr/pkg/logger"
 )
 
 // Note: These tests require Docker to be running and accessible.
@@ -21,7 +22,8 @@ func TestDockerManager_PullCreateStartStopRemove(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	dm, err := NewDockerManager()
+	log := logger.NewLogger()
+	dm, err := NewDockerManager(log)
 	if err != nil {
 		t.Fatalf("Failed to create DockerManager: %v", err)
 	}
@@ -97,7 +99,8 @@ func TestDockerManager_VolumeMounts(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	dm, err := NewDockerManager()
+	log := logger.NewLogger()
+	dm, err := NewDockerManager(log)
 	if err != nil {
 		t.Fatalf("Failed to create DockerManager: %v", err)
 	}
@@ -152,7 +155,8 @@ func TestDockerManager_LayerInjection(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	dm, err := NewDockerManager()
+	log := logger.NewLogger()
+	dm, err := NewDockerManager(log)
 	if err != nil {
 		t.Fatalf("Failed to create DockerManager: %v", err)
 	}
@@ -220,7 +224,8 @@ func TestDockerManager_ImageExists(t *testing.T) {
 		t.Skip("Docker not available")
 	}
 	ctx := context.Background()
-	dm, err := NewDockerManager()
+	log := logger.NewLogger()
+	dm, err := NewDockerManager(log)
 	if err != nil {
 		t.Fatalf("Failed to create DockerManager: %v", err)
 	}
@@ -261,7 +266,8 @@ func TestDockerManager_CopyFromContainer(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	dm, err := NewDockerManager()
+	log := logger.NewLogger()
+	dm, err := NewDockerManager(log)
 	if err != nil {
 		t.Fatalf("Failed to create DockerManager: %v", err)
 	}
@@ -312,7 +318,8 @@ func TestDockerManager_ExecStream(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	dm, err := NewDockerManager()
+	log := logger.NewLogger()
+	dm, err := NewDockerManager(log)
 	if err != nil {
 		t.Fatalf("Failed to create DockerManager: %v", err)
 	}
