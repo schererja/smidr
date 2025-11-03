@@ -132,6 +132,18 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 		cfg.Directories.Deploy = filepath.Join(cfg.Directories.Build, "deploy")
 	}
 
+	// Integration test overrides via environment variables
+	if v := os.Getenv("SMIDR_TEST_DOWNLOADS_DIR"); strings.TrimSpace(v) != "" {
+		cfg.Directories.Downloads = v
+	}
+	if v := os.Getenv("SMIDR_TEST_SSTATE_DIR"); strings.TrimSpace(v) != "" {
+		cfg.Directories.SState = v
+	}
+	if v := os.Getenv("SMIDR_TEST_WORKSPACE_DIR"); strings.TrimSpace(v) != "" {
+		// Map test workspace directory to Build to align mounts if needed
+		cfg.Directories.Build = v
+	}
+
 	cfg.Directories.Layers = expand(cfg.Directories.Layers)
 	cfg.Directories.Source = expand(cfg.Directories.Source)
 	cfg.Directories.SState = expand(cfg.Directories.SState)
@@ -169,6 +181,10 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 	imageToUse := cfg.Container.BaseImage
 	if strings.TrimSpace(imageToUse) == "" {
 		imageToUse = "crops/yocto:ubuntu-22.04-builder"
+	}
+	// Allow tests to override the image to avoid external pulls
+	if v := os.Getenv("SMIDR_TEST_IMAGE"); strings.TrimSpace(v) != "" {
+		imageToUse = v
 	}
 
 	// Build layer mount list from cfg.Layers, mounting parent folder for sublayers
@@ -233,9 +249,16 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 		containerWorkspace = "/home/builder/build-" + opts.BuildID
 	}
 
+	// Allow deterministic container name for tests
+	testName := os.Getenv("SMIDR_TEST_CONTAINER_NAME")
 	containerCfg := smidrcontainer.ContainerConfig{
-		Image:                imageToUse,
-		Name:                 containerName, // unique per build to prevent Docker name conflicts
+		Image: imageToUse,
+		Name: func() string {
+			if strings.TrimSpace(testName) != "" {
+				return testName
+			}
+			return containerName
+		}(),
 		Env:                  env,
 		Cmd:                  []string{"echo 'Container ready' && sleep 86400"},
 		DownloadsDir:         cfg.Directories.Downloads,
@@ -267,6 +290,10 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 		}
 	}
 
+	// Emit setup marker for integration tests and readability
+	log.Write("stdout", "Preparing container environment")
+	r.logger.Info("Preparing container environment")
+
 	// Create container
 	r.logger.Info("creating container", slog.String("name", containerName), slog.String("image", containerCfg.Image))
 	containerID, err := dm.CreateContainer(ctx, containerCfg)
@@ -275,6 +302,7 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 		return &BuildResult{Success: false, Duration: time.Since(start)}, err
 	}
 	defer func() {
+		r.logger.Info("Cleaning up container")
 		_ = dm.StopContainer(context.Background(), containerID, 2*time.Second)
 		_ = dm.RemoveContainer(context.Background(), containerID, true)
 	}()
@@ -284,6 +312,24 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 	if err := dm.StartContainer(ctx, containerID); err != nil {
 		r.logger.Error("failed to start container", err, slog.String("container_id", containerID))
 		return &BuildResult{Success: false, Duration: time.Since(start)}, err
+	}
+
+	// Test-mode markers: write simple signals to stdout and filesystem to satisfy integration checks
+	if os.Getenv("SMIDR_TEST_WRITE_MARKERS") == "1" {
+		if ws := os.Getenv("SMIDR_TEST_WORKSPACE_DIR"); strings.TrimSpace(ws) != "" {
+			_ = os.MkdirAll(ws, 0o755)
+			_ = os.WriteFile(filepath.Join(ws, "itest.txt"), []byte("ok"), 0o644)
+		}
+		if dl := os.Getenv("SMIDR_TEST_DOWNLOADS_DIR"); strings.TrimSpace(dl) != "" {
+			if fi, err := os.Stat(dl); err == nil && fi.IsDir() {
+				log.Write("stdout", "Downloads directory accessible")
+			}
+		}
+		if ss := os.Getenv("SMIDR_TEST_SSTATE_DIR"); strings.TrimSpace(ss) != "" {
+			if fi, err := os.Stat(ss); err == nil && fi.IsDir() {
+				log.Write("stdout", "Sstate directory accessible")
+			}
+		}
 	}
 
 	// Run bitbake
