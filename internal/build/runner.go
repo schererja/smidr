@@ -2,10 +2,12 @@ package build
 
 import (
 	"context"
-	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,10 +20,41 @@ import (
 	"github.com/schererja/smidr/pkg/logger"
 )
 
-// LogSink is a minimal interface for streaming logs
+// LogSink is a minimal interface for streaming logs to daemon clients
 // stream should be "stdout" or "stderr"
 type LogSink interface {
 	Write(stream string, line string)
+}
+
+// LogSinkLogger wraps a LogSink and also writes to structured logger
+type LogSinkLogger struct {
+	sink   LogSink
+	logger *logger.Logger
+}
+
+// NewLogSinkLogger creates a LogSink that also logs to structured logger
+func NewLogSinkLogger(sink LogSink, logger *logger.Logger) *LogSinkLogger {
+	return &LogSinkLogger{sink: sink, logger: logger}
+}
+
+// Write forwards to the sink and also logs structured output
+func (l *LogSinkLogger) Write(stream string, line string) {
+	if l.sink != nil {
+		l.sink.Write(stream, line)
+	}
+	// Also log to structured logger for persistence
+	trimmed := strings.TrimSpace(line)
+	if trimmed != "" {
+		// Classify log level based on content
+		// Note: Error takes (msg, err, ...attrs), but Warn/Debug/Info take (msg, ...attrs)
+		if strings.Contains(line, "ERROR") || strings.Contains(line, "FAILED") {
+			l.logger.Error("build output", nil, slog.String("stream", stream), slog.String("line", trimmed))
+		} else if strings.Contains(line, "WARNING") || strings.Contains(line, "WARN") {
+			l.logger.Warn("build output", slog.String("stream", stream), slog.String("line", trimmed))
+		} else {
+			l.logger.Debug("build output", slog.String("stream", stream), slog.String("line", trimmed))
+		}
+	}
 }
 
 // BuildOptions captures caller-provided options
@@ -83,9 +116,11 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 			cfg.Directories.Build = filepath.Join(h, ".smidr", "builds", opts.BuildID)
 		} else if opts.Customer != "" {
 			// Fallback: use customer name + UUID for uniqueness
-			cfg.Directories.Build = filepath.Join(h, ".smidr", "builds", fmt.Sprintf("build-%s-%s", opts.Customer, uuid.New().String()[:8]))
+			buildID := "build-" + opts.Customer + "-" + uuid.New().String()[:8]
+			cfg.Directories.Build = filepath.Join(h, ".smidr", "builds", buildID)
 		} else {
-			cfg.Directories.Build = filepath.Join(h, ".smidr", "builds", fmt.Sprintf("build-%s", uuid.New().String()))
+			buildID := "build-" + uuid.New().String()
+			cfg.Directories.Build = filepath.Join(h, ".smidr", "builds", buildID)
 		}
 	}
 
@@ -109,15 +144,24 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 		_ = os.RemoveAll(cfg.Directories.Build)
 	}
 
-	// Ensure tmp and deploy exist and are permissive for container user
+	// Ensure required directories exist with permissive permissions for container user
 	_ = os.MkdirAll(cfg.Directories.Tmp, 0o777)
 	_ = os.MkdirAll(cfg.Directories.Deploy, 0o777)
+	// Ensure downloads and sstate cache directories exist (BitBake will create subdirs)
+	if cfg.Directories.Downloads != "" {
+		_ = os.MkdirAll(cfg.Directories.Downloads, 0o777)
+	}
+	if cfg.Directories.SState != "" {
+		_ = os.MkdirAll(cfg.Directories.SState, 0o777)
+	}
 
 	// Fetch layers
-	log.Write("stdout", "📦 Fetching layers...")
+	log.Write("stdout", "Fetching layers...")
+	r.logger.Info("fetching layers", slog.String("layers_dir", cfg.Directories.Layers))
 	fetcher := source.NewFetcher(cfg.Directories.Layers, cfg.Directories.Downloads, source.NewConsoleLogger(io.Discard, false))
 	if _, err := fetcher.FetchLayers(cfg); err != nil {
-		return &BuildResult{Success: false, Duration: time.Since(start), BuildDir: cfg.Directories.Build, TmpDir: cfg.Directories.Tmp, DeployDir: cfg.Directories.Deploy}, fmt.Errorf("failed to fetch layers: %w", err)
+		r.logger.Error("failed to fetch layers", err)
+		return &BuildResult{Success: false, Duration: time.Since(start), BuildDir: cfg.Directories.Build, TmpDir: cfg.Directories.Tmp, DeployDir: cfg.Directories.Deploy}, err
 	}
 
 	// Prepare container config and manager (mirror CLI behavior)
@@ -175,7 +219,7 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 	// Optionally pass through specific needed vars (e.g., proxy settings)
 	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"} {
 		if val := os.Getenv(key); val != "" {
-			env = append(env, fmt.Sprintf("%s=%s", key, val))
+			env = append(env, key+"="+val)
 		}
 	}
 
@@ -183,10 +227,10 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 	containerName := ""
 	containerWorkspace := "/home/builder/build" // default workspace path inside container
 	if opts.BuildID != "" {
-		containerName = fmt.Sprintf("smidr-build-%s", opts.BuildID)
+		containerName = "smidr-build-" + opts.BuildID
 		// CRITICAL: Use unique workspace path inside container to prevent BitBake server collisions
 		// Each build gets its own workspace so BitBake lock files don't conflict
-		containerWorkspace = fmt.Sprintf("/home/builder/build-%s", opts.BuildID)
+		containerWorkspace = "/home/builder/build-" + opts.BuildID
 	}
 
 	containerCfg := smidrcontainer.ContainerConfig{
@@ -208,23 +252,27 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 		TmpDir: cfg.Directories.Tmp,
 	}
 
-	dm, err := docker.NewDockerManager()
+	dm, err := docker.NewDockerManager(r.logger)
 	if err != nil {
-		return &BuildResult{Success: false, Duration: time.Since(start)}, fmt.Errorf("failed to create docker manager: %w", err)
+		return &BuildResult{Success: false, Duration: time.Since(start)}, err
 	}
 
 	// Image pull/check
 	if !dm.ImageExists(ctx, containerCfg.Image) {
-		log.Write("stdout", fmt.Sprintf("🐳 Pulling image %s...", containerCfg.Image))
+		log.Write("stdout", "🐳 Pulling image "+containerCfg.Image+"...")
+		r.logger.Info("pulling container image", slog.String("image", containerCfg.Image))
 		if err := dm.PullImage(ctx, containerCfg.Image); err != nil {
-			return &BuildResult{Success: false, Duration: time.Since(start)}, fmt.Errorf("failed to pull image: %w", err)
+			r.logger.Error("failed to pull image", err, slog.String("image", containerCfg.Image))
+			return &BuildResult{Success: false, Duration: time.Since(start)}, err
 		}
 	}
 
 	// Create container
+	r.logger.Info("creating container", slog.String("name", containerName), slog.String("image", containerCfg.Image))
 	containerID, err := dm.CreateContainer(ctx, containerCfg)
 	if err != nil {
-		return &BuildResult{Success: false, Duration: time.Since(start)}, fmt.Errorf("failed to create container: %w", err)
+		r.logger.Error("failed to create container", err)
+		return &BuildResult{Success: false, Duration: time.Since(start)}, err
 	}
 	defer func() {
 		_ = dm.StopContainer(context.Background(), containerID, 2*time.Second)
@@ -232,8 +280,10 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 	}()
 
 	// Start container
+	r.logger.Info("starting container", slog.String("container_id", containerID))
 	if err := dm.StartContainer(ctx, containerID); err != nil {
-		return &BuildResult{Success: false, Duration: time.Since(start)}, fmt.Errorf("failed to start container: %w", err)
+		r.logger.Error("failed to start container", err, slog.String("container_id", containerID))
+		return &BuildResult{Success: false, Duration: time.Since(start)}, err
 	}
 
 	// Run bitbake
@@ -243,29 +293,69 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 
 	// Set build prefix for log identification (e.g., "[customer/build-abc123]")
 	if opts.Customer != "" && opts.BuildID != "" {
-		executor.SetBuildPrefix(fmt.Sprintf("[%s/%s]", opts.Customer, opts.BuildID[:8]))
+		buildPrefix := "[" + opts.Customer + "/" + opts.BuildID[:8] + "]"
+		executor.SetBuildPrefix(buildPrefix)
 	} else if opts.BuildID != "" {
-		executor.SetBuildPrefix(fmt.Sprintf("[%s]", opts.BuildID[:8]))
+		buildPrefix := "[" + opts.BuildID[:8] + "]"
+		executor.SetBuildPrefix(buildPrefix)
 	}
 
-	// Log adapter to forward bitbake output into LogSink
-	// Only forward important messages (errors, warnings, summaries) to reduce noise
-	bbLog := &bitbake.BuildLogWriter{
-		PlainWriter: logWriterFunc(func(p []byte) (int, error) {
-			// Split and forward lines to provided sink
-			for _, line := range strings.Split(string(p), "\n") {
-				trimmed := strings.TrimSpace(line)
-				if trimmed == "" {
-					continue
-				}
-				// Only log important lines: errors, warnings, summaries, and key status updates
-				if shouldLogLine(trimmed) {
-					log.Write("stdout", line)
-				}
+	// Prepare build log files (fresh per build dir) and wire writers
+	// Policy: truncate/create fresh logs each run since each build uses a unique directory.
+	txtPath := filepath.Join(cfg.Directories.Build, "build-log.txt")
+	jsonlPath := filepath.Join(cfg.Directories.Build, "build-log.jsonl")
+	txtFile, txtErr := os.OpenFile(txtPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if txtErr != nil {
+		r.logger.Warn("unable to open build-log.txt", slog.String("path", txtPath), slog.Any("error", txtErr))
+		txtFile = nil
+	} else {
+		defer txtFile.Close()
+	}
+	jsonlFile, jsonlErr := os.OpenFile(jsonlPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if jsonlErr != nil {
+		r.logger.Warn("unable to open build-log.jsonl", slog.String("path", jsonlPath), slog.Any("error", jsonlErr))
+		jsonlFile = nil
+	} else {
+		defer jsonlFile.Close()
+	}
+
+	// Adapter that forwards important lines to the provided sink and structured logger
+	forwardFunc := logWriterFunc(func(p []byte) (int, error) {
+		// Split and forward lines to provided sink
+		for _, line := range strings.Split(string(p), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" {
+				continue
 			}
-			return len(p), nil
-		}),
-		JSONLWriter: nil,
+
+			// Check for task progress and log it separately for progress bar
+			if progress := parseTaskProgress(trimmed); progress != nil {
+				log.Write("stdout", trimmed) // Send to client
+				r.logger.Info("Build progress",
+					slog.Int("current", progress.Current),
+					slog.Int("total", progress.Total),
+					slog.String("task", progress.Task))
+				continue
+			}
+
+			// Only log important lines: errors, warnings, summaries, and key status updates
+			if shouldLogLine(trimmed) {
+				log.Write("stdout", line)
+			}
+		}
+		return len(p), nil
+	})
+
+	// Plain writer: tee to file (if available) and the forwarder for sink/filters
+	var plainWriter io.Writer = forwardFunc
+	if txtFile != nil {
+		plainWriter = io.MultiWriter(txtFile, forwardFunc)
+	}
+
+	// Log adapter to forward bitbake output into LogSink and write to files
+	bbLog := &bitbake.BuildLogWriter{
+		PlainWriter: plainWriter,
+		JSONLWriter: jsonlFile,
 	}
 
 	result, err := executor.ExecuteBuild(ctx, bbLog)
@@ -283,6 +373,42 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 type logWriterFunc func(p []byte) (n int, err error)
 
 func (f logWriterFunc) Write(p []byte) (n int, err error) { return f(p) }
+
+// TaskProgress represents BitBake task execution progress
+// Use parseTaskProgress() to extract progress from BitBake output lines.
+// Example output from BitBake: "NOTE: Running task 482 of 776 (virtual:native:/home/builder/layers/poky/meta/recipes-graphics/libepoxy/libepoxy_1.5.10.bb:do_populate_sysroot_setscene)"
+// This will be parsed to: TaskProgress{Current: 482, Total: 776, Task: "virtual:native:/.../libepoxy_1.5.10.bb:do_populate_sysroot_setscene"}
+type TaskProgress struct {
+	Current int
+	Total   int
+	Task    string // e.g., "do_populate_sysroot_setscene" or full task description
+}
+
+// parseTaskProgress extracts task progress from BitBake output
+// Example input: "NOTE: Running task 123 of 456 (virtual:native:/path/to/recipe.bb:do_task)"
+// Returns nil if the line is not a task progress message
+func parseTaskProgress(line string) *TaskProgress {
+	// Match both forms:
+	//  - NOTE: Running task 123 of 456 (...)
+	//  - NOTE: Running setscene task 123 of 456 (...)
+	re := regexp.MustCompile(`^NOTE: Running (?:setscene )?task (\d+) of (\d+)(?:\s*\((.*)\))?`)
+	m := re.FindStringSubmatch(line)
+	if m == nil {
+		return nil
+	}
+
+	cur, err1 := strconv.Atoi(m[1])
+	tot, err2 := strconv.Atoi(m[2])
+	if err1 != nil || err2 != nil {
+		return nil
+	}
+
+	tp := &TaskProgress{Current: cur, Total: tot}
+	if len(m) >= 4 {
+		tp.Task = m[3]
+	}
+	return tp
+}
 
 // shouldLogLine determines if a BitBake log line should be forwarded to the daemon
 // Only logs errors, warnings, summaries, and key status updates to reduce noise
@@ -303,28 +429,15 @@ func shouldLogLine(line string) bool {
 		return true
 	}
 
-	// Log key status markers (emoji-prefixed messages from our scripts)
-	if strings.HasPrefix(line, "🚀") ||
-		strings.HasPrefix(line, "✅") ||
-		strings.HasPrefix(line, "❌") ||
-		strings.HasPrefix(line, "📦") ||
-		strings.HasPrefix(line, "⬇️") ||
-		strings.HasPrefix(line, "📺") ||
-		strings.HasPrefix(line, "===") {
+	// Only show progress lines and critical messages; hide emoji/status chatter
+	// Log task progress for progress bar (e.g., "NOTE: Running task 123 of 456" or setscene variant)
+	if strings.HasPrefix(line, "NOTE: Running task") || strings.HasPrefix(line, "NOTE: Running setscene task") {
 		return true
 	}
 
-	// Log Initialising and Sstate summary (high-level progress)
-	if strings.HasPrefix(line, "Initialising tasks") ||
-		strings.HasPrefix(line, "Sstate summary:") ||
-		strings.HasPrefix(line, "NOTE: Executing Tasks") {
-		return true
-	}
-
-	// Skip verbose task-by-task "NOTE: Running task N of M" and "NOTE: recipe X: task Y: Started/Succeeded"
+	// Skip verbose recipe task status messages (Started/Succeeded/etc)
 	// These create hundreds of lines of noise
-	if strings.HasPrefix(line, "NOTE: Running task") ||
-		strings.HasPrefix(line, "NOTE: recipe") ||
+	if strings.HasPrefix(line, "NOTE: recipe") ||
 		strings.HasPrefix(line, "NOTE: Reconnecting") ||
 		strings.HasPrefix(line, "NOTE: No reply") ||
 		strings.HasPrefix(line, "NOTE: Retrying") {

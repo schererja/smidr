@@ -11,8 +11,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	buildpkg "github.com/schererja/smidr/internal/build"
 	"github.com/schererja/smidr/internal/config"
-	"github.com/schererja/smidr/internal/container"
+	"github.com/schererja/smidr/pkg/logger"
 )
 
 func TestSetDefaultDirs(t *testing.T) {
@@ -106,31 +107,7 @@ func TestRunBuild_MinimalConfig(t *testing.T) {
 	}
 }
 
-func TestGetTailString(t *testing.T) {
-	cases := []struct {
-		input  string
-		n      int
-		expect string
-	}{
-		{"one\ntwo\nthree\nfour", 2, "three\nfour"},
-		{"a\nb\nc", 1, "c"},
-		{"x", 1, "x"},
-		{"", 1, ""},
-		{"a\nb\nc", 5, "a\nb\nc"},
-	}
-	for _, c := range cases {
-		out := getTailString(c.input, c.n)
-		if out != c.expect {
-			t.Errorf("getTailString(%q, %d) = %q, want %q", c.input, c.n, out, c.expect)
-		}
-	}
-}
-
-func TestIsattyAlwaysFalse(t *testing.T) {
-	if isatty(0) {
-		t.Log("isatty returned true for fd 0 (should be false in test)")
-	}
-}
+// Removed tests for getTailString and isatty - these functions were deleted during consolidation
 
 func TestCopyDirAndCopyFile(t *testing.T) {
 	tmpSrc := t.TempDir()
@@ -161,73 +138,8 @@ func TestCopyDirAndCopyFile(t *testing.T) {
 	}
 }
 
-type mockDockerManager struct{}
-
-func (m *mockDockerManager) Exec(ctx context.Context, containerID string, cmd []string, timeout time.Duration) (container.ExecResult, error) {
-	// Simulate successful command execution with generic output
-	return container.ExecResult{Stdout: []byte("ok\n"), Stderr: nil, ExitCode: 0}, nil
-}
-func (m *mockDockerManager) CreateContainer(ctx context.Context, cfg container.ContainerConfig) (string, error) {
-	return "", nil
-}
-func (m *mockDockerManager) RemoveContainer(ctx context.Context, containerID string, force bool) error {
-	return nil
-}
-func (m *mockDockerManager) StartContainer(ctx context.Context, containerID string) error { return nil }
-func (m *mockDockerManager) StopContainer(ctx context.Context, containerID string, timeout time.Duration) error {
-	return nil
-}
-func (m *mockDockerManager) CopyFromContainer(ctx context.Context, containerID, containerPath, hostPath string) error {
-	return nil
-}
-func (m *mockDockerManager) ExecStream(ctx context.Context, containerID string, cmd []string, timeout time.Duration) (container.ExecResult, error) {
-	return container.ExecResult{}, nil
-}
-func (m *mockDockerManager) ImageExists(ctx context.Context, imageName string) bool { return true }
-func (m *mockDockerManager) PullImage(ctx context.Context, image string) error      { return nil }
-
-func TestRunTestMarkerValidation_Empty(t *testing.T) {
-	dm := &mockDockerManager{}
-	err := runTestMarkerValidation(context.Background(), dm, "cid", container.ContainerConfig{}, &config.Config{})
-	if err != nil {
-		t.Logf("runTestMarkerValidation returned error: %v", err)
-	}
-}
-
-// Exercise runTestMarkerValidation branches when WorkspaceDir, DownloadsDir and SstateCacheDir are set.
-func TestRunTestMarkerValidation_WithDirs(t *testing.T) {
-	dm := &mockDockerManager{}
-	tmp := t.TempDir()
-	ws := filepath.Join(tmp, "work")
-	dl := filepath.Join(tmp, "downloads")
-	ss := filepath.Join(tmp, "sstate")
-	// Create host paths that would be mounted; function only uses Exec and CopyFromContainer
-	_ = os.MkdirAll(ws, 0o755)
-	_ = os.MkdirAll(dl, 0o755)
-	_ = os.MkdirAll(ss, 0o755)
-
-	cfg := &config.Config{Layers: []config.Layer{{Name: "meta-test"}}}
-	cc := container.ContainerConfig{
-		WorkspaceDir:   ws,
-		DownloadsDir:   dl,
-		SstateCacheDir: ss,
-		LayerDirs:      []string{filepath.Join(tmp, "layers", "meta-test")},
-		LayerNames:     []string{"meta-test"},
-	}
-	_ = os.MkdirAll(cc.LayerDirs[0], 0o755)
-
-	// Should not error; we mainly want to exercise logging paths
-	if err := runTestMarkerValidation(context.Background(), dm, "cid", cc, cfg); err != nil {
-		t.Fatalf("runTestMarkerValidation returned error: %v", err)
-	}
-}
-
-func TestExtractBuildArtifacts_Empty(t *testing.T) {
-	err := extractBuildArtifacts(context.Background(), nil, "", &config.Config{}, 0)
-	if err != nil {
-		t.Logf("extractBuildArtifacts returned error: %v", err)
-	}
-}
+// Removed tests for runTestMarkerValidation and old extractBuildArtifacts signature -
+// these were part of the old build path that has been consolidated into the Runner
 
 func TestCopyDir_WithSubdirectories(t *testing.T) {
 	tmpSrc := t.TempDir()
@@ -379,8 +291,18 @@ func TestExtractBuildArtifacts_Success(t *testing.T) {
 	}
 
 	start := time.Now()
-	// Call extractBuildArtifacts and expect success
-	err := extractBuildArtifacts(context.Background(), nil, "", cfg, 1*time.Second)
+	log := logger.NewLogger()
+	// Call extractBuildArtifacts with new signature (uses Runner's BuildResult)
+	// Import the build package to create a BuildResult
+	buildResult := &buildpkg.BuildResult{
+		Success:   true,
+		ExitCode:  0,
+		Duration:  1 * time.Second,
+		BuildDir:  buildDir,
+		TmpDir:    tmpDir,
+		DeployDir: deployDir,
+	}
+	err := extractBuildArtifacts(context.Background(), nil, cfg, customer, image, buildResult, log)
 	if err != nil {
 		t.Fatalf("extractBuildArtifacts failed: %v", err)
 	}

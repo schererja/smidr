@@ -21,12 +21,13 @@ This command will not overwrite an existing smidr.yaml file.`,
   smidr init "Acme IoT Gateway"`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		log := GetLogger()
 		projectName := "my-smidr-project"
 		if len(args) == 1 {
 			projectName = args[0]
 		}
 		if err := initProject(projectName); err != nil {
-			fmt.Println("Error initializing project:", err)
+			log.Error("Error initializing project", err)
 			return
 		}
 	},
@@ -49,9 +50,9 @@ func initProject(projectName string) error {
 	if err := os.WriteFile(configPath, []byte(template), 0644); err != nil {
 		return fmt.Errorf("failed to write configuration file: %w", err)
 	}
-	log.Info("✅ Initialized Smidr project: %s\n", slog.String("projectName", projectName))
-	log.Info("📝 Edit smidr.yaml to configure your build")
-	log.Info("🚀 Run 'smidr build' to start building")
+	log.Info("Initialized Smidr project", slog.String("projectName", projectName))
+	log.Info("Edit smidr.yaml to configure your build")
+	log.Info("Run 'smidr build' to start building")
 	return nil
 }
 

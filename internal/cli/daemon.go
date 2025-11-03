@@ -40,7 +40,7 @@ func init() {
 
 func runDaemon(cmd *cobra.Command, args []string) error {
 	log := GetLogger()
-	log.Info("🚀 Starting Smidr daemon...")
+	log.Info("Starting Smidr daemon...")
 	log.Info("📡 Listening", slog.String("address", daemonAddress))
 
 	// Create the gRPC server
@@ -64,7 +64,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	// Wait for shutdown signal or error
 	select {
 	case <-sigCh:
-		log.Info("\n🛑 Received shutdown signal")
+		log.Info("\nReceived shutdown signal")
 		server.Stop()
 		return nil
 	case err := <-errCh:

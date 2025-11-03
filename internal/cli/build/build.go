@@ -15,12 +15,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/term"
 
 	"github.com/schererja/smidr/internal/artifacts"
-	"github.com/schererja/smidr/internal/bitbake"
+	buildpkg "github.com/schererja/smidr/internal/build"
 	config "github.com/schererja/smidr/internal/config"
-	"github.com/schererja/smidr/internal/container"
 	docker "github.com/schererja/smidr/internal/container/docker"
 	"github.com/schererja/smidr/pkg/logger"
 	"github.com/spf13/cobra"
@@ -81,7 +79,7 @@ func runBuild(cmd *cobra.Command) error {
 
 	go func() {
 		<-sigChan
-		log.Info("🛑 Received signal, initiating graceful shutdown")
+		log.Info("Received signal, initiating graceful shutdown")
 		cancel()
 	}()
 
@@ -96,103 +94,63 @@ func runBuild(cmd *cobra.Command) error {
 	cleanImage, _ := cmd.Flags().GetBool("clean-image")
 	fetchOnly, _ := cmd.Flags().GetBool("fetch-only")
 
-	flags := buildFlags{
-		customer:   customer,
-		clean:      clean,
-		cleanImage: cleanImage,
-		fetchOnly:  fetchOnly,
-	}
-
-	// Temporary compatibility: use legacy path for test mode and fetch-only
-	if os.Getenv("SMIDR_TEST_WRITE_MARKERS") == "1" || fetchOnly {
-		return runBuildOld(cmd)
-	}
-
-	return runBuildRefactored(ctx, configFile, flags)
-}
-
-func runBuildOld(cmd *cobra.Command) error {
-
-	// Helper to expand ~ and make absolute
-	expandPath := func(path string) string {
-		if path == "" {
-			return ""
-		}
-		// Only expand ~ if it is at the start of the path
-		if strings.HasPrefix(path, "~") {
-			if len(path) == 1 || path[1] == '/' {
-				homedir, err := os.UserHomeDir()
-				if err != nil {
-					panic("Could not resolve ~ to home directory: " + err.Error())
-				}
-				path = homedir + path[1:]
-			}
-		}
-		// Make absolute if not already
-		if !strings.HasPrefix(path, "/") {
-			abs, err := os.Getwd()
-			if err != nil {
-				panic("Could not get working directory: " + err.Error())
-			}
-			path = abs + "/" + path
-		}
-		return path
-	}
-
-	// Set up signal handling for graceful cancellation
-	ctx, cancel := context.WithCancel(cmd.Context())
-	defer cancel()
-
-	// Set up signal handler for SIGINT and SIGTERM
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigChan
-		fmt.Printf("\n🛑 Received signal %v, initiating graceful shutdown...\n", sig)
-		cancel()
-	}()
-
-	log := logger.NewLogger()
-
 	log.Info("🔨 Starting Smidr build")
-	configFile := viper.GetString("config")
-	if configFile == "" {
-		configFile = "smidr.yaml"
-	}
-
 	log.Info("📄 Loading configuration", slog.String("file", configFile))
+
 	cfg, err := config.Load(configFile)
 	if err != nil {
 		return fmt.Errorf("error loading configuration: %w", err)
 	}
-	log.Info("✅ Loaded project", slog.String("name", cfg.Name))
-	log.Debug("Config loaded", slog.Int("bb_threads", cfg.Build.BBNumberThreads), slog.Int("parallel_make", cfg.Build.ParallelMake))
 
+	log.Info("Loaded project", slog.String("name", cfg.Name))
+	if cfg.Description != "" {
+		log.Debug("Project description", slog.String("description", cfg.Description))
+	}
+
+	// Set up build directories
 	workDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
 	setDefaultDirs(cfg, workDir)
 
-	// --- PATCH: Create unique or customer-specific build directory for this build ---
+	// Expand paths helper
+	expandPath := func(path string) string {
+		if path == "" {
+			return ""
+		}
+		if strings.HasPrefix(path, "~") {
+			if len(path) == 1 || path[1] == '/' {
+				homedir, err := os.UserHomeDir()
+				if err != nil {
+					log.Fatal("Could not resolve ~ to home directory: ", err)
+				}
+				path = homedir + path[1:]
+			}
+		}
+		if !strings.HasPrefix(path, "/") {
+			abs, err := os.Getwd()
+			if err != nil {
+				log.Fatal("Could not get working directory: ", err)
+			}
+			path = abs + "/" + path
+		}
+		return path
+	}
+
+	// Create unique or customer-specific build directory
 	homedir, _ := os.UserHomeDir()
-	customer, _ := cmd.Flags().GetString("customer")
-	clean, _ := cmd.Flags().GetBool("clean")
 	imageName := cfg.Build.Image
+	buildUUID := uuid.New().String()
 
 	var buildDir string
 	if customer != "" {
-		// Use per-customer/image build dir for incremental builds
 		buildDir = fmt.Sprintf("%s/.smidr/builds/build-%s/%s", homedir, customer, imageName)
 		if clean {
-			// Remove the build dir for a full rebuild
 			os.RemoveAll(buildDir)
-			log.Info("🧹 Cleaned build directory", slog.String("path", buildDir))
+			log.Info("Cleaned build directory", slog.String("path", buildDir))
 		}
 	} else {
-		// Use default unique build directory
-		buildUUID := uuid.New().String()
 		buildDir = fmt.Sprintf("%s/.smidr/builds/build-%s", homedir, buildUUID)
 	}
 
@@ -200,10 +158,7 @@ func runBuildOld(cmd *cobra.Command) error {
 	var tmpDir string
 	if cfg.Directories.Tmp != "" {
 		tmpDir = expandPath(cfg.Directories.Tmp)
-		// If --clean was requested and we're using a configured (potentially shared) TMPDIR,
-		// clean it to ensure a fresh build with artifacts
 		if clean && customer != "" {
-			// Create a customer-specific subdir in the configured TMPDIR to avoid cleaning shared state
 			tmpDir = fmt.Sprintf("%s/%s-%s", tmpDir, customer, imageName)
 			os.RemoveAll(tmpDir)
 			log.Info("🧹 Cleaned TMPDIR", slog.String("path", tmpDir))
@@ -211,10 +166,10 @@ func runBuildOld(cmd *cobra.Command) error {
 	} else {
 		tmpDir = fmt.Sprintf("%s/tmp", buildDir)
 	}
-	// DEPLOY_DIR: always per-build
+
 	deployDir := fmt.Sprintf("%s/deploy", buildDir)
 
-	// Ensure tmp and deploy are created with permissive permissions so container user can write
+	// Ensure directories exist with permissive permissions
 	if err := os.MkdirAll(tmpDir, 0777); err != nil {
 		return fmt.Errorf("failed to create tmp dir: %w", err)
 	}
@@ -235,7 +190,6 @@ func runBuildOld(cmd *cobra.Command) error {
 		slog.String("build_dir", buildDir))
 
 	// Expand and resolve all relevant directories
-	// Prefer directories.downloads; fallback to directories.source
 	downloadsDir := cfg.Directories.Downloads
 	if downloadsDir == "" && cfg.Directories.Source != "" {
 		downloadsDir = cfg.Directories.Source
@@ -251,392 +205,78 @@ func runBuildOld(cmd *cobra.Command) error {
 	cfg.Directories.Tmp = expandPath(cfg.Directories.Tmp)
 	cfg.Directories.Deploy = expandPath(cfg.Directories.Deploy)
 
-	// If --fetch-only was requested, stop here to keep CI fast
-	if ok, _ := cmd.Flags().GetBool("fetch-only"); ok {
+	// If --fetch-only was requested, stop here
+	if fetchOnly {
 		log.Info("🛑 Fetch-only mode enabled, skipping container start and build")
 		return nil
 	}
 
-	// Step 2: Prepare container config
-	log.Info("🐳 Preparing container environment")
-	// Allow tests to override container name and mounts for verification
-	testName := os.Getenv("SMIDR_TEST_CONTAINER_NAME")
-	testDownloads := os.Getenv("SMIDR_TEST_DOWNLOADS_DIR")
-	testSstate := os.Getenv("SMIDR_TEST_SSTATE_DIR")
-	testWorkspace := os.Getenv("SMIDR_TEST_WORKSPACE_DIR")
-	testImage := os.Getenv("SMIDR_TEST_IMAGE")
-	testLayerDirsCSV := os.Getenv("SMIDR_TEST_LAYER_DIRS") // comma-separated
-	var testLayerDirs []string
-	if testLayerDirsCSV != "" {
-		for _, p := range strings.Split(testLayerDirsCSV, ",") {
-			p = strings.TrimSpace(p)
-			if p != "" {
-				testLayerDirs = append(testLayerDirs, p)
-			}
-		}
-	}
-	// Prepare layer dirs from config so they are injected into the container by default
-	var cfgLayerDirs []string
-	var cfgLayerNames []string
-	mountedParents := make(map[string]string) // Track which parent directories we've already added for mounting (path -> name)
-
-	for _, l := range cfg.Layers {
-		var layerPath string
-		if l.Path != "" {
-			// If path is relative, make it relative to the layers directory
-			if !strings.HasPrefix(l.Path, "/") && !strings.HasPrefix(l.Path, "~") {
-				layerPath = expandPath(fmt.Sprintf("%s/%s", cfg.Directories.Layers, l.Path))
-			} else {
-				// Absolute path or ~ path - expand as-is
-				layerPath = expandPath(l.Path)
-			}
-		} else {
-			// Always expand ~ and make absolute for default layers dir
-			layerPath = expandPath(fmt.Sprintf("%s/%s", cfg.Directories.Layers, l.Name))
-		}
-
-		// For mounting, we only want to mount the top-level parent directories
-		// For sublayers like meta-openembedded/meta-oe, we should mount meta-openembedded
-		var mountPath string
-		var mountName string
-		if l.Path != "" && strings.Contains(l.Path, "/") {
-			// This is a sublayer - mount the parent directory instead
-			parentPath := strings.Split(l.Path, "/")[0]
-			mountPath = expandPath(fmt.Sprintf("%s/%s", cfg.Directories.Layers, parentPath))
-			mountName = parentPath
-		} else {
-			// This is a top-level layer - mount it directly
-			mountPath = layerPath
-			mountName = l.Name
-		}
-
-		// Only add unique mount paths
-		if _, exists := mountedParents[mountPath]; !exists {
-			cfgLayerDirs = append(cfgLayerDirs, mountPath)
-			cfgLayerNames = append(cfgLayerNames, mountName)
-			mountedParents[mountPath] = mountName
-		}
+	// Prepare build options
+	opts := buildpkg.BuildOptions{
+		BuildID:    buildUUID,
+		Target:     cfg.Build.Image,
+		Customer:   customer,
+		ForceClean: clean,
+		ForceImage: cleanImage,
 	}
 
-	// Only mount valid Yocto layers (those with conf/layer.conf)
-	var validLayerDirs []string
-	var validLayerNames []string
-	for i, dir := range cfgLayerDirs {
-		// Ensure the layer directory exists before checking for layer.conf
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			// logger.Debug("Failed to create layer directory %s: %v", dir, err)
-			continue
-		}
-
-		confPath := fmt.Sprintf("%s/conf/layer.conf", dir)
-		if fi, err := os.Stat(confPath); err == nil && !fi.IsDir() {
-			validLayerDirs = append(validLayerDirs, dir)
-			validLayerNames = append(validLayerNames, cfgLayerNames[i])
-		} else {
-			// Include directory anyway for mounting - layer.conf will be created when fetched
-			validLayerDirs = append(validLayerDirs, dir)
-			validLayerNames = append(validLayerNames, cfgLayerNames[i])
-			// logger.Debug("Including layer directory for mounting (conf/layer.conf will be created on fetch): %s", dir)
-		}
-	}
-	cfgLayerDirs = validLayerDirs
-	cfgLayerNames = validLayerNames
-
-	// Determine container image - use config, test override, or fallback
-	imageToUse := cfg.Container.BaseImage
-	if imageToUse == "" {
-		imageToUse = "crops/yocto:ubuntu-22.04-builder" // fallback to official Yocto build image
-	}
-
-	// Patch: Set TMPDIR in container environment to ensure BitBake uses the correct tmp dir
-	env := os.Environ()
-	env = append(env, fmt.Sprintf("TMPDIR=%s", cfg.Directories.Tmp))
-	containerConfig := container.ContainerConfig{
-		Image:          imageToUse,
-		Cmd:            []string{"echo 'Container ready'; sleep 86400"}, // 24 hours
-		DownloadsDir:   cfg.Directories.Downloads,                       // mount host downloads (DL_DIR) into container
-		SstateCacheDir: cfg.Directories.SState,                          // Wire SSTATE dir from config
-		WorkspaceDir:   cfg.Directories.Build,
-		BuildDir:       cfg.Directories.Build,
-		TmpDir:         cfg.Directories.Tmp, // Mount host tmp dir if set
-		LayerDirs:      cfgLayerDirs,
-		LayerNames:     cfgLayerNames,
-		Name:           testName,
-		MemoryLimit:    cfg.Container.Memory,
-		CPUCount:       cfg.Container.CPUCount,
-		Env:            env,
-	}
-	// Apply test overrides if provided
-	if testDownloads != "" {
-		containerConfig.DownloadsDir = testDownloads
-	}
-	if testSstate != "" {
-		containerConfig.SstateCacheDir = testSstate
-	}
-	if testWorkspace != "" {
-		containerConfig.WorkspaceDir = testWorkspace
-	}
-	if len(testLayerDirs) > 0 {
-		containerConfig.LayerDirs = testLayerDirs
-	}
-	// Apply test image override last so tests can build and use a local image (avoids Docker Hub rate limits)
-	if testImage != "" {
-		containerConfig.Image = testImage
-	}
-
-	// Allow tests to override entrypoint (comma-separated)
-	if ep := os.Getenv("SMIDR_TEST_ENTRYPOINT"); ep != "" {
-		parts := strings.Split(ep, ",")
-		for i := range parts {
-			parts[i] = strings.TrimSpace(parts[i])
-		}
-		containerConfig.Entrypoint = parts
-	}
-
-	// Wire configured entrypoint from smidr.yaml if provided
-	if len(cfg.Container.Entrypoint) > 0 {
-		containerConfig.Entrypoint = cfg.Container.Entrypoint
-	}
-
-	// Step 3: Create DockerManager
-	dm, err := docker.NewDockerManager()
+	// Create log files
+	logDir := cfg.Directories.Build
+	os.MkdirAll(logDir, 0755)
+	plainLogPath := filepath.Join(logDir, "build-log.txt")
+	plainLogFile, err := os.Create(plainLogPath)
 	if err != nil {
-		return fmt.Errorf("failed to create DockerManager: %w", err)
+		return fmt.Errorf("failed to create build-log.txt: %w", err)
+	}
+	defer plainLogFile.Close()
+
+	logSink := &cliLogSink{
+		stdout: io.MultiWriter(os.Stdout, plainLogFile),
 	}
 
-	// Ensure the downloads directory exists; always auto-create, no prompts
-	if containerConfig.DownloadsDir != "" {
-		if fi, err := os.Stat(containerConfig.DownloadsDir); err != nil || !fi.IsDir() {
-			if err := os.MkdirAll(containerConfig.DownloadsDir, 0755); err != nil {
-				return fmt.Errorf("failed to create downloads dir: %w", err)
-			}
-		}
-		// If the directory exists (even if empty), proceed silently
-	}
+	log.Info("🚀 Starting Yocto build")
+	log.Info("💡 Use Ctrl+C to gracefully cancel the build")
 
-	// Log resolved host<->container mappings
-	log.Info("🔧 Container mounts configured",
-		slog.String("downloads", containerConfig.DownloadsDir),
-		slog.String("sstate", containerConfig.SstateCacheDir),
-		slog.String("workspace", containerConfig.WorkspaceDir),
-		slog.String("tmp", containerConfig.TmpDir))
-	// Log layers
-	if len(containerConfig.LayerDirs) > 0 {
-		log.Debug("Layers mounted", slog.Int("count", len(containerConfig.LayerDirs)))
-	}
-	if containerConfig.DownloadsDir == cfg.Directories.Source && containerConfig.DownloadsDir != "" {
-		log.Warn("⚠️ Downloads and sources use same path, consider separating them in smidr.yaml")
-	}
+	// Use the Runner
+	runner := buildpkg.NewRunner(log)
+	buildResult, err := runner.Run(ctx, cfg, opts, logSink)
 
-	// Step 4: Pull image (skip pulling if a test image override is provided or image exists locally)
-	if testImage == "" {
-		// Check if image exists locally first
-		if dm.ImageExists(ctx, containerConfig.Image) {
-			log.Info("🐳 Using local image", slog.String("image", containerConfig.Image))
-		} else {
-			// Image doesn't exist locally, try to pull it
-			log.Info("🐳 Pulling container image", slog.String("image", containerConfig.Image))
-			if err := dm.PullImage(ctx, containerConfig.Image); err != nil {
-				return fmt.Errorf("failed to pull image: %w", err)
-			}
-		}
-	} else {
-		log.Info("🐳 Using prebuilt test image", slog.String("image", containerConfig.Image))
-	}
-
-	// Step 5: Create container
-	log.Info("🐳 Creating container")
-	containerID, err := dm.CreateContainer(ctx, containerConfig)
 	if err != nil {
-		return fmt.Errorf("failed to create container: %w", err)
-	}
-
-	// Step 6: Ensure cleanup (stop/remove) always runs
-	// But skip cleanup if SMIDR_DEBUG_KEEP_CONTAINER is set
-	defer func() {
-		if os.Getenv("SMIDR_DEBUG_KEEP_CONTAINER") != "" {
-			log.Warn("⚠️ DEBUG MODE: Container kept for inspection", slog.String("container_id", containerID))
-			return
-		}
-		log.Info("🧹 Cleaning up container")
-		stopErr := dm.StopContainer(ctx, containerID, 2*time.Second)
-		if stopErr != nil {
-			log.Warn("Failed to stop container", slog.String("error", stopErr.Error()))
-		}
-		removeErr := dm.RemoveContainer(ctx, containerID, true)
-		if removeErr != nil {
-			log.Warn("Failed to remove container", slog.String("error", removeErr.Error()))
-		}
-	}()
-
-	// Step 7: Start container
-	log.Info("🐳 Starting container", slog.String("id", containerID))
-	if err := dm.StartContainer(ctx, containerID); err != nil {
-		return fmt.Errorf("failed to start container: %w", err)
-	}
-
-	log.Debug("Container started", slog.String("id", containerID))
-
-	// Add a short delay if debugging to allow user to start monitoring
-	if os.Getenv("SMIDR_DEBUG_KEEP_CONTAINER") != "" {
-		log.Info("⏳ Pausing 5 seconds for monitoring setup")
-		time.Sleep(5 * time.Second)
-	}
-
-	// Step 8: Execute the actual build
-	if os.Getenv("SMIDR_TEST_WRITE_MARKERS") != "1" {
-		// Only run real build if not in test mode
-		log.Info("🚀 Starting Yocto build")
-		log.Info("💡 Use Ctrl+C to gracefully cancel the build")
-
-		// Prepare log files in the build directory
-		logDir := cfg.Directories.Build
-		os.MkdirAll(logDir, 0755)
-		plainLogPath := filepath.Join(logDir, "build-log.txt")
-		jsonlLogPath := filepath.Join(logDir, "build-log.jsonl")
-		plainLogFile, err := os.Create(plainLogPath)
-		if err != nil {
-			return fmt.Errorf("failed to create build-log.txt: %w", err)
-		}
-		defer plainLogFile.Close()
-		jsonlLogFile, err := os.Create(jsonlLogPath)
-		if err != nil {
-			return fmt.Errorf("failed to create build-log.jsonl: %w", err)
-		}
-		defer jsonlLogFile.Close()
-
-		logWriter := &bitbake.BuildLogWriter{
-			PlainWriter: io.MultiWriter(os.Stdout, plainLogFile),
-			JSONLWriter: jsonlLogFile,
-		}
-
-		executor := bitbake.NewBuildExecutor(cfg, dm, containerID, containerConfig.WorkspaceDir, log)
-
-		// Set clean-image flag if requested to force image regeneration
-		cleanImage, _ := cmd.Flags().GetBool("clean-image")
-		if cleanImage {
-			executor.SetForceImage(true)
-		}
-
-		buildResult, err := executor.ExecuteBuild(ctx, logWriter)
-
-		if err != nil {
-			// Check if the error was due to context cancellation (signal handling)
-			if ctx.Err() == context.Canceled {
-				log.Info("🛑 Build cancelled by user signal")
-				if buildResult != nil {
-					log.Info("Build duration before cancel", slog.Duration("duration", buildResult.Duration))
-				}
-				return fmt.Errorf("build cancelled by user")
-			}
-
-			log.Error("❌ Build failed", err)
+		if ctx.Err() == context.Canceled {
+			log.Warn("🛑 Build was cancelled by user signal")
 			if buildResult != nil {
-				log.Info("Build duration", slog.Duration("duration", buildResult.Duration))
+				log.Info("Build duration before cancellation", slog.Duration("duration", buildResult.Duration))
 			}
-			return fmt.Errorf("build execution failed: %w", err)
+			return fmt.Errorf("build cancelled by user")
 		}
 
-		log.Info("✅ Build completed successfully",
-			slog.Duration("duration", buildResult.Duration),
-			slog.Int("exit_code", buildResult.ExitCode))
-
-		// Extract build artifacts
-		log.Info("📦 Extracting build artifacts")
-		if err := extractBuildArtifacts(ctx, dm, containerID, cfg, buildResult.Duration); err != nil {
-			log.Warn("Failed to extract artifacts", slog.String("error", err.Error()))
-			// Don't fail the build for artifact extraction errors
+		log.Error("❌ Build failed", err)
+		if buildResult != nil {
+			log.Info("Build duration", slog.Duration("duration", buildResult.Duration))
 		}
+		return fmt.Errorf("build execution failed: %w", err)
+	}
+
+	log.Info("✅ Build completed successfully",
+		slog.Duration("duration", buildResult.Duration),
+		slog.Int("exit_code", buildResult.ExitCode))
+
+	// Extract build artifacts
+	log.Info("📦 Extracting build artifacts")
+	dm, err := docker.NewDockerManager(log)
+	if err != nil {
+		log.Warn("Failed to create docker manager for artifact extraction", slog.String("error", err.Error()))
 	} else {
-		// Test mode - run marker validation logic
-		log.Info("🚀 Build process running in test mode")
-		if err := runTestMarkerValidation(ctx, dm, containerID, containerConfig, cfg); err != nil {
-			return fmt.Errorf("test marker validation failed: %w", err)
+		if err := extractBuildArtifacts(ctx, dm, cfg, customer, imageName, buildResult, log); err != nil {
+			log.Warn("Failed to extract artifacts", slog.String("error", err.Error()))
 		}
 	}
 
 	log.Info("💡 Use 'smidr artifacts list' to view build artifacts")
-
-	return nil // Build completed successfully
-}
-
-// getTailString returns the last n characters of a string
-func getTailString(s string, n int) string {
-	lines := strings.Split(s, "\n")
-	if n >= len(lines) {
-		return s
-	}
-	return strings.Join(lines[len(lines)-n:], "\n")
-}
-
-// runTestMarkerValidation runs the test marker validation logic
-func runTestMarkerValidation(ctx context.Context, dm container.ContainerManager, containerID string, containerConfig container.ContainerConfig, cfg *config.Config) error {
-	// Test container functionality and mount accessibility
-	// Note: On CI, bind-mounted directories may not be writable due to UID mismatches
-
-	// First verify basic container functionality
-	tmpRes, err := dm.Exec(ctx, containerID, []string{"sh", "-c", "echo 'container-functional' > /tmp/test-writable.txt && cat /tmp/test-writable.txt"}, 5*time.Second)
-	if err != nil || tmpRes.ExitCode != 0 {
-		fmt.Printf("⚠️  Container basic write test failed: %v, output: %s\n", err, string(tmpRes.Stderr))
-	}
-
-	// Test workspace by writing to writable location and using docker cp to extract
-	if containerConfig.WorkspaceDir != "" {
-		// Create marker in writable space inside container
-		res, err := dm.Exec(ctx, containerID, []string{"sh", "-c", "echo itest > /tmp/builder-workspace/itest.txt"}, 5*time.Second)
-		if err != nil {
-			fmt.Printf("⚠️  Failed to create workspace marker: %v\n", err)
-		} else if res.ExitCode != 0 {
-			fmt.Printf("⚠️  workspace marker creation failed: %s\n", string(res.Stderr))
-		} else {
-			// Use docker cp to copy the file from container to host mount point
-			// This works even when container user can't write directly to bind-mounted dirs
-			if err := dm.CopyFromContainer(ctx, containerID, "/tmp/builder-workspace/itest.txt", containerConfig.WorkspaceDir+"/itest.txt"); err != nil {
-				fmt.Printf("⚠️  Failed to copy workspace marker to host: %v\n", err)
-			} else {
-				fmt.Printf("✓ Workspace marker successfully created via docker cp\n")
-			}
-		}
-	}
-
-	// For downloads and sstate, just test if the directories are accessible
-	// Don't try to write to them due to permission issues with bind mounts
-	if containerConfig.DownloadsDir != "" {
-		res, err := dm.Exec(ctx, containerID, []string{"sh", "-c", "ls -la /home/builder/downloads | head -5"}, 5*time.Second)
-		if err != nil {
-			fmt.Printf("⚠️  Downloads dir not accessible: %v\n", err)
-		} else {
-			fmt.Printf("✓ Downloads directory accessible with content:\n%s\n", string(res.Stdout))
-		}
-	}
-
-	if containerConfig.SstateCacheDir != "" {
-		res, err := dm.Exec(ctx, containerID, []string{"sh", "-c", "ls -la /home/builder/sstate-cache | head -5"}, 5*time.Second)
-		if err != nil {
-			fmt.Printf("⚠️  Sstate dir not accessible: %v\n", err)
-		} else {
-			fmt.Printf("✓ Sstate directory accessible with content:\n%s\n", string(res.Stdout))
-		}
-	}
-
-	// Probe layer visibility if any provided, using real layer names
-	if len(containerConfig.LayerDirs) > 0 {
-		for i := range containerConfig.LayerDirs {
-			layerName := ""
-			if i < len(cfg.Layers) {
-				layerName = cfg.Layers[i].Name
-			} else {
-				layerName = fmt.Sprintf("layer-%d", i)
-			}
-			res, _ := dm.Exec(ctx, containerID, []string{"sh", "-c", fmt.Sprintf("ls -la /home/builder/layers/%s || true", layerName)}, 5*time.Second)
-			if len(res.Stdout) > 0 {
-				fmt.Printf("Layer %s contents:\n%s\n", layerName, string(res.Stdout))
-			}
-		}
-	}
-
 	return nil
 }
+
+// Helper to expand ~ and make absolute
 
 // setDefaultDirs ensures default directory paths are populated on the config
 // when the user did not provide them. This centralizes defaulting and makes
@@ -668,28 +308,17 @@ func setDefaultDirs(cfg *config.Config, workDir string) {
 	// Removed cache defaults; defaults exist for Directories in setDefaultDirs
 }
 
-// extractBuildArtifacts extracts build artifacts from the container to persistent storage
-func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, containerID string, cfg *config.Config, buildDuration time.Duration) error {
+// extractBuildArtifacts extracts build artifacts from the build result to persistent storage
+func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, cfg *config.Config, customer, imageName string, result *buildpkg.BuildResult, log *logger.Logger) error {
 	// Get current user for metadata
 	currentUser, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
 
-	// Determine if this is a customer build (by checking build dir path)
+	// Determine artifact directory based on customer
 	artifactDir := ""
-	customer := ""
-	imageName := cfg.Build.Image
 	timestamp := time.Now().Format("20060102-150405")
-
-	if strings.Contains(cfg.Directories.Build, "/build-") {
-		parts := strings.Split(cfg.Directories.Build, "/build-")
-		if len(parts) > 1 {
-			customerAndRest := parts[1]
-			customerParts := strings.SplitN(customerAndRest, "/", 2)
-			customer = customerParts[0]
-		}
-	}
 
 	if customer != "" {
 		// Use customer artifact dir
@@ -700,87 +329,20 @@ func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, contai
 		artifactDir = fmt.Sprintf("%s/.smidr/artifacts/%s", currentUser.HomeDir, buildID)
 	}
 
-	// Start with the configured deploy directory (may be per-build or shared TMPDIR)
-	deploySrc := cfg.Directories.Deploy
-	fmt.Printf("[DEBUG] Configured Deploy directory: %s\n", deploySrc)
-
-	// If the configured deploy doesn't exist or is empty, try TMPDIR/deploy as fallback (for sstate-restored builds)
-	deployInfo, deployStatErr := os.Stat(deploySrc)
-	if deployStatErr != nil || !deployInfo.IsDir() {
-		fmt.Printf("[DEBUG] Configured deploy stat error or not a dir: %v\n", deployStatErr)
-		// Try TMPDIR/deploy as fallback
-		tmpDeploySrc := filepath.Join(cfg.Directories.Tmp, "deploy")
-		fmt.Printf("[DEBUG] Trying TMPDIR/deploy: %s\n", tmpDeploySrc)
-		tmpInfo, tmpErr := os.Stat(tmpDeploySrc)
-		if tmpErr == nil && tmpInfo.IsDir() {
-			deploySrc = tmpDeploySrc
-			fmt.Printf("[INFO] Configured deploy not found, using TMPDIR/deploy: %s\n", deploySrc)
-		} else {
-			fmt.Printf("[DEBUG] TMPDIR/deploy also not available: %v\n", tmpErr)
-		}
-	} else {
-		// Check if it's empty
-		entries, _ := os.ReadDir(deploySrc)
-		fmt.Printf("[DEBUG] Configured deploy has %d entries\n", len(entries))
-		if len(entries) > 0 {
-			fmt.Printf("[DEBUG] Sample entries: ")
-			for i, e := range entries {
-				if i >= 3 {
-					fmt.Printf("... (%d more)", len(entries)-3)
-					break
-				}
-				fmt.Printf("%s ", e.Name())
-			}
-			fmt.Println()
-		}
-		if len(entries) == 0 {
-			// Empty, try TMPDIR/deploy instead
-			tmpDeploySrc := filepath.Join(cfg.Directories.Tmp, "deploy")
-			fmt.Printf("[DEBUG] Configured deploy empty, trying TMPDIR/deploy: %s\n", tmpDeploySrc)
-			tmpInfo, tmpErr := os.Stat(tmpDeploySrc)
-			if tmpErr == nil && tmpInfo.IsDir() {
-				tmpEntries, _ := os.ReadDir(tmpDeploySrc)
-				fmt.Printf("[DEBUG] TMPDIR/deploy has %d entries\n", len(tmpEntries))
-				if len(tmpEntries) > 0 {
-					deploySrc = tmpDeploySrc
-					fmt.Printf("[INFO] Configured deploy empty, using TMPDIR/deploy: %s\n", deploySrc)
-				} else {
-					// Both are empty - this was a 100% sstate cache build
-					fmt.Println("ℹ️  Build completed entirely from sstate cache - no new artifacts generated")
-					fmt.Println("💡 Artifacts from previous builds are available in the sstate cache")
-					// Don't fail - just skip artifact extraction
-					return nil
-				}
-			} else {
-				fmt.Printf("[DEBUG] TMPDIR/deploy also not available: %v\n", tmpErr)
-				// No deploy directory at all - sstate-only build
-				fmt.Println("ℹ️  Build completed entirely from sstate cache - no deploy directory populated")
-				return nil
-			}
-		}
-	}
-
+	// Use result's DeployDir directly (Runner already determined the correct path)
+	deploySrc := result.DeployDir
 	deployDst := filepath.Join(artifactDir, "deploy")
 
-	fmt.Printf("[DEBUG] Copying deploy artifacts\n")
-	fmt.Printf("[DEBUG] Source: %s\n", deploySrc)
-	fmt.Printf("[DEBUG] Destination: %s\n", deployDst) // Check if source exists and is a directory
+	// Check if source exists and is a directory
 	info, statErr := os.Stat(deploySrc)
-	if statErr != nil {
-		fmt.Printf("[DEBUG] Source deploy directory does not exist: %v\n", statErr)
-		return fmt.Errorf("deploy source directory does not exist: %w", statErr)
-	}
-	if !info.IsDir() {
-		fmt.Printf("[DEBUG] Source deploy path is not a directory!\n")
-		return fmt.Errorf("deploy source is not a directory")
+	if statErr != nil || !info.IsDir() {
+		return fmt.Errorf("deploy source directory does not exist or is not a directory: %v", statErr)
 	}
 
-	err = copyDir(deploySrc, deployDst)
-	if err != nil {
-		fmt.Printf("[DEBUG] Error copying deploy directory: %v\n", err)
+	// Copy deploy artifacts
+	if err := copyDir(deploySrc, deployDst); err != nil {
 		return fmt.Errorf("failed to copy deploy artifacts: %w", err)
 	}
-	fmt.Printf("[DEBUG] Deploy directory copied successfully.\n")
 
 	// Copy build logs to artifact directory
 	buildLogTxt := filepath.Join(cfg.Directories.Build, "build-log.txt")
@@ -788,10 +350,10 @@ func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, contai
 	destLogTxt := filepath.Join(artifactDir, "build-log.txt")
 	destLogJsonl := filepath.Join(artifactDir, "build-log.jsonl")
 	if err := copyFile(buildLogTxt, destLogTxt); err != nil {
-		fmt.Printf("[WARNING] Failed to copy build-log.txt to artifact dir: %v\n", err)
+		log.Warn("Failed to copy build-log.txt to artifact dir", slog.String("error", err.Error()))
 	}
 	if err := copyFile(buildLogJsonl, destLogJsonl); err != nil {
-		fmt.Printf("[WARNING] Failed to copy build-log.jsonl to artifact dir: %v\n", err)
+		log.Warn("Failed to copy build-log.jsonl to artifact dir", slog.String("error", err.Error()))
 	}
 
 	// Create build metadata
@@ -807,7 +369,7 @@ func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, contai
 			"base_provider": cfg.Base.Provider,
 			"base_version":  cfg.Base.Version,
 		},
-		BuildDuration: buildDuration,
+		BuildDuration: result.Duration,
 		TargetImage:   cfg.Build.Image,
 		Status:        "success",
 	}
@@ -826,7 +388,7 @@ func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, contai
 		return fmt.Errorf("failed to encode metadata: %w", err)
 	}
 
-	fmt.Printf("✅ Artifacts copied to: %s\n", artifactDir)
+	log.Info("✅ Artifacts copied", slog.String("path", artifactDir))
 	return nil
 }
 
@@ -834,7 +396,8 @@ func extractBuildArtifacts(ctx context.Context, dm *docker.DockerManager, contai
 func copyDir(src string, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			fmt.Printf("[WARNING] Skipping missing file: %s (%v)\n", path, err)
+			// best-effort copy; log to stdout via stderr semantics not available here
+			// leave as silent skip to reduce noise in logs
 			return nil
 		}
 		rel, err := filepath.Rel(src, path)
@@ -847,16 +410,15 @@ func copyDir(src string, dst string) error {
 		if info.Mode()&os.ModeSymlink != 0 {
 			linkTarget, lerr := os.Readlink(path)
 			if lerr != nil {
-				fmt.Printf("[WARNING] Skipping broken symlink: %s (%v)\n", path, lerr)
+				// skip broken symlink silently
 				return nil
 			}
 			// Ensure parent directory exists
 			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				fmt.Printf("[WARNING] Failed to create parent dir for symlink: %s (%v)\n", filepath.Dir(target), err)
 				return err
 			}
 			if err := os.Symlink(linkTarget, target); err != nil {
-				fmt.Printf("[WARNING] Failed to create symlink: %s -> %s (%v)\n", target, linkTarget, err)
+				// ignore symlink creation issues (best-effort copy)
 			}
 			return nil
 		}
@@ -865,28 +427,24 @@ func copyDir(src string, dst string) error {
 		} else {
 			// Ensure parent directory exists
 			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				fmt.Printf("[WARNING] Failed to create parent dir for file: %s (%v)\n", filepath.Dir(target), err)
 				return err
 			}
 			srcFile, err := os.Open(path)
 			if err != nil {
-				fmt.Printf("[WARNING] Skipping missing file: %s (%v)\n", path, err)
 				return nil
 			}
 			defer srcFile.Close()
 			dstFile, err := os.Create(target)
 			if err != nil {
-				fmt.Printf("[WARNING] Failed to create file: %s (%v)\n", target, err)
 				return err
 			}
 			defer dstFile.Close()
 			_, err = io.Copy(dstFile, srcFile)
 			if err != nil {
-				fmt.Printf("[WARNING] Failed to copy file: %s -> %s (%v)\n", path, target, err)
 				return err
 			}
 			if err := os.Chmod(target, info.Mode()); err != nil {
-				fmt.Printf("[WARNING] Failed to chmod file: %s (%v)\n", target, err)
+				// ignore chmod issues
 			}
 			return nil
 		}
@@ -909,12 +467,6 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return out.Sync()
-}
-
-// isatty returns true if the given file descriptor is a terminal.
-// Uses golang.org/x/term for cross-platform detection.
-func isatty(fd uintptr) bool {
-	return term.IsTerminal(int(fd))
 }
 
 // cliLogSink adapts the runner's LogSink interface to write to stdout and log files

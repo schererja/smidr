@@ -145,7 +145,7 @@ func (s *Server) Start() error {
 	s.grpcServer = grpc.NewServer()
 	v1.RegisterSmidrServer(s.grpcServer, s)
 
-	s.logger.Info("🚀 Smidr daemon listening", slog.String("address", s.address))
+	s.logger.Info("Smidr daemon listening", slog.String("address", s.address))
 
 	if err := s.grpcServer.Serve(lis); err != nil {
 		return fmt.Errorf("failed to serve: %w", err)
@@ -156,16 +156,16 @@ func (s *Server) Start() error {
 
 // Stop gracefully stops the gRPC server and cancels all running builds
 func (s *Server) Stop() {
-	s.logger.Info("🛑 Stopping daemon...")
+	s.logger.Info("Stopping daemon...")
 
 	// Cancel all running builds
 	s.buildsMutex.Lock()
-	s.logger.Info("📋 Cancelling active builds", slog.Int("count", len(s.builds)))
+	s.logger.Info("Cancelling active builds", slog.Int("count", len(s.builds)))
 	for buildID, build := range s.builds {
 		if build.State == v1.BuildState_BUILD_STATE_BUILDING ||
 			build.State == v1.BuildState_BUILD_STATE_PREPARING ||
 			build.State == v1.BuildState_BUILD_STATE_QUEUED {
-			s.logger.Info("🚫 Cancelling build",
+			s.logger.Info("Cancelling build",
 				slog.String("buildID", buildID),
 				slog.String("state", build.State.String()))
 			if build.cancel != nil {
@@ -183,7 +183,7 @@ func (s *Server) Stop() {
 		s.grpcServer.GracefulStop()
 	}
 
-	s.logger.Info("✅ Daemon stopped")
+	s.logger.Info("Daemon stopped")
 }
 
 // StartBuild handles build start requests
@@ -280,7 +280,7 @@ func (s *Server) executeBuild(ctx context.Context, buildInfo *BuildInfo, req *v1
 		defer func() {
 			queue <- struct{}{} // return token when done
 		}()
-		logWriter.WriteLog("stdout", "✅ Build slot acquired, proceeding...")
+		logWriter.WriteLog("stdout", "Build slot acquired, proceeding...")
 	case <-ctx.Done():
 		s.failBuild(buildInfo.ID, "Build cancelled while waiting for queue slot")
 		return
@@ -289,9 +289,9 @@ func (s *Server) executeBuild(ctx context.Context, buildInfo *BuildInfo, req *v1
 	// Update state to preparing
 	s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_PREPARING)
 
-	logWriter.WriteLog("stdout", "🚀 Starting build process...")
-	logWriter.WriteLog("stdout", fmt.Sprintf("📝 Config: %s", buildInfo.ConfigPath))
-	logWriter.WriteLog("stdout", fmt.Sprintf("🎯 Target: %s", req.Target))
+	logWriter.WriteLog("stdout", "Starting build process...")
+	logWriter.WriteLog("stdout", fmt.Sprintf("Config: %s", buildInfo.ConfigPath))
+	logWriter.WriteLog("stdout", fmt.Sprintf("Target: %s", req.Target))
 
 	// Build options for runner
 	opts := buildpkg.BuildOptions{
@@ -317,7 +317,7 @@ func (s *Server) executeBuild(ctx context.Context, buildInfo *BuildInfo, req *v1
 		buildInfo.ErrorMsg = err.Error()
 		buildInfo.CompletedAt = time.Now()
 		s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_FAILED)
-		logWriter.WriteLog("stderr", fmt.Sprintf("❌ Build failed: %v", err))
+		logWriter.WriteLog("stderr", fmt.Sprintf("Build failed: %v", err))
 		return
 	}
 
@@ -328,21 +328,21 @@ func (s *Server) executeBuild(ctx context.Context, buildInfo *BuildInfo, req *v1
 		// Extract artifacts if artifact manager is available and build succeeded
 		if s.artifactMgr != nil {
 			s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_EXTRACTING_ARTIFACTS)
-			logWriter.WriteLog("stdout", "📦 Extracting artifacts...")
+			logWriter.WriteLog("stdout", "Extracting artifacts...")
 
 			if err := s.extractArtifacts(ctx, buildInfo, result, logWriter); err != nil {
-				logWriter.WriteLog("stderr", fmt.Sprintf("⚠️ Failed to extract artifacts: %v", err))
+				logWriter.WriteLog("stderr", fmt.Sprintf("Failed to extract artifacts: %v", err))
 				// Don't fail the build just because artifact extraction failed
 			} else {
-				logWriter.WriteLog("stdout", "✅ Artifacts extracted successfully")
+				logWriter.WriteLog("stdout", "Artifacts extracted successfully")
 			}
 		}
 
 		s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_COMPLETED)
-		logWriter.WriteLog("stdout", fmt.Sprintf("✅ Build completed in %v", result.Duration))
+		logWriter.WriteLog("stdout", fmt.Sprintf("Build completed in %v", result.Duration))
 	} else {
 		s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_FAILED)
-		logWriter.WriteLog("stderr", fmt.Sprintf("❌ Build finished with errors in %v (exit=%d)", result.Duration, result.ExitCode))
+		logWriter.WriteLog("stderr", fmt.Sprintf("Build finished with errors in %v (exit=%d)", result.Duration, result.ExitCode))
 	}
 }
 
@@ -398,7 +398,7 @@ func (s *Server) extractArtifacts(ctx context.Context, buildInfo *BuildInfo, res
 	}
 
 	// Copy deploy directory contents to artifact storage
-	logWriter.WriteLog("stdout", fmt.Sprintf("📁 Copying artifacts from %s to %s", deployPath, artifactPath))
+	logWriter.WriteLog("stdout", fmt.Sprintf("Copying artifacts from %s to %s", deployPath, artifactPath))
 
 	if err := s.copyDirectory(deployPath, filepath.Join(artifactPath, "deploy"), &metadata); err != nil {
 		return fmt.Errorf("failed to copy deploy directory: %w", err)
@@ -521,7 +521,7 @@ func (s *Server) failBuild(buildID string, errorMsg string) {
 		build.ExitCode = 1
 
 		logWriter := &LogWriter{buildInfo: build}
-		logWriter.WriteLog("stderr", fmt.Sprintf("❌ Build failed: %s", errorMsg))
+		logWriter.WriteLog("stderr", fmt.Sprintf("Build failed: %s", errorMsg))
 	}
 }
 

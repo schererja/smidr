@@ -131,7 +131,12 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 		timestamp = colorize(lightGray, timeAttr.Value.String())
 	}
 
-	var msg string
+	attrs, err := h.computeAttrs(ctx, r)
+	if err != nil {
+		return err
+	}
+
+	// Add message into the attributes map
 	msgAttr := slog.Attr{
 		Key:   slog.MessageKey,
 		Value: slog.StringValue(r.Message),
@@ -140,12 +145,7 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 		msgAttr = h.r([]string{}, msgAttr)
 	}
 	if !msgAttr.Equal(slog.Attr{}) {
-		msg = colorize(white, msgAttr.Value.String())
-	}
-
-	attrs, err := h.computeAttrs(ctx, r)
-	if err != nil {
-		return err
+		attrs["message"] = msgAttr.Value.String()
 	}
 
 	var attrsAsBytes []byte
@@ -172,10 +172,6 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 	}
 	if len(level) > 0 {
 		out.WriteString(level)
-		out.WriteString(" ")
-	}
-	if len(msg) > 0 {
-		out.WriteString(msg)
 		out.WriteString(" ")
 	}
 	if len(attrsAsBytes) > 0 {
