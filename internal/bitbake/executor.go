@@ -240,6 +240,7 @@ func (e *BuildExecutor) sourceEnvironment(ctx context.Context) error {
 			e.logger.Debug("meta-openembedded not configured; skipping presence check")
 		}
 
+
 		sourceCmd := []string{"bash", "-c", fmt.Sprintf("mkdir -p %s && cd %s && source /home/builder/layers/poky/oe-init-build-env . && which bitbake", e.workspaceDir, e.workspaceDir)}
 		result, err = e.containerMgr.Exec(ctx, e.containerID, sourceCmd, 30*time.Second)
 		if err != nil {
