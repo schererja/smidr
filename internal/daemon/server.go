@@ -249,6 +249,11 @@ func (s *Server) StartBuild(ctx context.Context, req *v1.StartBuildRequest) (*v1
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// If target wasn't provided, default to config's build.image for reproducibility and DB persistence
+	if req.Target == "" && cfg != nil && cfg.Build.Image != "" {
+		req.Target = cfg.Build.Image
+	}
+
 	// Generate a unique build ID using customer name (or config name fallback) and short UUID suffix
 	buildIDPrefix := req.Customer
 	if buildIDPrefix == "" {
