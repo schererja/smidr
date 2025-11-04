@@ -18,14 +18,32 @@ build:
 	@echo "✅ Built $(BINARY_NAME)"
 
 # Build for multiple platforms
+# Note: CGO is enabled for SQLite support (go-sqlite3 requires it)
+# macOS builds natively, Linux build uses Docker for cross-compilation
 build-all:
 	@echo "🔨 Building for multiple platforms..."
 	@mkdir -p $(BUILD_DIR)
-	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 $(CMD_DIR)/main.go
-	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(CMD_DIR)/main.go
-	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 $(CMD_DIR)/main.go
-	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe $(CMD_DIR)/main.go
+	@echo "🍎 Building for macOS..."
+	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(CMD_DIR)/main.go
+	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 $(CMD_DIR)/main.go
+	@echo "🐧 Building for Linux (using Docker)..."
+	@$(MAKE) build-linux-docker
 	@echo "✅ Built binaries in $(BUILD_DIR)/"
+
+# Build Linux binary using Docker (works from any platform)
+build-linux-docker:
+	@echo "🐳 Building Linux binary in Docker..."
+	@mkdir -p $(BUILD_DIR)
+	docker run --rm \
+		--platform linux/amd64 \
+		-v "$(PWD)":/app \
+		-w /app \
+		-e CGO_ENABLED=1 \
+		-e GOOS=linux \
+		-e GOARCH=amd64 \
+		golang:1.25.1 \
+		go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 $(CMD_DIR)/main.go
+	@echo "✅ Built $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64"
 
 # Run tests
 test:

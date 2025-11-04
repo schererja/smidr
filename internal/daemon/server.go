@@ -780,6 +780,90 @@ func (s *Server) CancelBuild(ctx context.Context, req *v1.CancelBuildRequest) (*
 
 // ListBuilds lists all builds
 func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1.BuildsList, error) {
+	// If a database is available, return persisted builds (includes historical and running)
+	if s.database != nil {
+		// Fetch without limit to allow filtering by state, then apply limit
+		dbBuilds, err := s.database.ListBuilds("", false, 0)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list builds from database: %w", err)
+		}
+
+		// Helper to map db.BuildStatus -> proto BuildState
+		toProtoState := func(st db.BuildStatus) v1.BuildState {
+			switch st {
+			case db.StatusQueued:
+				return v1.BuildState_BUILD_STATE_QUEUED
+			case db.StatusRunning:
+				return v1.BuildState_BUILD_STATE_BUILDING
+			case db.StatusCompleted:
+				return v1.BuildState_BUILD_STATE_COMPLETED
+			case db.StatusFailed:
+				return v1.BuildState_BUILD_STATE_FAILED
+			case db.StatusCancelled:
+				return v1.BuildState_BUILD_STATE_CANCELLED
+			default:
+				return v1.BuildState_BUILD_STATE_UNKNOWN
+			}
+		}
+
+		// Optional state filter set from request
+		filterByState := func(state v1.BuildState) bool {
+			if len(req.States) == 0 {
+				return true
+			}
+			for _, s := range req.States {
+				if s == state {
+					return true
+				}
+			}
+			return false
+		}
+
+		builds := make([]*v1.BuildStatus, 0, len(dbBuilds))
+		for _, b := range dbBuilds {
+			protoState := toProtoState(b.Status)
+			if !filterByState(protoState) {
+				continue
+			}
+
+			bs := &v1.BuildStatus{
+				BuildId:    b.ID,
+				Target:     b.TargetImage,
+				State:      protoState,
+				ConfigPath: b.ConfigFile,
+			}
+			if b.ExitCode != nil {
+				bs.ExitCode = int32(*b.ExitCode)
+			}
+			if !b.CreatedAt.IsZero() {
+				// We don't have a created_at in BuildStatus, but started_at is used for ordering in clients
+				// Prefer StartedAt when available
+			}
+			if b.StartedAt != nil {
+				bs.StartedAt = b.StartedAt.Unix()
+			} else {
+				// Fallback to created_at for older entries
+				bs.StartedAt = b.CreatedAt.Unix()
+			}
+			if b.CompletedAt != nil {
+				bs.CompletedAt = b.CompletedAt.Unix()
+			}
+			if b.ErrorMessage != "" {
+				bs.ErrorMessage = b.ErrorMessage
+			}
+
+			builds = append(builds, bs)
+
+			// Apply limit if requested
+			if req.Limit > 0 && len(builds) >= int(req.Limit) {
+				break
+			}
+		}
+
+		return &v1.BuildsList{Builds: builds}, nil
+	}
+
+	// Fallback to in-memory builds when DB is not enabled
 	s.buildsMutex.RLock()
 	defer s.buildsMutex.RUnlock()
 
@@ -824,7 +908,5 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 		}
 	}
 
-	return &v1.BuildsList{
-		Builds: builds,
-	}, nil
+	return &v1.BuildsList{Builds: builds}, nil
 }
