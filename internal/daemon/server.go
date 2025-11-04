@@ -140,6 +140,13 @@ func generateShortID() string {
 
 // Start starts the gRPC server
 func (s *Server) Start() error {
+	// Attempt recovery of stale builds if DB is available
+	if s.database != nil {
+		if err := s.recoverStaleBuilds(); err != nil {
+			s.logger.Warn("Stale build recovery encountered errors", slog.String("error", err.Error()))
+		}
+	}
+
 	lis, err := net.Listen("tcp", s.address)
 	if err != nil {
 		return fmt.Errorf("failed to listen on %s: %w", s.address, err)
@@ -154,6 +161,36 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to serve: %w", err)
 	}
 
+	return nil
+}
+
+// recoverStaleBuilds marks any previously running builds as failed so users can rebuild
+func (s *Server) recoverStaleBuilds() error {
+	builds, err := s.database.ListStaleBuilds()
+	if err != nil {
+		return fmt.Errorf("failed to list stale builds: %w", err)
+	}
+	if len(builds) == 0 {
+		s.logger.Info("No stale builds detected")
+		return nil
+	}
+
+	s.logger.Warn("Recovering stale builds", slog.Int("count", len(builds)))
+	for _, b := range builds {
+		// Compute a best-effort duration
+		var dur time.Duration
+		if b.StartedAt != nil {
+			dur = time.Since(*b.StartedAt)
+		} else {
+			dur = time.Since(b.CreatedAt)
+		}
+		msg := "daemon restarted: marking stale build as failed (re-run to rebuild)"
+		if err := s.database.CompleteBuild(b.ID, db.StatusFailed, 1, dur, msg); err != nil {
+			s.logger.Warn("Failed to mark stale build as failed", slog.String("buildID", b.ID), slog.String("error", err.Error()))
+			continue
+		}
+		s.logger.Info("Marked stale build as failed", slog.String("buildID", b.ID), slog.String("customer", b.Customer), slog.String("target", b.TargetImage))
+	}
 	return nil
 }
 
