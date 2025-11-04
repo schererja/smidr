@@ -26,17 +26,20 @@ The daemon exposes a gRPC API that allows clients to:
 
 Example usage:
   smidr daemon --address :50051
-  smidr daemon --address localhost:8080`,
+  smidr daemon --address localhost:8080
+  smidr daemon --db-path ~/.smidr/builds.db`,
 	RunE: runDaemon,
 }
 
 var (
 	daemonAddress string
+	daemonDBPath  string
 )
 
 func init() {
 	rootCmd.AddCommand(daemonCmd)
 	daemonCmd.Flags().StringVar(&daemonAddress, "address", ":50051", "Address to listen on (e.g., ':50051' or 'localhost:8080')")
+	daemonCmd.Flags().StringVar(&daemonDBPath, "db-path", "", "Path to SQLite database for build persistence (e.g., ~/.smidr/builds.db). If not set, builds are not persisted.")
 }
 
 func runDaemon(cmd *cobra.Command, args []string) error {
@@ -44,10 +47,30 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	log.Info("Starting Smidr daemon...")
 	log.Info("📡 Listening", slog.String("address", daemonAddress))
 
-	// TODO: Initialize database for build persistence
-	// For now, pass nil to maintain backward compatibility
-	// Future: add --db-path flag and initialize DB here
-	var database *db.DB = nil
+	// Initialize database if --db-path is provided
+	var database *db.DB
+	if daemonDBPath != "" {
+		log.Info("Enabling build persistence", slog.String("db_path", daemonDBPath))
+
+		var err error
+		database, err = db.Open(daemonDBPath)
+		if err != nil {
+			return fmt.Errorf("failed to open database: %w", err)
+		}
+		defer database.Close()
+
+		log.Info("Database initialized successfully")
+
+		// TODO: Add recovery logic here to handle stale builds
+		// staleBuilds, err := database.ListStaleBuilds(time.Hour * 24)
+		// if err == nil && len(staleBuilds) > 0 {
+		//     log.Warn("Found stale builds from previous daemon run", slog.Int("count", len(staleBuilds)))
+		//     // Mark them as failed or handle recovery
+		// }
+	} else {
+		log.Info("Build persistence disabled (no --db-path provided)")
+		database = nil
+	}
 
 	// Create the gRPC server
 	server := daemon.NewServer(daemonAddress, log, database)
