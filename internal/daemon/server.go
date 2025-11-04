@@ -340,6 +340,7 @@ func (s *Server) executeBuild(ctx context.Context, buildInfo *BuildInfo, req *v1
 		Customer:   req.Customer,
 		ForceClean: req.ForceClean,
 		ForceImage: req.ForceImage,
+		ConfigPath: buildInfo.ConfigPath,
 	}
 
 	// Bridge for runner logs -> gRPC stream subscribers

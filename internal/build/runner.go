@@ -67,6 +67,8 @@ type BuildOptions struct {
 	Customer   string
 	ForceClean bool
 	ForceImage bool
+	// ConfigPath is the original config file path if provided; "<inline>" when config was inline
+	ConfigPath string
 }
 
 // BuildResult summarizes the build execution
@@ -215,6 +217,7 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 			DeployDir:      deployDir,
 			LogFilePlain:   logFilePlain,
 			LogFileJSONL:   logFileJSONL,
+			ConfigFile:     opts.ConfigPath,
 			ConfigSnapshot: string(configSnapshot),
 			User:           username,
 			Host:           hostname,
