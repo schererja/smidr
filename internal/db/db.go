@@ -116,6 +116,11 @@ func (db *DB) Close() error {
 	return db.conn.Close()
 }
 
+// Path returns the underlying database file path
+func (db *DB) Path() string {
+	return db.path
+}
+
 // CreateBuild inserts a new build record
 func (db *DB) CreateBuild(build *Build) error {
 	query := `

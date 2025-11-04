@@ -59,7 +59,18 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		}
 		defer database.Close()
 
-		log.Info("Database initialized successfully")
+		// Log resolved DB path and a quick count for observability
+		// This helps detect mismatched paths or empty databases on restart
+		if database != nil {
+			builds, berr := database.ListBuilds("", true, 0)
+			if berr != nil {
+				log.Warn("Database opened but list builds failed", slog.String("error", berr.Error()), slog.String("db_path", database.Path()))
+			} else {
+				log.Info("Database initialized successfully", slog.String("resolved_db_path", database.Path()), slog.Int("existing_builds", len(builds)))
+			}
+		} else {
+			log.Info("Database initialized successfully")
+		}
 
 		// TODO: Add recovery logic here to handle stale builds
 		// staleBuilds, err := database.ListStaleBuilds(time.Hour * 24)
