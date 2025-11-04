@@ -154,6 +154,8 @@ jobs:
 
       - name: Prepare cache directories
         run: |
+          # Clean tmp to avoid sstate cache corruption issues
+          rm -rf $HOME/.smidr/tmp
           mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate $HOME/.smidr/tmp $HOME/.smidr/deploy
           chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
 
