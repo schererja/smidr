@@ -93,6 +93,7 @@ jobs:
 
       - name: Prepare cache directories
         run: |
+          rm -rf $HOME/.smidr/tmp $HOME/.smidr/deploy
           mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate-ci-v2 $HOME/.smidr/tmp $HOME/.smidr/deploy
           chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
 
@@ -173,10 +174,10 @@ jobs:
             $HOME/.smidr/sstate-ci-v2
           key: yocto-all-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
 
-      - name: Clean tmp directory
+      - name: Clean tmp and deploy directories
         run: |
-          rm -rf $HOME/.smidr/tmp
-          mkdir -p $HOME/.smidr/tmp
+          rm -rf $HOME/.smidr/tmp $HOME/.smidr/deploy
+          mkdir -p $HOME/.smidr/tmp $HOME/.smidr/deploy
           chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
 
       - name: Build with sstate restore
