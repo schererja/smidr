@@ -185,6 +185,8 @@ jobs:
           export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate"
           export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
           export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
+          # Explicitly disable SSTATE_MIRRORS by default to avoid shared area overlap with SSTATE_DIR
+          export YOCTO_SSTATE_MIRRORS=""
           make yocto-sstate ARGS="--config smidr-ci.yaml"
 
       - name: Upload deploy artifacts (on failure)
