@@ -17,8 +17,8 @@ directories:
   layers: ${YOCTO_LAYERS_DIR:-~/.smidr/layers}
   downloads: ${YOCTO_DL_DIR:-~/.smidr/downloads}
   sstate: ${YOCTO_SSTATE_DIR:-~/.smidr/sstate}
-  tmp: ${YOCTO_TMP_DIR:-~/.smidr/tmp}
-  deploy: ${YOCTO_DEPLOY_DIR:-~/.smidr/deploy}
+  # Intentionally omit tmp so BitBake uses TOPDIR/tmp per-build to avoid shared-area overlaps
+  # deploy is left to default (${TOPDIR}/deploy) inside container for isolation
 container:
   base_image: crops/yocto:ubuntu-22.04-builder
 advanced:
