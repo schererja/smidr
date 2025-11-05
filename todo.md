@@ -19,10 +19,10 @@ Tracked priorities for making the daemon interface production‑ready. Items ref
   - [ ] State transitions: set CANCELLED deterministically and emit terminal logs
   - [ ] Return clear CancelResult messages (already cancelled, not found, completed)
 
-- [ ] Priority 3: Persistence
-  - [ ] Persist build history (SQLite or lightweight bolt/Badger). Schema: builds, states, timings
-  - [ ] Persist logs to disk per build; stream from file for historical access
-  - [ ] Recovery on startup: reload recent builds, reconcile terminal states
+- [x] Priority 3: Persistence
+  - [x] Persist build history (SQLite or lightweight bolt/Badger). Schema: builds, states, timings
+  - [x] Persist logs to disk per build; stream from file for historical access
+  - [x] Recovery on startup: reload recent builds, reconcile terminal states
 
 - [ ] Priority 4: Authentication & Security
   - [ ] TLS/mTLS for gRPC transport (configurable cert/key paths)

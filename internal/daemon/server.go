@@ -19,6 +19,7 @@ import (
 	"github.com/schererja/smidr/internal/artifacts"
 	buildpkg "github.com/schererja/smidr/internal/build"
 	"github.com/schererja/smidr/internal/config"
+	"github.com/schererja/smidr/internal/db"
 	"github.com/schererja/smidr/pkg/logger"
 )
 
@@ -35,6 +36,7 @@ type Server struct {
 	customerQueues map[string]chan struct{} // per-customer queues for serializing builds within the same customer
 	queuesMutex    sync.RWMutex             // protects customerQueues map
 	logger         *logger.Logger           // structured logger
+	database       *db.DB                   // optional database for build persistence
 }
 
 // BuildInfo holds information about an active or completed build
@@ -94,7 +96,7 @@ func (lw *LogWriter) WriteLog(stream, content string) {
 }
 
 // NewServer creates a new daemon server
-func NewServer(address string, log *logger.Logger) *Server {
+func NewServer(address string, log *logger.Logger, database *db.DB) *Server {
 	// Initialize artifact manager with default location
 	artifactMgr, err := artifacts.NewArtifactManager("")
 	if err != nil {
@@ -109,6 +111,7 @@ func NewServer(address string, log *logger.Logger) *Server {
 		artifactMgr:    artifactMgr,
 		customerQueues: make(map[string]chan struct{}),
 		logger:         log,
+		database:       database,
 	}
 }
 
@@ -137,6 +140,13 @@ func generateShortID() string {
 
 // Start starts the gRPC server
 func (s *Server) Start() error {
+	// Attempt recovery of stale builds if DB is available
+	if s.database != nil {
+		if err := s.recoverStaleBuilds(); err != nil {
+			s.logger.Warn("Stale build recovery encountered errors", slog.String("error", err.Error()))
+		}
+	}
+
 	lis, err := net.Listen("tcp", s.address)
 	if err != nil {
 		return fmt.Errorf("failed to listen on %s: %w", s.address, err)
@@ -151,6 +161,36 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to serve: %w", err)
 	}
 
+	return nil
+}
+
+// recoverStaleBuilds marks any previously running builds as failed so users can rebuild
+func (s *Server) recoverStaleBuilds() error {
+	builds, err := s.database.ListStaleBuilds()
+	if err != nil {
+		return fmt.Errorf("failed to list stale builds: %w", err)
+	}
+	if len(builds) == 0 {
+		s.logger.Info("No stale builds detected")
+		return nil
+	}
+
+	s.logger.Warn("Recovering stale builds", slog.Int("count", len(builds)))
+	for _, b := range builds {
+		// Compute a best-effort duration
+		var dur time.Duration
+		if b.StartedAt != nil {
+			dur = time.Since(*b.StartedAt)
+		} else {
+			dur = time.Since(b.CreatedAt)
+		}
+		msg := "daemon restarted: marking stale build as failed (re-run to rebuild)"
+		if err := s.database.CompleteBuild(b.ID, db.StatusFailed, 1, dur, msg); err != nil {
+			s.logger.Warn("Failed to mark stale build as failed", slog.String("buildID", b.ID), slog.String("error", err.Error()))
+			continue
+		}
+		s.logger.Info("Marked stale build as failed", slog.String("buildID", b.ID), slog.String("customer", b.Customer), slog.String("target", b.TargetImage))
+	}
 	return nil
 }
 
@@ -207,6 +247,11 @@ func (s *Server) StartBuild(ctx context.Context, req *v1.StartBuildRequest) (*v1
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// If target wasn't provided, default to config's build.image for reproducibility and DB persistence
+	if req.Target == "" && cfg != nil && cfg.Build.Image != "" {
+		req.Target = cfg.Build.Image
 	}
 
 	// Generate a unique build ID using customer name (or config name fallback) and short UUID suffix
@@ -300,6 +345,7 @@ func (s *Server) executeBuild(ctx context.Context, buildInfo *BuildInfo, req *v1
 		Customer:   req.Customer,
 		ForceClean: req.ForceClean,
 		ForceImage: req.ForceImage,
+		ConfigPath: buildInfo.ConfigPath,
 	}
 
 	// Bridge for runner logs -> gRPC stream subscribers
@@ -308,8 +354,8 @@ func (s *Server) executeBuild(ctx context.Context, buildInfo *BuildInfo, req *v1
 	// Mark as BUILDING
 	s.updateBuildState(buildInfo.ID, v1.BuildState_BUILD_STATE_BUILDING)
 
-	// Use runner to execute build
-	runner := buildpkg.NewRunner(logWriter.buildLogger)
+	// Use runner to execute build with DB persistence if available
+	runner := buildpkg.NewRunner(logWriter.buildLogger, s.database)
 	result, err := runner.Run(ctx, buildInfo.Config, opts, sink)
 	if err != nil {
 		// Failed
@@ -740,6 +786,90 @@ func (s *Server) CancelBuild(ctx context.Context, req *v1.CancelBuildRequest) (*
 
 // ListBuilds lists all builds
 func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1.BuildsList, error) {
+	// If a database is available, return persisted builds (includes historical and running)
+	if s.database != nil {
+		// Fetch without limit to allow filtering by state, then apply limit
+		dbBuilds, err := s.database.ListBuilds("", false, 0)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list builds from database: %w", err)
+		}
+
+		// Helper to map db.BuildStatus -> proto BuildState
+		toProtoState := func(st db.BuildStatus) v1.BuildState {
+			switch st {
+			case db.StatusQueued:
+				return v1.BuildState_BUILD_STATE_QUEUED
+			case db.StatusRunning:
+				return v1.BuildState_BUILD_STATE_BUILDING
+			case db.StatusCompleted:
+				return v1.BuildState_BUILD_STATE_COMPLETED
+			case db.StatusFailed:
+				return v1.BuildState_BUILD_STATE_FAILED
+			case db.StatusCancelled:
+				return v1.BuildState_BUILD_STATE_CANCELLED
+			default:
+				return v1.BuildState_BUILD_STATE_UNKNOWN
+			}
+		}
+
+		// Optional state filter set from request
+		filterByState := func(state v1.BuildState) bool {
+			if len(req.States) == 0 {
+				return true
+			}
+			for _, s := range req.States {
+				if s == state {
+					return true
+				}
+			}
+			return false
+		}
+
+		builds := make([]*v1.BuildStatus, 0, len(dbBuilds))
+		for _, b := range dbBuilds {
+			protoState := toProtoState(b.Status)
+			if !filterByState(protoState) {
+				continue
+			}
+
+			bs := &v1.BuildStatus{
+				BuildId:    b.ID,
+				Target:     b.TargetImage,
+				State:      protoState,
+				ConfigPath: b.ConfigFile,
+			}
+			if b.ExitCode != nil {
+				bs.ExitCode = int32(*b.ExitCode)
+			}
+			if !b.CreatedAt.IsZero() {
+				// We don't have a created_at in BuildStatus, but started_at is used for ordering in clients
+				// Prefer StartedAt when available
+			}
+			if b.StartedAt != nil {
+				bs.StartedAt = b.StartedAt.Unix()
+			} else {
+				// Fallback to created_at for older entries
+				bs.StartedAt = b.CreatedAt.Unix()
+			}
+			if b.CompletedAt != nil {
+				bs.CompletedAt = b.CompletedAt.Unix()
+			}
+			if b.ErrorMessage != "" {
+				bs.ErrorMessage = b.ErrorMessage
+			}
+
+			builds = append(builds, bs)
+
+			// Apply limit if requested
+			if req.Limit > 0 && len(builds) >= int(req.Limit) {
+				break
+			}
+		}
+
+		return &v1.BuildsList{Builds: builds}, nil
+	}
+
+	// Fallback to in-memory builds when DB is not enabled
 	s.buildsMutex.RLock()
 	defer s.buildsMutex.RUnlock()
 
@@ -784,7 +914,5 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 		}
 	}
 
-	return &v1.BuildsList{
-		Builds: builds,
-	}, nil
+	return &v1.BuildsList{Builds: builds}, nil
 }

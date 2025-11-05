@@ -237,8 +237,8 @@ func runBuild(cmd *cobra.Command) error {
 	log.Info("🚀 Starting Yocto build")
 	log.Info("💡 Use Ctrl+C to gracefully cancel the build")
 
-	// Use the Runner
-	runner := buildpkg.NewRunner(log)
+	// Use the Runner (no DB in CLI mode)
+	runner := buildpkg.NewRunner(log, nil)
 	buildResult, err := runner.Run(ctx, cfg, opts, logSink)
 
 	if err != nil {

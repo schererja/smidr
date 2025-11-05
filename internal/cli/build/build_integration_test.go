@@ -57,7 +57,11 @@ func TestSmidrBuildIntegration(t *testing.T) {
 	testContainerName := "smidr-itest-" + time.Now().Format("20060102-150405")
 	// Build a local image and use it to avoid Docker Hub pull rate limits
 	img := buildLocalImage(t, projectRoot)
-	cmd.Env = append(os.Environ(), "SMIDR_TEST_CONTAINER_NAME="+testContainerName, "SMIDR_TEST_IMAGE="+img)
+	cmd.Env = append(os.Environ(),
+		"SMIDR_TEST_CONTAINER_NAME="+testContainerName,
+		"SMIDR_TEST_IMAGE="+img,
+		"SMIDR_TEST_WRITE_MARKERS=1", // Enable smoke test mode to skip actual BitBake execution
+	)
 	cmd.Dir = projectRoot
 	output, err := cmd.CombinedOutput()
 	outStr := string(output)

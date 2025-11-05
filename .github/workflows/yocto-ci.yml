@@ -65,7 +65,11 @@ jobs:
 
       - name: Yocto smoke (no build)
         run: |
-          make yocto-smoke ARGS="--config smidr-ci.yaml build --customer acme"
+          export YOCTO_DL_DIR="$HOME/.smidr/dl"
+          export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate"
+          export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
+          export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
+          make yocto-smoke ARGS="--config smidr-ci.yaml"
 
   yocto-fetch:
     runs-on: self-hosted
@@ -106,7 +110,11 @@ jobs:
 
       - name: Fetch-only
         run: |
-          make yocto-fetch ARGS="--config smidr-ci.yaml build --customer acme --fetch-only"
+          export YOCTO_DL_DIR="$HOME/.smidr/dl"
+          export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate"
+          export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
+          export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
+          make yocto-fetch ARGS="--config smidr-ci.yaml"
 
       - name: Check cache sizes
         id: size-check
@@ -165,9 +173,19 @@ jobs:
             $HOME/.smidr/sstate
           key: yocto-all-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
 
+      - name: Clean tmp directory
+        run: |
+          rm -rf $HOME/.smidr/tmp
+          mkdir -p $HOME/.smidr/tmp
+          chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
+
       - name: Build with sstate restore
         run: |
-          make yocto-sstate ARGS="--config smidr-ci.yaml build --customer acme --target core-image-minimal"
+          export YOCTO_DL_DIR="$HOME/.smidr/dl"
+          export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate"
+          export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
+          export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
+          make yocto-sstate ARGS="--config smidr-ci.yaml"
 
       - name: Upload deploy artifacts (on failure)
         if: failure()
