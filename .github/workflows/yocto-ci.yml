@@ -162,8 +162,6 @@ jobs:
 
       - name: Prepare cache directories
         run: |
-          # Clean tmp to avoid sstate cache corruption issues
-          rm -rf $HOME/.smidr/tmp
           mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate $HOME/.smidr/tmp $HOME/.smidr/deploy
           chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
 
@@ -174,6 +172,12 @@ jobs:
             $HOME/.smidr/dl
             $HOME/.smidr/sstate
           key: yocto-all-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+
+      - name: Clean tmp directory
+        run: |
+          rm -rf $HOME/.smidr/tmp
+          mkdir -p $HOME/.smidr/tmp
+          chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
 
       - name: Build with sstate restore
         run: |
