@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 
-	v1 "github.com/schererja/smidr/api/proto"
+	v1 "github.com/schererja/smidr-protos/gen/go/smidr/v1"
 	"github.com/schererja/smidr/internal/artifacts"
 	buildpkg "github.com/schererja/smidr/internal/build"
 	"github.com/schererja/smidr/internal/config"
@@ -808,7 +808,7 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 			case db.StatusCancelled:
 				return v1.BuildState_BUILD_STATE_CANCELLED
 			default:
-				return v1.BuildState_BUILD_STATE_UNKNOWN
+				return v1.BuildState_BUILD_STATE_UNSPECIFIED
 			}
 		}
 
@@ -825,40 +825,48 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 			return false
 		}
 
-		builds := make([]*v1.BuildStatus, 0, len(dbBuilds))
+		builds := make([]*v1.BuildDetails, 0, len(dbBuilds))
 		for _, b := range dbBuilds {
 			protoState := toProtoState(b.Status)
 			if !filterByState(protoState) {
 				continue
 			}
 
-			bs := &v1.BuildStatus{
-				BuildId:    b.ID,
-				Target:     b.TargetImage,
-				State:      protoState,
-				ConfigPath: b.ConfigFile,
+			bd := &v1.BuildDetails{
+				Id:           b.ID,
+				TargetImage:  b.TargetImage,
+				Status:       protoState,
+				ConfigFile:   b.ConfigFile,
+				Customer:     b.Customer,
+				ProjectName:  b.ProjectName,
+				Machine:      b.Machine,
+				BuildDir:     b.BuildDir,
+				DeployDir:    b.DeployDir,
+				User:         b.User,
+				Host:         b.Host,
+				ErrorMessage: b.ErrorMessage,
+				Deleted:      b.Deleted,
 			}
 			if b.ExitCode != nil {
-				bs.ExitCode = int32(*b.ExitCode)
+				bd.ExitCode = int32(*b.ExitCode)
 			}
 			if !b.CreatedAt.IsZero() {
-				// We don't have a created_at in BuildStatus, but started_at is used for ordering in clients
-				// Prefer StartedAt when available
+				bd.CreatedAt = b.CreatedAt.Unix()
 			}
 			if b.StartedAt != nil {
-				bs.StartedAt = b.StartedAt.Unix()
-			} else {
-				// Fallback to created_at for older entries
-				bs.StartedAt = b.CreatedAt.Unix()
+				bd.StartedAt = b.StartedAt.Unix()
 			}
 			if b.CompletedAt != nil {
-				bs.CompletedAt = b.CompletedAt.Unix()
+				bd.CompletedAt = b.CompletedAt.Unix()
+				if b.StartedAt != nil {
+					bd.DurationSeconds = int32(b.CompletedAt.Sub(*b.StartedAt).Seconds())
+				}
 			}
-			if b.ErrorMessage != "" {
-				bs.ErrorMessage = b.ErrorMessage
+			if b.DeletedAt != nil {
+				bd.DeletedAt = b.DeletedAt.Unix()
 			}
 
-			builds = append(builds, bs)
+			builds = append(builds, bd)
 
 			// Apply limit if requested
 			if req.Limit > 0 && len(builds) >= int(req.Limit) {
@@ -873,7 +881,7 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 	s.buildsMutex.RLock()
 	defer s.buildsMutex.RUnlock()
 
-	builds := make([]*v1.BuildStatus, 0)
+	builds := make([]*v1.BuildDetails, 0)
 	for _, build := range s.builds {
 		// Filter by state if requested
 		if len(req.States) > 0 {
@@ -889,24 +897,30 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 			}
 		}
 
-		status := &v1.BuildStatus{
-			BuildId:    build.ID,
-			Target:     build.Target,
-			State:      build.State,
-			ExitCode:   build.ExitCode,
-			StartedAt:  build.StartedAt.Unix(),
-			ConfigPath: build.ConfigPath,
+		details := &v1.BuildDetails{
+			Id:          build.ID,
+			TargetImage: build.Target,
+			Status:      build.State,
+			ExitCode:    build.ExitCode,
+			ConfigFile:  build.ConfigPath,
+		}
+
+		if !build.StartedAt.IsZero() {
+			details.StartedAt = build.StartedAt.Unix()
 		}
 
 		if build.ErrorMsg != "" {
-			status.ErrorMessage = build.ErrorMsg
+			details.ErrorMessage = build.ErrorMsg
 		}
 
 		if !build.CompletedAt.IsZero() {
-			status.CompletedAt = build.CompletedAt.Unix()
+			details.CompletedAt = build.CompletedAt.Unix()
+			if !build.StartedAt.IsZero() {
+				details.DurationSeconds = int32(build.CompletedAt.Sub(build.StartedAt).Seconds())
+			}
 		}
 
-		builds = append(builds, status)
+		builds = append(builds, details)
 
 		// Limit results if requested
 		if req.Limit > 0 && len(builds) >= int(req.Limit) {

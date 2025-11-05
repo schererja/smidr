@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	v1 "github.com/schererja/smidr/api/proto"
+	v1 "github.com/schererja/smidr-protos/gen/go/smidr/v1"
 )
 
 // Client wraps the gRPC client for the Smidr daemon
