@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -462,6 +463,17 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 			if cleanErr != nil || cleanResult.ExitCode != 0 {
 				e.logger.Error("cleansstate failed", cleanErr, slog.String("recipe", failedRecipe))
 				return buildResult, fmt.Errorf("bitbake build failed, cleansstate also failed for %s", failedRecipe)
+			}
+
+			// Ensure deploy artifacts don't collide on retry. Some setscene tasks may have
+			// already populated ${TOPDIR}/deploy with IPKs prior to failure. Wipe the
+			// per-workspace deploy directory before retrying so BitBake can safely re-populate it.
+			{
+				e.logger.Info("Cleaning deploy directory before retry to avoid shared area overlap",
+					slog.String("deploy_dir", filepath.Join(e.workspaceDir, "deploy")))
+				deployCleanupCmd := []string{"bash", "-c", fmt.Sprintf("rm -rf '%s'/deploy || true", e.workspaceDir)}
+				// Best-effort cleanup; do not fail the build if this step errors
+				_, _ = e.containerMgr.ExecStream(ctx, e.containerID, deployCleanupCmd, 2*time.Minute)
 			}
 
 			// Retry build once
