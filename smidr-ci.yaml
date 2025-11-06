@@ -17,8 +17,8 @@ directories:
   layers: ${YOCTO_LAYERS_DIR:-~/.smidr/layers}
   downloads: ${YOCTO_DL_DIR:-~/.smidr/downloads}
   sstate: ${YOCTO_SSTATE_DIR:-~/.smidr/sstate}
-  tmp: ${YOCTO_TMP_DIR:-~/.smidr/tmp}
-  deploy: ${YOCTO_DEPLOY_DIR:-~/.smidr/deploy}
+  # Intentionally omit tmp so BitBake uses TOPDIR/tmp per-build to avoid shared-area overlaps
+  # deploy is left to default (${TOPDIR}/deploy) inside container for isolation
 container:
   base_image: crops/yocto:ubuntu-22.04-builder
 advanced:
@@ -26,8 +26,11 @@ advanced:
   conf_version: "2"
   # Optional: set via env to point to your mirror (example for documentation)
   # bb_hashserve: "auto"
-  # Prefer SSTATE_MIRRORS for container builds; default to container bind mount path
-  sstate_mirrors: ${YOCTO_SSTATE_MIRRORS:-file://.* file:///home/builder/sstate-cache/PATH}
+  # Prefer using a shared SSTATE_DIR without SSTATE_MIRRORS in CI.
+  # Do NOT point SSTATE_MIRRORS at the same path as SSTATE_DIR (e.g. /home/builder/sstate-cache),
+  # as it can cause shared area overlap errors during setscene.
+  # Provide YOCTO_SSTATE_MIRRORS only when using a distinct remote mirror.
+  sstate_mirrors: ${YOCTO_SSTATE_MIRRORS:-}
   # Optionally accelerate fetches via premirror; point this to your artifact store
   premirrors: ${YOCTO_PREMIRRORS:-}
   # If your CI has no outbound network, set these
