@@ -141,16 +141,21 @@ func runBuild(cmd *cobra.Command) error {
 	// Create unique or customer-specific build directory
 	homedir, _ := os.UserHomeDir()
 	imageName := cfg.Build.Image
-	buildUUID := uuid.New().String()
-
+	
+	// For customer builds, use stable build ID; for ad-hoc builds, use UUID
+	var buildUUID string
 	var buildDir string
 	if customer != "" {
+		// Stable build ID for customer builds enables sstate reuse
+		buildUUID = fmt.Sprintf("%s-%s", customer, imageName)
 		buildDir = fmt.Sprintf("%s/.smidr/builds/build-%s/%s", homedir, customer, imageName)
 		if clean {
 			os.RemoveAll(buildDir)
 			log.Info("Cleaned build directory", slog.String("path", buildDir))
 		}
 	} else {
+		// Unique build ID for ad-hoc builds
+		buildUUID = uuid.New().String()
 		buildDir = fmt.Sprintf("%s/.smidr/builds/build-%s", homedir, buildUUID)
 	}
 

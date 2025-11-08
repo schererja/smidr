@@ -662,10 +662,9 @@ func (e *BuildExecutor) generateLocalConfContent() string {
 	}
 
 	// Deploy directory settings
-	// Use shared deploy directory outside of TMPDIR to allow sstate reuse across builds
-	// When sstate cache contains package references, they point to DEPLOY_DIR paths
-	// Using a stable, shared location prevents "No such file or directory" errors
-	content.WriteString("TI_COMMON_DEPLOY = \"${TOPDIR}/../deploy\"\n")
+	// With stable container workspaces for customer builds, deploy can stay inside TOPDIR
+	// The stable TOPDIR path ensures sstate references remain valid across builds
+	content.WriteString("TI_COMMON_DEPLOY = \"${TOPDIR}/deploy\"\n")
 	content.WriteString("DEPLOY_DIR = \"${TI_COMMON_DEPLOY}${@'' if d.getVar('BB_CURRENT_MC') == 'default' else '/${BB_CURRENT_MC}'}\"\n")
 
 	// Standard settings
