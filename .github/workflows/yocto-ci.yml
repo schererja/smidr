@@ -4,13 +4,13 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "**.go"
-      - "go.mod"
-      - "go.sum"
-      - "Makefile"
-      - "smidr-ci.yaml"
-      - "internal/**"
-      - "cmd/**"
+      - "apps/daemon/**.go"
+      - "apps/daemon/go.mod"
+      - "apps/daemon/go.sum"
+      - "apps/daemon/Makefile"
+      - "examples/smidr-ci.yaml"
+      - "apps/daemon/internal/**"
+      - "apps/daemon/cmd/**"
       - ".github/workflows/yocto-ci.yml"
   push:
     branches: [chore/phase8-fast-yocto-ci]
@@ -22,13 +22,16 @@ concurrency:
 jobs:
   build-and-test:
     runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: apps/daemon
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: apps/daemon/go.mod
 
       - name: Go build and unit tests
         run: |
@@ -55,13 +58,13 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: $HOME/.smidr/dl
-          key: yocto-dl-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+          key: yocto-dl-${{ runner.os }}-${{ hashFiles('examples/smidr-ci.yaml') }}
 
       - name: Restore sstate cache
         uses: actions/cache/restore@v4
         with:
           path: $HOME/.smidr/sstate
-          key: yocto-sstate-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+          key: yocto-sstate-${{ runner.os }}-${{ hashFiles('examples/smidr-ci.yaml') }}
 
       - name: Yocto smoke (no build)
         run: |
@@ -69,7 +72,7 @@ jobs:
           export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate"
           export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
           export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
-          make yocto-smoke ARGS="--config smidr-ci.yaml"
+          make -C apps/daemon yocto-smoke ARGS="--config ../../examples/smidr-ci.yaml"
 
   yocto-fetch:
     runs-on: self-hosted
@@ -100,13 +103,13 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: $HOME/.smidr/dl
-          key: yocto-dl-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+          key: yocto-dl-${{ runner.os }}-${{ hashFiles('examples/smidr-ci.yaml') }}
 
       - name: Restore sstate cache (ro)
         uses: actions/cache/restore@v4
         with:
           path: $HOME/.smidr/sstate
-          key: yocto-sstate-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+          key: yocto-sstate-${{ runner.os }}-${{ hashFiles('examples/smidr-ci.yaml') }}
 
       - name: Fetch-only
         run: |
@@ -114,7 +117,7 @@ jobs:
           export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate"
           export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
           export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
-          make yocto-fetch ARGS="--config smidr-ci.yaml"
+          make -C apps/daemon yocto-fetch ARGS="--config ../../examples/smidr-ci.yaml"
 
       - name: Check cache sizes
         id: size-check
@@ -171,7 +174,7 @@ jobs:
           path: |
             $HOME/.smidr/dl
             $HOME/.smidr/sstate
-          key: yocto-all-${{ runner.os }}-${{ hashFiles('smidr-ci.yaml') }}
+          key: yocto-all-${{ runner.os }}-${{ hashFiles('examples/smidr-ci.yaml') }}
 
       - name: Clean tmp directory
         run: |
@@ -185,7 +188,7 @@ jobs:
           export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate"
           export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
           export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
-          make yocto-sstate ARGS="--config smidr-ci.yaml"
+          make -C apps/daemon yocto-sstate ARGS="--config ../../examples/smidr-ci.yaml"
 
       - name: Upload deploy artifacts (on failure)
         if: failure()
