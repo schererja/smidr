@@ -183,6 +183,9 @@ jobs:
           rm -rf $HOME/.smidr/tmp $HOME/.smidr/deploy
           mkdir -p $HOME/.smidr/tmp $HOME/.smidr/deploy
           chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
+          # Also clear persistent per-customer build TMPDIR to avoid stale absolute paths in ipk.list
+          # e.g. ~/.smidr/builds/build-ci/core-image-minimal-initramfs/tmp
+          rm -rf $HOME/.smidr/builds/build-ci/*/tmp || true
 
       - name: Build with sstate restore
         run: |
