@@ -23,8 +23,9 @@ func TestDockerAvailability(t *testing.T) {
 // buildLocalImage builds the project's Dockerfile into a local image and returns the image name.
 func buildLocalImage(t *testing.T, projectRoot string) string {
 	tag := "smidr-itest-image:latest"
-	// Build image
-	buildCmd := exec.Command("docker", "build", "-t", tag, ".")
+	// Build image from repository root with Dockerfile in apps/daemon (monorepo structure)
+	dockerfilePath := filepath.Join("apps", "daemon", "Dockerfile")
+	buildCmd := exec.Command("docker", "build", "-f", dockerfilePath, "-t", tag, ".")
 	buildCmd.Dir = projectRoot
 	out, err := buildCmd.CombinedOutput()
 	if err != nil {
@@ -52,8 +53,7 @@ func TestSmidrBuildIntegration(t *testing.T) {
 		}
 		projectRoot = parent
 	}
-	mainPath := filepath.Join(projectRoot, "cmd", "smidr", "main.go")
-	cmd := exec.Command("go", "run", mainPath, "build")
+	cmd := exec.Command("go", "run", "./cmd/smidr/main.go", "build")
 	testContainerName := "smidr-itest-" + time.Now().Format("20060102-150405")
 	// Build a local image and use it to avoid Docker Hub pull rate limits
 	img := buildLocalImage(t, projectRoot)
@@ -62,7 +62,8 @@ func TestSmidrBuildIntegration(t *testing.T) {
 		"SMIDR_TEST_IMAGE="+img,
 		"SMIDR_TEST_WRITE_MARKERS=1", // Enable smoke test mode to skip actual BitBake execution
 	)
-	cmd.Dir = projectRoot
+	// Run from apps/daemon directory where go.mod is located
+	cmd.Dir = filepath.Join(projectRoot, "apps", "daemon")
 	output, err := cmd.CombinedOutput()
 	outStr := string(output)
 
@@ -120,11 +121,10 @@ func TestSmidrMountsAndLayers(t *testing.T) {
 		t.Fatalf("failed to write layer file: %v", err)
 	}
 
-	mainPath := filepath.Join(projectRoot, "cmd", "smidr", "main.go")
+	cmd := exec.Command("go", "run", "./cmd/smidr/main.go", "build")
 	name := "smidr-itest-mounts-" + time.Now().Format("20060102-150405")
 	// Build local image and set SMIDR_TEST_IMAGE to avoid Docker Hub rate limits
 	img := buildLocalImage(t, projectRoot)
-	cmd := exec.Command("go", "run", mainPath, "build")
 	cmd.Env = append(os.Environ(),
 		"SMIDR_TEST_CONTAINER_NAME="+name,
 		"SMIDR_TEST_DOWNLOADS_DIR="+dlDir,
@@ -134,7 +134,8 @@ func TestSmidrMountsAndLayers(t *testing.T) {
 		"SMIDR_TEST_WRITE_MARKERS=1",
 		"SMIDR_TEST_IMAGE="+img,
 	)
-	cmd.Dir = projectRoot
+	// Run from apps/daemon directory where go.mod is located
+	cmd.Dir = filepath.Join(projectRoot, "apps", "daemon")
 	out, _ := cmd.CombinedOutput()
 	t.Logf("Output:\n%s", string(out))
 
@@ -189,17 +190,17 @@ func TestSmidrSStateMount(t *testing.T) {
 	}
 
 	ssDir := t.TempDir()
-	mainPath := filepath.Join(projectRoot, "cmd", "smidr", "main.go")
+	cmd := exec.Command("go", "run", "./cmd/smidr/main.go", "build")
 	name := "smidr-itest-sstate-" + time.Now().Format("20060102-150405")
 	img := buildLocalImage(t, projectRoot)
-	cmd := exec.Command("go", "run", mainPath, "build")
 	cmd.Env = append(os.Environ(),
 		"SMIDR_TEST_CONTAINER_NAME="+name,
 		"SMIDR_TEST_SSTATE_DIR="+ssDir,
 		"SMIDR_TEST_WRITE_MARKERS=1",
 		"SMIDR_TEST_IMAGE="+img,
 	)
-	cmd.Dir = projectRoot
+	// Run from apps/daemon directory where go.mod is located
+	cmd.Dir = filepath.Join(projectRoot, "apps", "daemon")
 	out, _ := cmd.CombinedOutput()
 	t.Logf("Output:\n%s", string(out))
 

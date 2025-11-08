@@ -33,7 +33,7 @@ ENV YOCTO_DOWNLOADS=/home/builder/downloads \
   YOCTO_LAYERS=/home/builder/layers
 
 # Install debug helper and set up working directory
-COPY --chown=builder:builder tools/smidr-debug /usr/local/bin/smidr-debug
+COPY --chown=builder:builder apps/tools/smidr-debug /usr/local/bin/smidr-debug
 RUN chmod +x /usr/local/bin/smidr-debug || true
 
 USER builder

@@ -5,6 +5,7 @@ Go-based core daemon and CLI for SMIDR (Simplified, Modern Image Delivery Runtim
 ## Overview
 
 The daemon is the core of SMIDR, handling:
+
 - Yocto/BitBake build orchestration
 - Source code fetching and caching
 - Artifact extraction and management
