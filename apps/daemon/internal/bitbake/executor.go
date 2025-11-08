@@ -465,16 +465,8 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 				return buildResult, fmt.Errorf("bitbake build failed, cleansstate also failed for %s", failedRecipe)
 			}
 
-			// Ensure deploy artifacts don't collide on retry. Some setscene tasks may have
-			// already populated ${TOPDIR}/deploy with IPKs prior to failure. Wipe the
-			// per-workspace deploy directory before retrying so BitBake can safely re-populate it.
-			{
-				e.logger.Info("Cleaning deploy directory before retry to avoid shared area overlap",
-					slog.String("deploy_dir", filepath.Join(e.workspaceDir, "deploy")))
-				deployCleanupCmd := []string{"bash", "-c", fmt.Sprintf("rm -rf '%s'/deploy || true", e.workspaceDir)}
-				// Best-effort cleanup; do not fail the build if this step errors
-				_, _ = e.containerMgr.ExecStream(ctx, e.containerID, deployCleanupCmd, 2*time.Minute)
-			}
+			// No longer clean deploy directory since it's shared across builds
+			// The shared deploy dir allows sstate to reference packages without path issues
 
 			// Retry build once
 			e.logger.Info("🔁 Retrying bitbake build after cleansstate...")
@@ -672,8 +664,10 @@ func (e *BuildExecutor) generateLocalConfContent() string {
 	}
 
 	// Deploy directory settings
-	// Always use container-local deploy dir
-	content.WriteString("TI_COMMON_DEPLOY = \"${TOPDIR}/deploy\"\n")
+	// Use shared deploy directory outside of TMPDIR to allow sstate reuse across builds
+	// When sstate cache contains package references, they point to DEPLOY_DIR paths
+	// Using a stable, shared location prevents "No such file or directory" errors
+	content.WriteString("TI_COMMON_DEPLOY = \"${TOPDIR}/../deploy\"\n")
 	content.WriteString("DEPLOY_DIR = \"${TI_COMMON_DEPLOY}${@'' if d.getVar('BB_CURRENT_MC') == 'default' else '/${BB_CURRENT_MC}'}\"\n")
 
 	// Standard settings
