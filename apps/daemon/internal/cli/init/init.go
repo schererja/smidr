@@ -1,12 +1,15 @@
-package cli
+package init
 
 import (
 	"fmt"
 	"log/slog"
 	"os"
 
+	"github.com/schererja/smidr/pkg/logger"
 	"github.com/spf13/cobra"
 )
+
+var log *logger.Logger
 
 var initCmd = &cobra.Command{
 	Use:   "init [project-name]",
@@ -21,7 +24,6 @@ This command will not overwrite an existing smidr.yaml file.`,
   smidr init "Acme IoT Gateway"`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		log := GetLogger()
 		projectName := "my-smidr-project"
 		if len(args) == 1 {
 			projectName = args[0]
@@ -33,15 +35,15 @@ This command will not overwrite an existing smidr.yaml file.`,
 	},
 }
 
-func init() {
-	rootCmd.AddCommand(initCmd)
+// New returns the init command for registration with the root command
+func New(logger *logger.Logger) *cobra.Command {
+	log = logger
+	return initCmd
 }
 
 func initProject(projectName string) error {
-	log := GetLogger()
-
 	configPath := "smidr.yaml"
-	if _, err := os.Stat(configPath); err == nil {
+	if _, err := os.Stat("smidr.yaml"); err == nil {
 		return fmt.Errorf("configuration file %s already exists", configPath)
 	}
 

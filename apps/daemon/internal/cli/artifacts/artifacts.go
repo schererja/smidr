@@ -1,4 +1,4 @@
-package cli
+package artifacts
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/schererja/smidr/internal/artifacts"
+	artifactsmgr "github.com/schererja/smidr/internal/artifacts"
 	"github.com/spf13/cobra"
 )
 
@@ -129,8 +129,8 @@ var artifactsShowCmd = &cobra.Command{
 	},
 }
 
-func init() {
-	rootCmd.AddCommand(artifactsCmd)
+// New returns the artifacts command for registration with the root command
+func New() *cobra.Command {
 	artifactsCmd.AddCommand(artifactsListCmd)
 	artifactsCmd.AddCommand(artifactsCopyCmd)
 	artifactsCmd.AddCommand(artifactsCleanCmd)
@@ -146,6 +146,8 @@ func init() {
 	artifactsCleanCmd.Flags().IntP("keep", "k", 10, "Number of recent builds to keep")
 	artifactsCleanCmd.Flags().IntP("days", "d", 30, "Delete builds older than this many days")
 	artifactsCleanCmd.Flags().BoolP("dry-run", "n", false, "Show what would be deleted without actually deleting")
+
+	return artifactsCmd
 }
 
 func runArtifactsList(cmd *cobra.Command) error {
@@ -160,7 +162,7 @@ func runArtifactsList(cmd *cobra.Command) error {
 	} else {
 		baseDir = ""
 	}
-	am, err := artifacts.NewArtifactManager(baseDir)
+	am, err := artifactsmgr.NewArtifactManager(baseDir)
 	if err != nil {
 		return fmt.Errorf("failed to create artifact manager: %w", err)
 	}
@@ -204,7 +206,7 @@ func runArtifactsList(cmd *cobra.Command) error {
 					}
 				}
 			}
-			fmt.Printf("   Artifacts: %d files (%s)\n", len(artifactList), artifacts.FormatSize(totalSize))
+			fmt.Printf("   Artifacts: %d files (%s)\n", len(artifactList), artifactsmgr.FormatSize(totalSize))
 		} else {
 			fmt.Printf("   Artifacts: No artifacts found\n")
 		}
@@ -226,7 +228,7 @@ func runArtifactsCopy(cmd *cobra.Command, buildID, destination string) error {
 	} else {
 		baseDir = ""
 	}
-	am, err := artifacts.NewArtifactManager(baseDir)
+	am, err := artifactsmgr.NewArtifactManager(baseDir)
 	if err != nil {
 		return fmt.Errorf("failed to create artifact manager: %w", err)
 	}
@@ -283,7 +285,7 @@ func runArtifactsClean(cmd *cobra.Command) error {
 	} else {
 		baseDir = ""
 	}
-	am, err := artifacts.NewArtifactManager(baseDir)
+	am, err := artifactsmgr.NewArtifactManager(baseDir)
 	if err != nil {
 		return fmt.Errorf("failed to create artifact manager: %w", err)
 	}
@@ -293,7 +295,7 @@ func runArtifactsClean(cmd *cobra.Command) error {
 	maxDays, _ := cmd.Flags().GetInt("days")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
-	policy := artifacts.RetentionPolicy{
+	policy := artifactsmgr.RetentionPolicy{
 		KeepLastN: keepLast,
 		MaxAge:    time.Duration(maxDays) * 24 * time.Hour,
 	}
@@ -350,7 +352,7 @@ func runArtifactsShow(cmd *cobra.Command, buildID string) error {
 	} else {
 		baseDir = ""
 	}
-	am, err := artifacts.NewArtifactManager(baseDir)
+	am, err := artifactsmgr.NewArtifactManager(baseDir)
 	if err != nil {
 		return fmt.Errorf("failed to create artifact manager: %w", err)
 	}
@@ -398,9 +400,9 @@ func runArtifactsShow(cmd *cobra.Command, buildID string) error {
 				}
 			}
 			totalSize += size
-			fmt.Printf("  %-40s %s\n", artifactName, artifacts.FormatSize(size))
+			fmt.Printf("  %-40s %s\n", artifactName, artifactsmgr.FormatSize(size))
 		}
-		fmt.Printf("\nTotal size: %s\n", artifacts.FormatSize(totalSize))
+		fmt.Printf("\nTotal size: %s\n", artifactsmgr.FormatSize(totalSize))
 
 		artifactPath := am.GetArtifactPath(buildID)
 		fmt.Printf("Location: %s\n", artifactPath)

@@ -1,4 +1,4 @@
-package cli
+package logs
 
 import (
 	"testing"

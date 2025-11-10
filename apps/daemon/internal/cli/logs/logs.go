@@ -1,4 +1,4 @@
-package cli
+package logs
 
 import (
 	"encoding/json"
@@ -48,10 +48,11 @@ var logsCmd = &cobra.Command{
 	},
 }
 
-func init() {
-	rootCmd.AddCommand(logsCmd)
+// New returns the logs command for registration with the root command
+func New() *cobra.Command {
 	logsCmd.Flags().Bool("json", false, "Show structured JSONL log entries")
 	logsCmd.Flags().String("customer", "", "Customer name to narrow search to artifact-<customer> directory")
+	return logsCmd
 }
 
 // Update showBuildLogs to accept customer

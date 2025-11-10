@@ -1,11 +1,16 @@
-package cli
+package root
 
 import (
 	"fmt"
 	"os"
 
+	"github.com/schererja/smidr/internal/cli/artifacts"
 	buildcmd "github.com/schererja/smidr/internal/cli/build"
 	clientcmd "github.com/schererja/smidr/internal/cli/client"
+	"github.com/schererja/smidr/internal/cli/daemon"
+	initcmd "github.com/schererja/smidr/internal/cli/init"
+	"github.com/schererja/smidr/internal/cli/logs"
+	"github.com/schererja/smidr/internal/cli/status"
 	"github.com/schererja/smidr/pkg/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -50,6 +55,11 @@ func init() {
 	// Add commands from subpackages
 	rootCmd.AddCommand(buildcmd.New())
 	rootCmd.AddCommand(clientcmd.New())
+	rootCmd.AddCommand(artifacts.New())
+	rootCmd.AddCommand(daemon.New(log))
+	rootCmd.AddCommand(initcmd.New(log))
+	rootCmd.AddCommand(logs.New())
+	rootCmd.AddCommand(status.New())
 }
 
 func initConfig() {

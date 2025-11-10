@@ -1,4 +1,4 @@
-package cli
+package status
 
 import (
 	"fmt"
@@ -47,10 +47,11 @@ var statusCmd = &cobra.Command{
 	},
 }
 
-func init() {
-	rootCmd.AddCommand(statusCmd)
+// New returns the status command for registration with the root command
+func New() *cobra.Command {
 	statusCmd.Flags().String("customer", "", "Customer name to narrow search to artifact-<customer> directory")
 	statusCmd.Flags().Bool("list-artifacts", false, "List all artifact files and sizes in detail")
+	return statusCmd
 }
 
 func showBuildStatus(buildID, imageName, customer string, listArtifacts bool) error {

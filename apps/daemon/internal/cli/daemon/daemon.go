@@ -1,4 +1,4 @@
-package cli
+package daemon
 
 import (
 	"context"
@@ -8,9 +8,16 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/schererja/smidr/internal/daemon"
+	daemonpkg "github.com/schererja/smidr/internal/daemon"
 	"github.com/schererja/smidr/internal/db"
+	"github.com/schererja/smidr/pkg/logger"
 	"github.com/spf13/cobra"
+)
+
+var (
+	daemonAddress string
+	daemonDBPath  string
+	log           *logger.Logger
 )
 
 var daemonCmd = &cobra.Command{
@@ -31,19 +38,15 @@ Example usage:
 	RunE: runDaemon,
 }
 
-var (
-	daemonAddress string
-	daemonDBPath  string
-)
-
-func init() {
-	rootCmd.AddCommand(daemonCmd)
+// New returns the daemon command for registration with the root command
+func New(logger *logger.Logger) *cobra.Command {
+	log = logger
 	daemonCmd.Flags().StringVar(&daemonAddress, "address", ":50051", "Address to listen on (e.g., ':50051' or 'localhost:8080')")
 	daemonCmd.Flags().StringVar(&daemonDBPath, "db-path", "", "Path to SQLite database for build persistence (e.g., ~/.smidr/builds.db). If not set, builds are not persisted.")
+	return daemonCmd
 }
 
 func runDaemon(cmd *cobra.Command, args []string) error {
-	log := GetLogger()
 	log.Info("Starting Smidr daemon...")
 	log.Info("📡 Listening", slog.String("address", daemonAddress))
 
@@ -84,7 +87,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create the gRPC server
-	server := daemon.NewServer(daemonAddress, log, database)
+	server := daemonpkg.NewServer(daemonAddress, log, database)
 
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())

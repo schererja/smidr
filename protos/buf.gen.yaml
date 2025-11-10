@@ -4,10 +4,10 @@ managed:
 plugins:
   # Go (for internal daemon)
   - remote: buf.build/protocolbuffers/go
-    out: ../sdks/go
+    out: ../apps/daemon/pkg/smidr-sdk/v1
     opt: [paths=source_relative]
   - remote: buf.build/grpc/go
-    out: ../sdks/go
+    out: ../apps/daemon/pkg/smidr-sdk/v1
     opt: [paths=source_relative]
 
   # TypeScript SDK (for web/Next)
