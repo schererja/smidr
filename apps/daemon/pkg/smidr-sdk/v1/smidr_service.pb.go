@@ -7,7 +7,7 @@
 package smidrv1
 
 import (
-	_ "github.com/schererja/smidr-protos/gen/go/smidr/v1"
+	_ "github.com/schererja/smidr/pkg/smidr-sdk"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"

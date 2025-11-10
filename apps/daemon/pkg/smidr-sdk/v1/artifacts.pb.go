@@ -69,10 +69,11 @@ func (x *ListArtifactsRequest) GetBuildIdentifier() *v1.BuildIdentifier {
 
 // ListArtifactsResponse contains a list of artifacts associated with a build.
 type ListArtifactsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Artifacts     []*ArtifactSummary     `protobuf:"bytes,1,rep,name=artifacts,proto3" json:"artifacts,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Artifacts       []*ArtifactSummary     `protobuf:"bytes,1,rep,name=artifacts,proto3" json:"artifacts,omitempty"`
+	BuildIdentifier *v1.BuildIdentifier    `protobuf:"bytes,2,opt,name=build_identifier,json=buildIdentifier,proto3" json:"build_identifier,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ListArtifactsResponse) Reset() {
@@ -108,6 +109,13 @@ func (*ListArtifactsResponse) Descriptor() ([]byte, []int) {
 func (x *ListArtifactsResponse) GetArtifacts() []*ArtifactSummary {
 	if x != nil {
 		return x.Artifacts
+	}
+	return nil
+}
+
+func (x *ListArtifactsResponse) GetBuildIdentifier() *v1.BuildIdentifier {
+	if x != nil {
+		return x.BuildIdentifier
 	}
 	return nil
 }
@@ -428,9 +436,10 @@ const file_artifacts_proto_rawDesc = "" +
 	"\n" +
 	"\x0fartifacts.proto\x12\bsmidr.v1\x1a\fcommon.proto\"\\\n" +
 	"\x14ListArtifactsRequest\x12D\n" +
-	"\x10build_identifier\x18\x01 \x01(\v2\x19.smidr.v1.BuildIdentifierR\x0fbuildIdentifier\"P\n" +
+	"\x10build_identifier\x18\x01 \x01(\v2\x19.smidr.v1.BuildIdentifierR\x0fbuildIdentifier\"\x96\x01\n" +
 	"\x15ListArtifactsResponse\x127\n" +
-	"\tartifacts\x18\x01 \x03(\v2\x19.smidr.v1.ArtifactSummaryR\tartifacts\"5\n" +
+	"\tartifacts\x18\x01 \x03(\v2\x19.smidr.v1.ArtifactSummaryR\tartifacts\x12D\n" +
+	"\x10build_identifier\x18\x02 \x01(\v2\x19.smidr.v1.BuildIdentifierR\x0fbuildIdentifier\"5\n" +
 	"\x12GetArtifactRequest\x12\x1f\n" +
 	"\vartifact_id\x18\x01 \x01(\tR\n" +
 	"artifactId\":\n" +
@@ -457,8 +466,8 @@ const file_artifacts_proto_rawDesc = "" +
 	"\rListArtifacts\x12\x1e.smidr.v1.ListArtifactsRequest\x1a\x1f.smidr.v1.ListArtifactsResponse\x12F\n" +
 	"\vGetArtifact\x12\x1c.smidr.v1.GetArtifactRequest\x1a\x19.smidr.v1.ArtifactSummary\x12Y\n" +
 	"\x10DownloadArtifact\x12!.smidr.v1.DownloadArtifactRequest\x1a\".smidr.v1.DownloadArtifactResponse\x12S\n" +
-	"\x0eDeleteArtifact\x12\x1f.smidr.v1.DeleteArtifactRequest\x1a .smidr.v1.DeleteArtifactResponseB\x9a\x01\n" +
-	"\fcom.smidr.v1B\x0eArtifactsProtoP\x01Z9github.com/schererja/smidr-protos/gen/go/smidr/v1;smidrv1\xa2\x02\x03SXX\xaa\x02\bSmidr.V1\xca\x02\bSmidr\\V1\xe2\x02\x14Smidr\\V1\\GPBMetadata\xea\x02\tSmidr::V1b\x06proto3"
+	"\x0eDeleteArtifact\x12\x1f.smidr.v1.DeleteArtifactRequest\x1a .smidr.v1.DeleteArtifactResponseB\x91\x01\n" +
+	"\fcom.smidr.v1B\x0eArtifactsProtoP\x01Z0github.com/schererja/smidr/pkg/smidr-sdk;smidrv1\xa2\x02\x03SXX\xaa\x02\bSmidr.V1\xca\x02\bSmidr\\V1\xe2\x02\x14Smidr\\V1\\GPBMetadata\xea\x02\tSmidr::V1b\x06proto3"
 
 var (
 	file_artifacts_proto_rawDescOnce sync.Once
@@ -487,19 +496,20 @@ var file_artifacts_proto_goTypes = []any{
 var file_artifacts_proto_depIdxs = []int32{
 	8, // 0: smidr.v1.ListArtifactsRequest.build_identifier:type_name -> smidr.v1.BuildIdentifier
 	7, // 1: smidr.v1.ListArtifactsResponse.artifacts:type_name -> smidr.v1.ArtifactSummary
-	0, // 2: smidr.v1.ArtifactService.ListArtifacts:input_type -> smidr.v1.ListArtifactsRequest
-	2, // 3: smidr.v1.ArtifactService.GetArtifact:input_type -> smidr.v1.GetArtifactRequest
-	3, // 4: smidr.v1.ArtifactService.DownloadArtifact:input_type -> smidr.v1.DownloadArtifactRequest
-	5, // 5: smidr.v1.ArtifactService.DeleteArtifact:input_type -> smidr.v1.DeleteArtifactRequest
-	1, // 6: smidr.v1.ArtifactService.ListArtifacts:output_type -> smidr.v1.ListArtifactsResponse
-	7, // 7: smidr.v1.ArtifactService.GetArtifact:output_type -> smidr.v1.ArtifactSummary
-	4, // 8: smidr.v1.ArtifactService.DownloadArtifact:output_type -> smidr.v1.DownloadArtifactResponse
-	6, // 9: smidr.v1.ArtifactService.DeleteArtifact:output_type -> smidr.v1.DeleteArtifactResponse
-	6, // [6:10] is the sub-list for method output_type
-	2, // [2:6] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	8, // 2: smidr.v1.ListArtifactsResponse.build_identifier:type_name -> smidr.v1.BuildIdentifier
+	0, // 3: smidr.v1.ArtifactService.ListArtifacts:input_type -> smidr.v1.ListArtifactsRequest
+	2, // 4: smidr.v1.ArtifactService.GetArtifact:input_type -> smidr.v1.GetArtifactRequest
+	3, // 5: smidr.v1.ArtifactService.DownloadArtifact:input_type -> smidr.v1.DownloadArtifactRequest
+	5, // 6: smidr.v1.ArtifactService.DeleteArtifact:input_type -> smidr.v1.DeleteArtifactRequest
+	1, // 7: smidr.v1.ArtifactService.ListArtifacts:output_type -> smidr.v1.ListArtifactsResponse
+	7, // 8: smidr.v1.ArtifactService.GetArtifact:output_type -> smidr.v1.ArtifactSummary
+	4, // 9: smidr.v1.ArtifactService.DownloadArtifact:output_type -> smidr.v1.DownloadArtifactResponse
+	6, // 10: smidr.v1.ArtifactService.DeleteArtifact:output_type -> smidr.v1.DeleteArtifactResponse
+	7, // [7:11] is the sub-list for method output_type
+	3, // [3:7] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_artifacts_proto_init() }
