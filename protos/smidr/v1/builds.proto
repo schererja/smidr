@@ -1,0 +1,160 @@
+syntax = "proto3";
+
+package smidr.v1;
+
+import "common.proto";
+option go_package = "github.com/schererja/smidr-protos/gen/go/smidr/v1;smidrv1";
+
+service BuildService {
+  rpc StartBuild(StartBuildRequest) returns (BuildStatusResponse);
+  rpc GetBuildStatus(BuildStatusRequest) returns (BuildStatusResponse);
+  rpc ListBuilds(ListBuildsRequest) returns (ListBuildsResponse);
+  rpc CancelBuild(CancelBuildRequest) returns (CancelBuildResponse);
+  rpc GetBuild(GetBuildRequest) returns (BuildDetails);
+  rpc DeleteBuild(DeleteBuildRequest) returns (DeleteBuildResponse);
+  rpc PurgeBuilds(PurgeBuildsRequest) returns (PurgeBuildsResponse);
+}
+
+// StartBuildRequest is used to initiate a new build, specifying configuration.
+message StartBuildRequest {
+  // Build configuration in YAML format or path to config file.
+  string config = 1;
+
+  // Build target (e.g., core-image-minimal).
+  string target = 2;
+
+  // Force a clean rebuild
+  bool force_clean = 3;
+
+  //Force image rebuild only
+  bool force_image_rebuild = 4;
+
+  // Additional Environmental Variables
+  map<string, string> environment_variables = 5;
+
+  // Optional customer identifier for customer-specific builds
+  string customer = 6;
+}
+
+// BuildStatusResponse provides the current status of a build.
+message BuildStatusResponse {
+  string build_id = 1;
+  string target = 2;
+  BuildState state = 3;
+  int32 exit_code = 4;
+  string error_message = 5;
+  TimeStampRange timestamps = 6;
+  string config_path = 7;
+  string customer = 8;
+  bool deleted = 9;
+}
+
+// BuildStatusRequest is used to query the status of a specific build.
+message BuildStatusRequest {
+  BuildIdentifier build_identifier = 1;
+}
+// BuildDetailsRequest is used to request detailed information about a build.
+message BuildDetails {
+  BuildIdentifier build_identifier = 1;
+  string customer = 2;
+  string project_name = 3;
+  string target_image = 4;
+  string machine = 5;
+  BuildState build_state = 6;
+  int32 exit_code = 7;
+
+  // Directories used
+  string build_directory = 8;
+  string download_directory = 9;
+  string log_file_plain = 10;
+  string log_file_jsonl = 11;
+
+  // Metadata
+  string config_file = 12;
+  string config_snapshot = 13;
+  string user = 14;
+  string host = 15;
+
+  // Timestamps
+  int64 created_at = 16;
+  TimeStampRange timestamps = 17;
+  int32 duration_seconds = 18;
+
+  // Soft Delete Flag
+  bool deleted = 19;
+  int64 deleted_at = 20;
+
+  // Error tracking
+  string error_message = 21;
+
+  // Artifacts summary
+  int32 artifact_count = 22;
+  int64 total_artifact_size_bytes = 23;
+}
+// ListBuildsRequest is used to request a list of builds with optional filters.
+message ListBuildsRequest {
+  // Optional filter by build states
+  repeated BuildState state_filter = 1;
+
+  // Optional time range filter
+  TimeStampRange time_range = 2;
+
+  // Pagination parameters
+  int32 page_size = 3;
+  string page_token = 4;
+
+  // Optional customer identifier filter
+  string customer = 5;
+
+  // Include deleted builds in the response
+  bool include_deleted = 6;
+
+}
+
+// ListBuildsResponse provides a list of builds matching the request criteria.
+message ListBuildsResponse {
+  repeated BuildDetails builds = 1;
+  string next_page_token = 2;
+  int32 total_builds = 3;
+}
+
+// CancelBuildRequest is used to request the cancellation of a specific build.
+message CancelBuildRequest {
+  BuildIdentifier build_identifier = 1;
+}
+
+// CancelBuildResponse provides the result of a cancellation request.
+message CancelBuildResponse {
+  bool success = 1;
+  string message = 2;
+}
+// GetBuildRequest is used to request detailed information about a build.
+message GetBuildRequest {
+  BuildIdentifier build_identifier = 1;
+}
+
+// DeleteBuildRequest is used to request the deletion of a specific build.
+message DeleteBuildRequest {
+  BuildIdentifier build_identifier = 1;
+}
+
+// DeleteBuildResponse provides the result of a deletion request.
+message DeleteBuildResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// PurgeBuildsRequest is used to request the purging of old builds.
+message PurgeBuildsRequest {
+  // Builds older than this timestamp will be purged
+  int64 older_than_unix_seconds = 1;
+  // Optional customer identifier filter
+  string customer = 2;
+}
+// PurgeBuildsResponse provides the result of a purge request.
+message PurgeBuildsResponse {
+  int32 purged_build_count = 1;
+  repeated string purged_build_ids = 2;
+  int64 freed_space_bytes = 3;
+  string message = 4;
+}

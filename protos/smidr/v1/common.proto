@@ -1,0 +1,24 @@
+syntax = "proto3";
+package smidr.v1;
+
+option go_package = "github.com/schererja/smidr-protos/gen/go/smidr/v1;smidrv1";
+
+enum BuildState {
+  BUILD_STATE_UNSPECIFIED = 0;
+  BUILD_STATE_QUEUED = 1;
+  BUILD_STATE_PREPARING = 2;
+  BUILD_STATE_BUILDING = 3;
+  BUILD_STATE_EXTRACTING_ARTIFACTS = 4;
+  BUILD_STATE_COMPLETED = 5;
+  BUILD_STATE_FAILED = 6;
+  BUILD_STATE_CANCELLED = 7;
+}
+
+message BuildIdentifier {
+  string build_id = 1;
+}
+
+message TimeStampRange {
+  int64 start_time_unix_seconds = 1;
+  int64 end_time_unix_seconds = 2;
+}
