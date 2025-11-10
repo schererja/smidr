@@ -7,17 +7,14 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/schererja/smidr/pkg/logger"
 )
-
-type testLogger struct{}
-
-func (l *testLogger) Info(format string, args ...interface{})  {}
-func (l *testLogger) Error(format string, args ...interface{}) {}
-func (l *testLogger) Debug(format string, args ...interface{}) {}
 
 func TestDownloader_DownloadFileWithMirrors_SuccessOnFirst(t *testing.T) {
 	dir := t.TempDir()
-	d := &Downloader{downloadDir: dir, logger: &testLogger{}, client: http.DefaultClient}
+	logger := logger.NewLogger()
+	d := &Downloader{downloadDir: dir, logger: logger, client: http.DefaultClient}
 
 	// Start a test server that always succeeds
 	ts := httpTestServerWithContent("hello world", http.StatusOK)
@@ -36,7 +33,9 @@ func TestDownloader_DownloadFileWithMirrors_SuccessOnFirst(t *testing.T) {
 
 func TestDownloader_DownloadFileWithMirrors_FallbackToMirror(t *testing.T) {
 	dir := t.TempDir()
-	d := &Downloader{downloadDir: dir, logger: &testLogger{}, client: http.DefaultClient}
+	logger := logger.NewLogger()
+
+	d := &Downloader{downloadDir: dir, logger: logger, client: http.DefaultClient}
 
 	bad := "http://127.0.0.1:0/doesnotexist"
 	ts := httpTestServerWithContent("mirror ok", http.StatusOK)
@@ -55,7 +54,9 @@ func TestDownloader_DownloadFileWithMirrors_FallbackToMirror(t *testing.T) {
 
 func TestDownloader_DownloadFileWithMirrors_AllFail(t *testing.T) {
 	dir := t.TempDir()
-	d := &Downloader{downloadDir: dir, logger: &testLogger{}, client: http.DefaultClient}
+	logger := logger.NewLogger()
+
+	d := &Downloader{downloadDir: dir, logger: logger, client: http.DefaultClient}
 
 	bad1 := "http://127.0.0.1:0/one"
 	bad2 := "http://127.0.0.1:0/two"
@@ -76,7 +77,7 @@ func httpTestServerWithContent(content string, status int) *httptest.Server {
 
 func TestNewDownloader(t *testing.T) {
 	dir := t.TempDir()
-	logger := &testLogger{}
+	logger := logger.NewLogger()
 	d := NewDownloader(dir, logger)
 	if d == nil || d.downloadDir != dir || d.logger != logger {
 		t.Errorf("NewDownloader did not initialize correctly")
@@ -85,7 +86,9 @@ func TestNewDownloader(t *testing.T) {
 
 func TestDownloader_DownloadFile(t *testing.T) {
 	dir := t.TempDir()
-	d := NewDownloader(dir, &testLogger{})
+	logger := logger.NewLogger()
+
+	d := NewDownloader(dir, logger)
 	ts := httpTestServerWithContent("test", http.StatusOK)
 	defer ts.Close()
 	path, err := d.DownloadFile(ts.URL + "/file.txt")
@@ -100,7 +103,8 @@ func TestDownloader_DownloadFile(t *testing.T) {
 
 func TestDownloader_VerifyChecksum_success(t *testing.T) {
 	dir := t.TempDir()
-	d := NewDownloader(dir, &testLogger{})
+	logger := logger.NewLogger()
+	d := NewDownloader(dir, logger)
 	filePath := dir + "/test.txt"
 	os.WriteFile(filePath, []byte("hello"), 0644)
 	// SHA256 of "hello"
@@ -113,7 +117,8 @@ func TestDownloader_VerifyChecksum_success(t *testing.T) {
 
 func TestDownloader_VerifyChecksum_mismatch(t *testing.T) {
 	dir := t.TempDir()
-	d := NewDownloader(dir, &testLogger{})
+	logger := logger.NewLogger()
+	d := NewDownloader(dir, logger)
 	filePath := dir + "/test.txt"
 	os.WriteFile(filePath, []byte("hello"), 0644)
 	err := d.VerifyChecksum(filePath, "wrongchecksum")
@@ -124,7 +129,8 @@ func TestDownloader_VerifyChecksum_mismatch(t *testing.T) {
 
 func TestDownloader_GetDownloadSize(t *testing.T) {
 	dir := t.TempDir()
-	d := NewDownloader(dir, &testLogger{})
+	logger := logger.NewLogger()
+	d := NewDownloader(dir, logger)
 	os.WriteFile(dir+"/file1.txt", []byte("12345"), 0644)
 	os.WriteFile(dir+"/file2.txt", []byte("67890"), 0644)
 	size, err := d.GetDownloadSize()
@@ -138,7 +144,8 @@ func TestDownloader_GetDownloadSize(t *testing.T) {
 
 func TestDownloader_EvictOldCache(t *testing.T) {
 	dir := t.TempDir()
-	d := NewDownloader(dir, &testLogger{})
+	logger := logger.NewLogger()
+	d := NewDownloader(dir, logger)
 	// Create a file with old metadata
 	filePath := dir + "/old.txt"
 	os.WriteFile(filePath, []byte("old content"), 0644)

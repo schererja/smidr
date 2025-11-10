@@ -10,18 +10,13 @@ import (
 	"time"
 
 	"github.com/schererja/smidr/internal/config"
+	"github.com/schererja/smidr/pkg/logger"
 )
-
-type MockLogger struct {
-	InfoMessages  []string
-	ErrorMessages []string
-	DebugMessages []string
-}
 
 // ...existing code...
 func TestFetcher_fetchBaseLayer(t *testing.T) {
 	tmpDir := t.TempDir()
-	logger := &MockLogger{}
+	logger := logger.NewLogger()
 	fetcher := NewFetcher(tmpDir, tmpDir, logger)
 	cfg := &config.Config{Base: config.BaseConfig{Version: "6.0.0"}}
 
@@ -49,7 +44,7 @@ func TestFetcher_fetchBaseLayer(t *testing.T) {
 
 func TestFetcher_fetchLayer(t *testing.T) {
 	tmpDir := t.TempDir()
-	logger := &MockLogger{}
+	logger := logger.NewLogger()
 	fetcher := NewFetcher(tmpDir, tmpDir, logger)
 	cfg := &config.Config{}
 
@@ -74,20 +69,8 @@ func TestFetcher_fetchLayer(t *testing.T) {
 	})
 }
 
-func (m *MockLogger) Info(msg string, args ...interface{}) {
-	m.InfoMessages = append(m.InfoMessages, msg)
-}
-
-func (m *MockLogger) Error(msg string, args ...interface{}) {
-	m.ErrorMessages = append(m.ErrorMessages, msg)
-}
-
-func (m *MockLogger) Debug(msg string, args ...interface{}) {
-	m.DebugMessages = append(m.DebugMessages, msg)
-}
-
 func TestNewFetcher(t *testing.T) {
-	logger := &MockLogger{}
+	logger := logger.NewLogger()
 
 	layersDir := "/tmp/test-layers"
 	downloadsDir := "/tmp/test-downloads"
@@ -104,7 +87,7 @@ func TestNewFetcher(t *testing.T) {
 }
 
 func TestIsGitRepository(t *testing.T) {
-	logger := &MockLogger{}
+	logger := logger.NewLogger()
 	tmpDir := t.TempDir()
 	fetcher := NewFetcher(tmpDir, tmpDir, logger)
 
@@ -333,7 +316,7 @@ func TestFetchGitLayer_MockGit(t *testing.T) {
 			t.Skipf("Failed to commit: %v", err)
 		}
 
-		logger := &MockLogger{}
+		logger := logger.NewLogger()
 		sourcesDir := filepath.Join(tmpDir, "sources")
 		fetcher := NewFetcher(sourcesDir, sourcesDir, logger)
 
@@ -372,7 +355,7 @@ func TestCleanCache(t *testing.T) {
 	os.MkdirAll(filepath.Join(sourcesDir, "layer1"), 0755)
 	os.WriteFile(filepath.Join(sourcesDir, "layer1", "test.txt"), []byte("test"), 0644)
 
-	logger := &MockLogger{}
+	logger := logger.NewLogger()
 	fetcher := NewFetcher(sourcesDir, sourcesDir, logger)
 
 	err := fetcher.CleanCache()
@@ -412,7 +395,7 @@ func TestGetCacheSize(t *testing.T) {
 
 	expectedSize := int64(len(testData) * 2)
 
-	logger := &MockLogger{}
+	logger := logger.NewLogger()
 	fetcher := NewFetcher(sourcesDir, sourcesDir, logger)
 
 	size, err := fetcher.GetCacheSize()
@@ -427,7 +410,7 @@ func TestGetCacheSize(t *testing.T) {
 
 func TestFetchLayers_EmptyConfig(t *testing.T) {
 	tmpDir := t.TempDir()
-	logger := &MockLogger{}
+	logger := logger.NewLogger()
 	sourcesDir := filepath.Join(tmpDir, "sources")
 	fetcher := NewFetcher(sourcesDir, sourcesDir, logger)
 
@@ -474,7 +457,7 @@ func TestFetchResult(t *testing.T) {
 
 func TestEvictOldCache(t *testing.T) {
 	tmpDir := t.TempDir()
-	logger := &MockLogger{}
+	logger := logger.NewLogger()
 	fetcher := NewFetcher(tmpDir, tmpDir, logger)
 
 	// Create two fake repos: one old, one recent
@@ -508,7 +491,7 @@ func TestEvictOldCache(t *testing.T) {
 
 func TestPerRepoLocking(t *testing.T) {
 	tmpDir := t.TempDir()
-	_ = &MockLogger{}
+	_ = logger.NewLogger()
 
 	lockFile := filepath.Join(tmpDir, "test-layer.lock")
 

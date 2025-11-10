@@ -2,6 +2,7 @@ package source
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,20 +11,15 @@ import (
 	"time"
 
 	"github.com/schererja/smidr/internal/config"
+	"github.com/schererja/smidr/pkg/logger"
 )
 
 // Fetcher is responsible for fetching source code from various repositories.
 type Fetcher struct {
 	layersDir    string
 	downloadsDir string
-	logger       Logger
+	logger       *logger.Logger
 	mu           sync.Mutex
-}
-
-type Logger interface {
-	Info(msg string, args ...interface{})
-	Error(msg string, args ...interface{})
-	Debug(msg string, args ...interface{})
 }
 
 type FetchResult struct {
@@ -35,7 +31,7 @@ type FetchResult struct {
 }
 
 // NewFetcher creates a new Fetcher instance
-func NewFetcher(layersDir string, downloadsDir string, logger Logger) *Fetcher {
+func NewFetcher(layersDir string, downloadsDir string, logger *logger.Logger) *Fetcher {
 	return &Fetcher{
 		layersDir:    layersDir,
 		downloadsDir: downloadsDir,
@@ -91,20 +87,20 @@ func (f *Fetcher) FetchLayers(cfg *config.Config) ([]FetchResult, error) {
 		results = append(results, result)
 		if result.Success {
 			if result.Cached {
-				f.logger.Info("Layer %s already cached at %s", result.LayerName, result.Path)
+				f.logger.Info("Layer %s already cached at", slog.String("layerName", result.LayerName), slog.String("path", result.Path))
 				_ = writeCacheMeta(filepath.Join(result.Path, ".smidr_meta.json"))
 			} else {
-				f.logger.Info("Successfully fetched layer %s to %s", result.LayerName, result.Path)
+				f.logger.Info("Successfully fetched layer", slog.String("layerName", result.LayerName), slog.String("path", result.Path))
 				_ = writeCacheMeta(filepath.Join(result.Path, ".smidr_meta.json"))
 			}
 		} else {
-			f.logger.Error("Failed to fetch layer %s: %v", result.LayerName, result.Error)
+			f.logger.Error("Failed to fetch layer", result.Error, slog.String("layerName", result.LayerName))
 		}
 	}
 	return results, nil
 }
 
-// EvictOldCache removes cached repos not accessed within ttl
+// EvictOldCache removes cached repos not accessed within the given TTL
 func (f *Fetcher) EvictOldCache(ttl time.Duration) error {
 	entries, err := os.ReadDir(f.layersDir)
 	if err != nil {
@@ -122,7 +118,7 @@ func (f *Fetcher) EvictOldCache(ttl time.Duration) error {
 			continue
 		}
 		if now.Sub(meta.LastAccess) > ttl {
-			f.logger.Info("Evicting repo %s (last accessed %s)", entry.Name(), meta.LastAccess.Format(time.RFC3339))
+			f.logger.Info("Evicting repo", slog.String("repo", entry.Name()), slog.String("lastAccess", meta.LastAccess.Format(time.RFC3339)))
 			_ = os.RemoveAll(repoPath)
 		}
 	}
@@ -205,9 +201,9 @@ func (f *Fetcher) fetchGitLayerTo(layer config.Layer, baseDir string) FetchResul
 
 	// Check if already exists
 	if f.isGitRepository(layerPath) {
-		f.logger.Debug("Layer %s already exists at %s, checking status...", layer.Name, layerPath)
+		f.logger.Debug("Layer %s already exists at %s, checking status...", slog.String("name", layer.Name), slog.String("path", layerPath))
 		if err := f.updateGitRepository(layerPath, layer.Branch); err != nil {
-			f.logger.Debug("Failed to update %s: %v", layer.Name, err)
+			f.logger.Error("Failed to update layer", err, slog.String("name", layer.Name))
 		}
 		return FetchResult{LayerName: layer.Name, Path: layerPath, Success: true, Cached: true}
 	}
@@ -216,7 +212,7 @@ func (f *Fetcher) fetchGitLayerTo(layer config.Layer, baseDir string) FetchResul
 	branch := layer.Branch // Restore original branch handling
 
 	cleanURL := strings.TrimSuffix(layer.Git, ".git")
-	f.logger.Info("Cloning layer %s from %s (branch: %s) into %s", layer.Name, cleanURL, branch, baseDir)
+	f.logger.Info("Cloning layer", slog.String("name", layer.Name), slog.String("branchURL", cleanURL), slog.String("branch", branch), slog.String("path", baseDir))
 	useShallow := !strings.Contains(layer.Git, "git.toradex.com")
 
 	var cmd *exec.Cmd
@@ -239,7 +235,7 @@ func (f *Fetcher) fetchGitLayerTo(layer config.Layer, baseDir string) FetchResul
 		if errorMsg == "" {
 			errorMsg = err.Error()
 		}
-		f.logger.Debug("Git clone failed for %s: %s", layer.Name, errorMsg)
+		f.logger.Debug("Git clone failed for %s: %s", slog.String("name", layer.Name), slog.String("error", errorMsg))
 		// Always try prefix match if the branch matches yocto_series (even if set by default logic)
 		// (Assume yocto_series is used as default branch if not set by user)
 		// Use the value of 'branch' as the prefix for matching
@@ -262,7 +258,7 @@ func (f *Fetcher) fetchGitLayerTo(layer config.Layer, baseDir string) FetchResul
 				}
 			}
 			if bestMatch != "" {
-				f.logger.Info("Retrying clone for %s with branch %s (prefix match)", layer.Name, bestMatch)
+				f.logger.Info("Retrying clone for %s with branch %s (prefix match)", slog.String("name", layer.Name), slog.String("branch", bestMatch))
 				if useShallow {
 					cmd = exec.Command("git", "clone", "--branch", bestMatch, "--depth", "1", layer.Git, layerPath)
 				} else {

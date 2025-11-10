@@ -244,7 +244,7 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 	// Fetch layers
 	log.Write("stdout", "Fetching layers...")
 	r.logger.Info("fetching layers", slog.String("layers_dir", cfg.Directories.Layers))
-	fetcher := source.NewFetcher(cfg.Directories.Layers, cfg.Directories.Downloads, source.NewConsoleLogger(io.Discard, false))
+	fetcher := source.NewFetcher(cfg.Directories.Layers, cfg.Directories.Downloads, r.logger)
 	if _, err := fetcher.FetchLayers(cfg); err != nil {
 		r.logger.Error("failed to fetch layers", err)
 		return &BuildResult{Success: false, Duration: time.Since(start), BuildDir: cfg.Directories.Build, TmpDir: cfg.Directories.Tmp, DeployDir: cfg.Directories.Deploy}, err

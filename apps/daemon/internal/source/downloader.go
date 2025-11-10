@@ -4,21 +4,24 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/schererja/smidr/pkg/logger"
 )
 
 // Downloader handles downloading source tarballs and files
 type Downloader struct {
 	downloadDir string
-	logger      Logger
+	logger      *logger.Logger
 	client      *http.Client
 }
 
 // NewDownloader creates a new source downloader
-func NewDownloader(downloadDir string, logger Logger) *Downloader {
+func NewDownloader(downloadDir string, logger *logger.Logger) *Downloader {
 	return &Downloader{
 		downloadDir: downloadDir,
 		logger:      logger,
@@ -49,7 +52,7 @@ func (d *Downloader) EvictOldCache(ttl time.Duration) error {
 			continue
 		}
 		if now.Sub(meta.LastAccess) > ttl {
-			d.logger.Info("Evicting download %s (last accessed %s)", entry.Name(), meta.LastAccess.Format(time.RFC3339))
+			d.logger.Info("Evicting download", slog.String("file", entry.Name()), slog.String("lastAccess", meta.LastAccess.Format(time.RFC3339)))
 			_ = os.Remove(filePath)
 			_ = os.Remove(filePath + ".smidr_meta.json")
 		}
@@ -99,14 +102,14 @@ func (d *Downloader) GetDownloadSize() (int64, error) {
 func (d *Downloader) DownloadFileWithMirrors(urls []string, maxRetries int) (string, error) {
 	var lastErr error
 	for _, url := range urls {
-		for attempt := 0; attempt < maxRetries; attempt++ {
+		for attempt := range maxRetries {
 			destPath, err := d.downloadFileOnce(url)
 			if err == nil {
 				return destPath, nil
 			}
 			lastErr = err
 			backoff := time.Duration(1<<attempt) * 100 * time.Millisecond
-			d.logger.Info("Retry %d for %s after error: %v", attempt+1, url, err)
+			d.logger.Error("Retrying after error", err, slog.String("url", url), slog.Int("attempt", attempt+1), slog.Duration("backoff", backoff))
 			time.Sleep(backoff)
 		}
 	}
@@ -122,10 +125,11 @@ func (d *Downloader) downloadFileOnce(url string) (string, error) {
 	if _, err := os.Stat(destPath); err == nil {
 		meta, err := readCacheMeta(destPath + ".smidr_meta.json")
 		if err == nil {
+			// TODO: Switch to using proper setter for last access time
 			meta.LastAccess = time.Now()
 			_ = writeCacheMeta(destPath + ".smidr_meta.json")
 		}
-		d.logger.Info("Cache hit for %s", filename)
+		d.logger.Info("Cache hit for %s", slog.String("file", filename))
 		return destPath, nil
 	}
 
@@ -151,7 +155,7 @@ func (d *Downloader) downloadFileOnce(url string) (string, error) {
 		return "", fmt.Errorf("failed to save file: %w", err)
 	}
 
-	d.logger.Info("Successfully downloaded %s", filename)
+	d.logger.Info("Successfully downloaded %s", slog.String("file", filename))
 	_ = writeCacheMeta(destPath + ".smidr_meta.json")
 	return destPath, nil
 }
