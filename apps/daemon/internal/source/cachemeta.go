@@ -2,7 +2,7 @@ package source
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"time"
 )
 
@@ -18,12 +18,12 @@ func writeCacheMeta(metaPath string) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(metaPath, data, 0644)
+	return os.WriteFile(metaPath, data, 0644)
 }
 
 // readCacheMeta reads last-access metadata from a file (repo or download)
 func readCacheMeta(metaPath string) (CacheMeta, error) {
-	data, err := ioutil.ReadFile(metaPath)
+	data, err := os.ReadFile(metaPath)
 	if err != nil {
 		return CacheMeta{}, err
 	}
