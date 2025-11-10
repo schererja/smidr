@@ -1,7 +1,7 @@
 syntax = "proto3";
 package smidr.v1;
 
-option go_package = "github.com/schererja/smidr-protos/gen/go/smidr/v1;smidrv1";
+option go_package = "github.com/schererja/smidr/sdks/go/smidr/v1;smidrv1";
 
 enum BuildState {
   BUILD_STATE_UNSPECIFIED = 0;

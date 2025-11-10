@@ -1,6 +1,6 @@
 version: v2
 modules:
-  - path: protos/smidr
+  - path: smidr/v1
 lint:
   use:
     - DEFAULT

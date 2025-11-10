@@ -4,17 +4,17 @@ managed:
 plugins:
   # Go (for internal daemon)
   - remote: buf.build/protocolbuffers/go
-    out: apps/daemon/api/v1/gen
+    out: ../sdks/go
     opt: [paths=source_relative]
   - remote: buf.build/grpc/go
-    out: apps/daemon/api/v1/gen
+    out: ../sdks/go
     opt: [paths=source_relative]
 
   # TypeScript SDK (for web/Next)
   - remote: buf.build/bufbuild/es
-    out: sdks/ts
+    out: ../sdks/ts
     opt: [target=ts]
 
   # C# SDK (for API)
   - remote: buf.build/grpc/csharp
-    out: sdks/csharp
+    out: ../sdks/csharp
