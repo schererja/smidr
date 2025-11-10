@@ -433,6 +433,56 @@ func (e *BuildExecutor) executeBitbake(ctx context.Context, logWriter *BuildLogW
 		buildResult.Success = false
 		e.logger.Warn("BitBake build failed. Attempting targeted cleanup, cleansstate, and retry...")
 		stderrText := string(result.Stderr)
+
+		// Detect legacy deploy path reference (old dynamic build-* workspace) causing ipk link failure
+		// Example: /home/builder/build-fe610266-.../deploy/ipk/...
+		missingDeployPath := ""
+		for _, line := range strings.Split(stderrText, "\n") {
+			if strings.Contains(line, "deploy/ipk") && strings.Contains(line, "FileNotFoundError") && strings.Contains(line, "build-") {
+				// Extract the first /home/builder/build-*-*/deploy/ipk segment heuristically
+				parts := strings.Split(line, " ")
+				for _, p := range parts {
+					if strings.HasPrefix(p, "/home/builder/build-") && strings.Contains(p, "/deploy/ipk/") {
+						missingDeployPath = p
+						break
+					}
+				}
+			}
+			if missingDeployPath != "" {
+				break
+			}
+		}
+		if missingDeployPath != "" {
+			e.logger.Warn("Detected stale sstate reference to legacy dynamic deploy path; forcing package write refresh", slog.String("stale_path", missingDeployPath))
+			// Attempt to regenerate package indexes for current deploy to satisfy rootfs
+			pkgIndexCmd := []string{"bash", "-c", fmt.Sprintf("cd %s && source /home/builder/layers/poky/oe-init-build-env . && bitbake package-index", e.workspaceDir)}
+			idxRes, idxErr := e.containerMgr.ExecStream(ctx, e.containerID, pkgIndexCmd, 30*time.Minute)
+			if idxErr != nil || idxRes.ExitCode != 0 {
+				e.logger.Warn("package-index regeneration did not succeed (continuing to cleansstate)")
+			} else {
+				e.logger.Info("package-index regeneration completed; will retry image build")
+				retryCmd := []string{"bash", "-c", fmt.Sprintf("cd %s && source /home/builder/layers/poky/oe-init-build-env . && bitbake %s", e.workspaceDir, e.config.Build.Image)}
+				retryRes, retryErr := e.containerMgr.ExecStream(ctx, e.containerID, retryCmd, 2*time.Hour)
+				if retryErr == nil && retryRes.ExitCode == 0 {
+					if logWriter != nil {
+						for _, line := range strings.Split(string(retryRes.Stdout), "\n") {
+							if line != "" {
+								logWriter.WriteLog("stdout", line)
+							}
+						}
+						for _, line := range strings.Split(string(retryRes.Stderr), "\n") {
+							if line != "" {
+								logWriter.WriteLog("stderr", line)
+							}
+						}
+					}
+					buildResult.Success = true
+					buildResult.ExitCode = 0
+					return buildResult, nil
+				}
+			}
+		}
+
 		failedRecipe := extractFailedRecipe(stderrText)
 		if failedRecipe != "" {
 			// Targeted cleanup for pseudo path mismatch

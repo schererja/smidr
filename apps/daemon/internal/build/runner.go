@@ -315,12 +315,17 @@ func (r *Runner) Run(ctx context.Context, cfg *config.Config, opts BuildOptions,
 
 	// Assign a unique container name based on build ID to prevent collisions
 	containerName := ""
-	containerWorkspace := "/home/builder/build" // default workspace path inside container
+	containerWorkspace := "/home/builder/build" // default stable workspace path
 	if opts.BuildID != "" {
-		containerName = "smidr-build-" + opts.BuildID
-		// CRITICAL: Use unique workspace path inside container to prevent BitBake server collisions
-		// Each build gets its own workspace so BitBake lock files don't conflict
-		containerWorkspace = "/home/builder/build-" + opts.BuildID
+		// For customer builds (stable BuildID), keep a stable mount path /home/builder/build
+		// For ad-hoc (UUID) builds, still isolate by suffix to avoid BitBake server collisions
+		if strings.Contains(opts.BuildID, "-") && (strings.HasPrefix(opts.BuildID, "ci-") || strings.HasPrefix(opts.BuildID, "qa-") || strings.HasPrefix(opts.BuildID, "dev-") || strings.HasPrefix(opts.BuildID, "prod-")) {
+			containerName = "smidr-build-" + opts.BuildID
+			// stable workspace path retained
+		} else {
+			containerName = "smidr-build-" + opts.BuildID
+			containerWorkspace = "/home/builder/build-" + opts.BuildID
+		}
 	}
 
 	// Allow deterministic container name for tests

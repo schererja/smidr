@@ -1,0 +1,38 @@
+name: Release C# SDK
+on:
+  push:
+    tags:
+      - "v*" # e.g., v0.3.0
+
+jobs:
+  release-csharp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: bufbuild/buf-setup-action@v1
+      - run: buf generate protos
+
+      - name: Clone C# SDK repo
+        run: |
+          git clone https://github.com/schererja/smidr-csharp-sdk.git
+          rsync -a --delete sdks/csharp/ smidr-csharp-sdk/Smidr.Protos/Generated/
+
+      - name: Commit and tag SDK
+        working-directory: smidr-csharp-sdk
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add .
+          git diff --cached --quiet || git commit -m "auto: update from smidr $GITHUB_REF_NAME"
+          git tag $GITHUB_REF_NAME || true
+          git push https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/schererja/smidr-csharp-sdk.git main --tags
+
+      - name: Publish to NuGet
+        working-directory: smidr-csharp-sdk/Smidr.Protos
+        run: |
+          dotnet restore
+          dotnet pack -p:Version=${GITHUB_REF_NAME#v} -c Release -o out
+          dotnet nuget push out/*.nupkg \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json
