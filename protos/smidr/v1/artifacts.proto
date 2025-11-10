@@ -19,6 +19,7 @@ message ListArtifactsRequest {
 // ListArtifactsResponse contains a list of artifacts associated with a build.
 message ListArtifactsResponse {
   repeated ArtifactSummary artifacts = 1;
+  BuildIdentifier build_identifier = 2;
 }
 
 // GetArtifactRequest is used to request details of a specific artifact.
