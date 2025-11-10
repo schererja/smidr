@@ -10,7 +10,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: bufbuild/buf-setup-action@v1
-      - run: buf generate protos
+      - name: Generate SDKs
+        working-directory: protos
+        run: buf generate protos
       - name: Commit generated SDKs
         run: |
           git config user.name "github-actions"
