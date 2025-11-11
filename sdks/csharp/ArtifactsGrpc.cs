@@ -8,6 +8,9 @@
 using grpc = global::Grpc.Core;
 
 namespace Smidr.V1 {
+  /// <summary>
+  /// ArtifactService manages artifacts associated with builds.
+  /// </summary>
   public static partial class ArtifactService
   {
     static readonly string __ServiceName = "smidr.v1.ArtifactService";

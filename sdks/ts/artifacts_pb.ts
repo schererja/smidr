@@ -197,6 +197,8 @@ export const ArtifactSummarySchema: GenMessage<ArtifactSummary> = /*@__PURE__*/
   messageDesc(file_artifacts, 7);
 
 /**
+ * ArtifactService manages artifacts associated with builds.
+ *
  * @generated from service smidr.v1.ArtifactService
  */
 export const ArtifactService: GenService<{
