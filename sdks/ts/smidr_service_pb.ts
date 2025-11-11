@@ -12,5 +12,5 @@ import { file_logs } from "./logs_pb";
  * Describes the file smidr_service.proto.
  */
 export const file_smidr_service: GenFile = /*@__PURE__*/
-  fileDesc("ChNzbWlkcl9zZXJ2aWNlLnByb3RvEghzbWlkci52MUKXAQoMY29tLnNtaWRyLnYxQhFTbWlkclNlcnZpY2VQcm90b1ABWjNnaXRodWIuY29tL3NjaGVyZXJqYS9zbWlkci9zZGtzL2dvL3NtaWRyL3YxO3NtaWRydjGiAgNTWFiqAghTbWlkci5WMcoCCFNtaWRyXFYx4gIUU21pZHJcVjFcR1BCTWV0YWRhdGHqAglTbWlkcjo6VjFiBnByb3RvMw", [file_builds, file_artifacts, file_logs]);
+  fileDesc("ChNzbWlkcl9zZXJ2aWNlLnByb3RvEghzbWlkci52MUKcAQoMY29tLnNtaWRyLnYxQhFTbWlkclNlcnZpY2VQcm90b1ABWjhnaXRodWIuY29tL3NjaGVyZXJqYS9zbWlkci9zZGtzL3BrZy9zbWlkci1zZGsvdjE7c21pZHJ2MaICA1NYWKoCCFNtaWRyLlYxygIIU21pZHJcVjHiAhRTbWlkclxWMVxHUEJNZXRhZGF0YeoCCVNtaWRyOjpWMWIGcHJvdG8z", [file_builds, file_artifacts, file_logs]);
 

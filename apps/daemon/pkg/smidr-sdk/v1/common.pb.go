@@ -200,8 +200,8 @@ const file_common_proto_rawDesc = "" +
 	" BUILD_STATE_EXTRACTING_ARTIFACTS\x10\x04\x12\x19\n" +
 	"\x15BUILD_STATE_COMPLETED\x10\x05\x12\x16\n" +
 	"\x12BUILD_STATE_FAILED\x10\x06\x12\x19\n" +
-	"\x15BUILD_STATE_CANCELLED\x10\aB\x91\x01\n" +
-	"\fcom.smidr.v1B\vCommonProtoP\x01Z3github.com/schererja/smidr/sdks/go/smidr/v1;smidrv1\xa2\x02\x03SXX\xaa\x02\bSmidr.V1\xca\x02\bSmidr\\V1\xe2\x02\x14Smidr\\V1\\GPBMetadata\xea\x02\tSmidr::V1b\x06proto3"
+	"\x15BUILD_STATE_CANCELLED\x10\aB\x96\x01\n" +
+	"\fcom.smidr.v1B\vCommonProtoP\x01Z8github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1\xa2\x02\x03SXX\xaa\x02\bSmidr.V1\xca\x02\bSmidr\\V1\xe2\x02\x14Smidr\\V1\\GPBMetadata\xea\x02\tSmidr::V1b\x06proto3"
 
 var (
 	file_common_proto_rawDescOnce sync.Once

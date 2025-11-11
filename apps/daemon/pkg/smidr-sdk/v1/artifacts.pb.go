@@ -7,7 +7,6 @@
 package smidrv1
 
 import (
-	v1 "github.com/schererja/smidr/sdks/go/smidr/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -25,7 +24,7 @@ const (
 // ListArtifactsRequest is used to request a list of artifacts for an build.
 type ListArtifactsRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	BuildIdentifier *v1.BuildIdentifier    `protobuf:"bytes,1,opt,name=build_identifier,json=buildIdentifier,proto3" json:"build_identifier,omitempty"`
+	BuildIdentifier *BuildIdentifier       `protobuf:"bytes,1,opt,name=build_identifier,json=buildIdentifier,proto3" json:"build_identifier,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -60,7 +59,7 @@ func (*ListArtifactsRequest) Descriptor() ([]byte, []int) {
 	return file_artifacts_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *ListArtifactsRequest) GetBuildIdentifier() *v1.BuildIdentifier {
+func (x *ListArtifactsRequest) GetBuildIdentifier() *BuildIdentifier {
 	if x != nil {
 		return x.BuildIdentifier
 	}
@@ -71,7 +70,7 @@ func (x *ListArtifactsRequest) GetBuildIdentifier() *v1.BuildIdentifier {
 type ListArtifactsResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Artifacts       []*ArtifactSummary     `protobuf:"bytes,1,rep,name=artifacts,proto3" json:"artifacts,omitempty"`
-	BuildIdentifier *v1.BuildIdentifier    `protobuf:"bytes,2,opt,name=build_identifier,json=buildIdentifier,proto3" json:"build_identifier,omitempty"`
+	BuildIdentifier *BuildIdentifier       `protobuf:"bytes,2,opt,name=build_identifier,json=buildIdentifier,proto3" json:"build_identifier,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -113,7 +112,7 @@ func (x *ListArtifactsResponse) GetArtifacts() []*ArtifactSummary {
 	return nil
 }
 
-func (x *ListArtifactsResponse) GetBuildIdentifier() *v1.BuildIdentifier {
+func (x *ListArtifactsResponse) GetBuildIdentifier() *BuildIdentifier {
 	if x != nil {
 		return x.BuildIdentifier
 	}
@@ -466,8 +465,8 @@ const file_artifacts_proto_rawDesc = "" +
 	"\rListArtifacts\x12\x1e.smidr.v1.ListArtifactsRequest\x1a\x1f.smidr.v1.ListArtifactsResponse\x12F\n" +
 	"\vGetArtifact\x12\x1c.smidr.v1.GetArtifactRequest\x1a\x19.smidr.v1.ArtifactSummary\x12Y\n" +
 	"\x10DownloadArtifact\x12!.smidr.v1.DownloadArtifactRequest\x1a\".smidr.v1.DownloadArtifactResponse\x12S\n" +
-	"\x0eDeleteArtifact\x12\x1f.smidr.v1.DeleteArtifactRequest\x1a .smidr.v1.DeleteArtifactResponseB\x91\x01\n" +
-	"\fcom.smidr.v1B\x0eArtifactsProtoP\x01Z0github.com/schererja/smidr/pkg/smidr-sdk;smidrv1\xa2\x02\x03SXX\xaa\x02\bSmidr.V1\xca\x02\bSmidr\\V1\xe2\x02\x14Smidr\\V1\\GPBMetadata\xea\x02\tSmidr::V1b\x06proto3"
+	"\x0eDeleteArtifact\x12\x1f.smidr.v1.DeleteArtifactRequest\x1a .smidr.v1.DeleteArtifactResponseB\x99\x01\n" +
+	"\fcom.smidr.v1B\x0eArtifactsProtoP\x01Z8github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1\xa2\x02\x03SXX\xaa\x02\bSmidr.V1\xca\x02\bSmidr\\V1\xe2\x02\x14Smidr\\V1\\GPBMetadata\xea\x02\tSmidr::V1b\x06proto3"
 
 var (
 	file_artifacts_proto_rawDescOnce sync.Once
@@ -491,7 +490,7 @@ var file_artifacts_proto_goTypes = []any{
 	(*DeleteArtifactRequest)(nil),    // 5: smidr.v1.DeleteArtifactRequest
 	(*DeleteArtifactResponse)(nil),   // 6: smidr.v1.DeleteArtifactResponse
 	(*ArtifactSummary)(nil),          // 7: smidr.v1.ArtifactSummary
-	(*v1.BuildIdentifier)(nil),       // 8: smidr.v1.BuildIdentifier
+	(*BuildIdentifier)(nil),          // 8: smidr.v1.BuildIdentifier
 }
 var file_artifacts_proto_depIdxs = []int32{
 	8, // 0: smidr.v1.ListArtifactsRequest.build_identifier:type_name -> smidr.v1.BuildIdentifier
@@ -517,6 +516,7 @@ func file_artifacts_proto_init() {
 	if File_artifacts_proto != nil {
 		return
 	}
+	file_common_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

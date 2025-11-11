@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package smidr.v1;
-option go_package = "github.com/schererja/smidr/sdks/go/smidr/v1;smidrv1";
+option go_package = "github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1";
 
 import "builds.proto";
 import "artifacts.proto";

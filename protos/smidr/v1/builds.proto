@@ -3,7 +3,7 @@ syntax = "proto3";
 package smidr.v1;
 
 import "common.proto";
-option go_package = "github.com/schererja/smidr/sdks/go/smidr/v1;smidrv1";
+option go_package = "github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1";
 
 service BuildService {
   rpc StartBuild(StartBuildRequest) returns (BuildStatusResponse);
@@ -38,7 +38,7 @@ message StartBuildRequest {
 
 // BuildStatusResponse provides the current status of a build.
 message BuildStatusResponse {
-  string build_id = 1;
+  BuildIdentifier build_identifier = 1;
   string target = 2;
   BuildState state = 3;
   int32 exit_code = 4;

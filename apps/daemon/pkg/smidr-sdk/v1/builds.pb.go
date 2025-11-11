@@ -114,18 +114,18 @@ func (x *StartBuildRequest) GetCustomer() string {
 
 // BuildStatusResponse provides the current status of a build.
 type BuildStatusResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	BuildId       string                 `protobuf:"bytes,1,opt,name=build_id,json=buildId,proto3" json:"build_id,omitempty"`
-	Target        string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`
-	State         BuildState             `protobuf:"varint,3,opt,name=state,proto3,enum=smidr.v1.BuildState" json:"state,omitempty"`
-	ExitCode      int32                  `protobuf:"varint,4,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
-	ErrorMessage  string                 `protobuf:"bytes,5,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
-	Timestamps    *TimeStampRange        `protobuf:"bytes,6,opt,name=timestamps,proto3" json:"timestamps,omitempty"`
-	ConfigPath    string                 `protobuf:"bytes,7,opt,name=config_path,json=configPath,proto3" json:"config_path,omitempty"`
-	Customer      string                 `protobuf:"bytes,8,opt,name=customer,proto3" json:"customer,omitempty"`
-	Deleted       bool                   `protobuf:"varint,9,opt,name=deleted,proto3" json:"deleted,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	BuildIdentifier *BuildIdentifier       `protobuf:"bytes,1,opt,name=build_identifier,json=buildIdentifier,proto3" json:"build_identifier,omitempty"`
+	Target          string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`
+	State           BuildState             `protobuf:"varint,3,opt,name=state,proto3,enum=smidr.v1.BuildState" json:"state,omitempty"`
+	ExitCode        int32                  `protobuf:"varint,4,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
+	ErrorMessage    string                 `protobuf:"bytes,5,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	Timestamps      *TimeStampRange        `protobuf:"bytes,6,opt,name=timestamps,proto3" json:"timestamps,omitempty"`
+	ConfigPath      string                 `protobuf:"bytes,7,opt,name=config_path,json=configPath,proto3" json:"config_path,omitempty"`
+	Customer        string                 `protobuf:"bytes,8,opt,name=customer,proto3" json:"customer,omitempty"`
+	Deleted         bool                   `protobuf:"varint,9,opt,name=deleted,proto3" json:"deleted,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *BuildStatusResponse) Reset() {
@@ -158,11 +158,11 @@ func (*BuildStatusResponse) Descriptor() ([]byte, []int) {
 	return file_builds_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *BuildStatusResponse) GetBuildId() string {
+func (x *BuildStatusResponse) GetBuildIdentifier() *BuildIdentifier {
 	if x != nil {
-		return x.BuildId
+		return x.BuildIdentifier
 	}
-	return ""
+	return nil
 }
 
 func (x *BuildStatusResponse) GetTarget() string {
@@ -1024,9 +1024,9 @@ const file_builds_proto_rawDesc = "" +
 	"\bcustomer\x18\x06 \x01(\tR\bcustomer\x1aG\n" +
 	"\x19EnvironmentVariablesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc7\x02\n" +
-	"\x13BuildStatusResponse\x12\x19\n" +
-	"\bbuild_id\x18\x01 \x01(\tR\abuildId\x12\x16\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf2\x02\n" +
+	"\x13BuildStatusResponse\x12D\n" +
+	"\x10build_identifier\x18\x01 \x01(\v2\x19.smidr.v1.BuildIdentifierR\x0fbuildIdentifier\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\tR\x06target\x12*\n" +
 	"\x05state\x18\x03 \x01(\x0e2\x14.smidr.v1.BuildStateR\x05state\x12\x1b\n" +
 	"\texit_code\x18\x04 \x01(\x05R\bexitCode\x12#\n" +
@@ -1113,8 +1113,8 @@ const file_builds_proto_rawDesc = "" +
 	"\vCancelBuild\x12\x1c.smidr.v1.CancelBuildRequest\x1a\x1d.smidr.v1.CancelBuildResponse\x12=\n" +
 	"\bGetBuild\x12\x19.smidr.v1.GetBuildRequest\x1a\x16.smidr.v1.BuildDetails\x12J\n" +
 	"\vDeleteBuild\x12\x1c.smidr.v1.DeleteBuildRequest\x1a\x1d.smidr.v1.DeleteBuildResponse\x12J\n" +
-	"\vPurgeBuilds\x12\x1c.smidr.v1.PurgeBuildsRequest\x1a\x1d.smidr.v1.PurgeBuildsResponseB\x91\x01\n" +
-	"\fcom.smidr.v1B\vBuildsProtoP\x01Z3github.com/schererja/smidr/sdks/go/smidr/v1;smidrv1\xa2\x02\x03SXX\xaa\x02\bSmidr.V1\xca\x02\bSmidr\\V1\xe2\x02\x14Smidr\\V1\\GPBMetadata\xea\x02\tSmidr::V1b\x06proto3"
+	"\vPurgeBuilds\x12\x1c.smidr.v1.PurgeBuildsRequest\x1a\x1d.smidr.v1.PurgeBuildsResponseB\x96\x01\n" +
+	"\fcom.smidr.v1B\vBuildsProtoP\x01Z8github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1\xa2\x02\x03SXX\xaa\x02\bSmidr.V1\xca\x02\bSmidr\\V1\xe2\x02\x14Smidr\\V1\\GPBMetadata\xea\x02\tSmidr::V1b\x06proto3"
 
 var (
 	file_builds_proto_rawDescOnce sync.Once
@@ -1144,43 +1144,44 @@ var file_builds_proto_goTypes = []any{
 	(*PurgeBuildsRequest)(nil),  // 11: smidr.v1.PurgeBuildsRequest
 	(*PurgeBuildsResponse)(nil), // 12: smidr.v1.PurgeBuildsResponse
 	nil,                         // 13: smidr.v1.StartBuildRequest.EnvironmentVariablesEntry
-	(BuildState)(0),             // 14: smidr.v1.BuildState
-	(*TimeStampRange)(nil),      // 15: smidr.v1.TimeStampRange
-	(*BuildIdentifier)(nil),     // 16: smidr.v1.BuildIdentifier
+	(*BuildIdentifier)(nil),     // 14: smidr.v1.BuildIdentifier
+	(BuildState)(0),             // 15: smidr.v1.BuildState
+	(*TimeStampRange)(nil),      // 16: smidr.v1.TimeStampRange
 }
 var file_builds_proto_depIdxs = []int32{
 	13, // 0: smidr.v1.StartBuildRequest.environment_variables:type_name -> smidr.v1.StartBuildRequest.EnvironmentVariablesEntry
-	14, // 1: smidr.v1.BuildStatusResponse.state:type_name -> smidr.v1.BuildState
-	15, // 2: smidr.v1.BuildStatusResponse.timestamps:type_name -> smidr.v1.TimeStampRange
-	16, // 3: smidr.v1.BuildStatusRequest.build_identifier:type_name -> smidr.v1.BuildIdentifier
-	16, // 4: smidr.v1.BuildDetails.build_identifier:type_name -> smidr.v1.BuildIdentifier
-	14, // 5: smidr.v1.BuildDetails.build_state:type_name -> smidr.v1.BuildState
-	15, // 6: smidr.v1.BuildDetails.timestamps:type_name -> smidr.v1.TimeStampRange
-	14, // 7: smidr.v1.ListBuildsRequest.state_filter:type_name -> smidr.v1.BuildState
-	15, // 8: smidr.v1.ListBuildsRequest.time_range:type_name -> smidr.v1.TimeStampRange
-	3,  // 9: smidr.v1.ListBuildsResponse.builds:type_name -> smidr.v1.BuildDetails
-	16, // 10: smidr.v1.CancelBuildRequest.build_identifier:type_name -> smidr.v1.BuildIdentifier
-	16, // 11: smidr.v1.GetBuildRequest.build_identifier:type_name -> smidr.v1.BuildIdentifier
-	16, // 12: smidr.v1.DeleteBuildRequest.build_identifier:type_name -> smidr.v1.BuildIdentifier
-	0,  // 13: smidr.v1.BuildService.StartBuild:input_type -> smidr.v1.StartBuildRequest
-	2,  // 14: smidr.v1.BuildService.GetBuildStatus:input_type -> smidr.v1.BuildStatusRequest
-	4,  // 15: smidr.v1.BuildService.ListBuilds:input_type -> smidr.v1.ListBuildsRequest
-	6,  // 16: smidr.v1.BuildService.CancelBuild:input_type -> smidr.v1.CancelBuildRequest
-	8,  // 17: smidr.v1.BuildService.GetBuild:input_type -> smidr.v1.GetBuildRequest
-	9,  // 18: smidr.v1.BuildService.DeleteBuild:input_type -> smidr.v1.DeleteBuildRequest
-	11, // 19: smidr.v1.BuildService.PurgeBuilds:input_type -> smidr.v1.PurgeBuildsRequest
-	1,  // 20: smidr.v1.BuildService.StartBuild:output_type -> smidr.v1.BuildStatusResponse
-	1,  // 21: smidr.v1.BuildService.GetBuildStatus:output_type -> smidr.v1.BuildStatusResponse
-	5,  // 22: smidr.v1.BuildService.ListBuilds:output_type -> smidr.v1.ListBuildsResponse
-	7,  // 23: smidr.v1.BuildService.CancelBuild:output_type -> smidr.v1.CancelBuildResponse
-	3,  // 24: smidr.v1.BuildService.GetBuild:output_type -> smidr.v1.BuildDetails
-	10, // 25: smidr.v1.BuildService.DeleteBuild:output_type -> smidr.v1.DeleteBuildResponse
-	12, // 26: smidr.v1.BuildService.PurgeBuilds:output_type -> smidr.v1.PurgeBuildsResponse
-	20, // [20:27] is the sub-list for method output_type
-	13, // [13:20] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	14, // 1: smidr.v1.BuildStatusResponse.build_identifier:type_name -> smidr.v1.BuildIdentifier
+	15, // 2: smidr.v1.BuildStatusResponse.state:type_name -> smidr.v1.BuildState
+	16, // 3: smidr.v1.BuildStatusResponse.timestamps:type_name -> smidr.v1.TimeStampRange
+	14, // 4: smidr.v1.BuildStatusRequest.build_identifier:type_name -> smidr.v1.BuildIdentifier
+	14, // 5: smidr.v1.BuildDetails.build_identifier:type_name -> smidr.v1.BuildIdentifier
+	15, // 6: smidr.v1.BuildDetails.build_state:type_name -> smidr.v1.BuildState
+	16, // 7: smidr.v1.BuildDetails.timestamps:type_name -> smidr.v1.TimeStampRange
+	15, // 8: smidr.v1.ListBuildsRequest.state_filter:type_name -> smidr.v1.BuildState
+	16, // 9: smidr.v1.ListBuildsRequest.time_range:type_name -> smidr.v1.TimeStampRange
+	3,  // 10: smidr.v1.ListBuildsResponse.builds:type_name -> smidr.v1.BuildDetails
+	14, // 11: smidr.v1.CancelBuildRequest.build_identifier:type_name -> smidr.v1.BuildIdentifier
+	14, // 12: smidr.v1.GetBuildRequest.build_identifier:type_name -> smidr.v1.BuildIdentifier
+	14, // 13: smidr.v1.DeleteBuildRequest.build_identifier:type_name -> smidr.v1.BuildIdentifier
+	0,  // 14: smidr.v1.BuildService.StartBuild:input_type -> smidr.v1.StartBuildRequest
+	2,  // 15: smidr.v1.BuildService.GetBuildStatus:input_type -> smidr.v1.BuildStatusRequest
+	4,  // 16: smidr.v1.BuildService.ListBuilds:input_type -> smidr.v1.ListBuildsRequest
+	6,  // 17: smidr.v1.BuildService.CancelBuild:input_type -> smidr.v1.CancelBuildRequest
+	8,  // 18: smidr.v1.BuildService.GetBuild:input_type -> smidr.v1.GetBuildRequest
+	9,  // 19: smidr.v1.BuildService.DeleteBuild:input_type -> smidr.v1.DeleteBuildRequest
+	11, // 20: smidr.v1.BuildService.PurgeBuilds:input_type -> smidr.v1.PurgeBuildsRequest
+	1,  // 21: smidr.v1.BuildService.StartBuild:output_type -> smidr.v1.BuildStatusResponse
+	1,  // 22: smidr.v1.BuildService.GetBuildStatus:output_type -> smidr.v1.BuildStatusResponse
+	5,  // 23: smidr.v1.BuildService.ListBuilds:output_type -> smidr.v1.ListBuildsResponse
+	7,  // 24: smidr.v1.BuildService.CancelBuild:output_type -> smidr.v1.CancelBuildResponse
+	3,  // 25: smidr.v1.BuildService.GetBuild:output_type -> smidr.v1.BuildDetails
+	10, // 26: smidr.v1.BuildService.DeleteBuild:output_type -> smidr.v1.DeleteBuildResponse
+	12, // 27: smidr.v1.BuildService.PurgeBuilds:output_type -> smidr.v1.PurgeBuildsResponse
+	21, // [21:28] is the sub-list for method output_type
+	14, // [14:21] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_builds_proto_init() }

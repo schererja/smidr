@@ -7,7 +7,6 @@
 package smidrv1
 
 import (
-	_ "github.com/schererja/smidr/pkg/smidr-sdk"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -26,8 +25,8 @@ var File_smidr_service_proto protoreflect.FileDescriptor
 const file_smidr_service_proto_rawDesc = "" +
 	"\n" +
 	"\x13smidr_service.proto\x12\bsmidr.v1\x1a\fbuilds.proto\x1a\x0fartifacts.proto\x1a\n" +
-	"logs.protoB\x97\x01\n" +
-	"\fcom.smidr.v1B\x11SmidrServiceProtoP\x01Z3github.com/schererja/smidr/sdks/go/smidr/v1;smidrv1\xa2\x02\x03SXX\xaa\x02\bSmidr.V1\xca\x02\bSmidr\\V1\xe2\x02\x14Smidr\\V1\\GPBMetadata\xea\x02\tSmidr::V1b\x06proto3"
+	"logs.protoB\x9c\x01\n" +
+	"\fcom.smidr.v1B\x11SmidrServiceProtoP\x01Z8github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1\xa2\x02\x03SXX\xaa\x02\bSmidr.V1\xca\x02\bSmidr\\V1\xe2\x02\x14Smidr\\V1\\GPBMetadata\xea\x02\tSmidr::V1b\x06proto3"
 
 var file_smidr_service_proto_goTypes = []any{}
 var file_smidr_service_proto_depIdxs = []int32{
@@ -44,6 +43,7 @@ func file_smidr_service_proto_init() {
 		return
 	}
 	file_builds_proto_init()
+	file_artifacts_proto_init()
 	file_logs_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{

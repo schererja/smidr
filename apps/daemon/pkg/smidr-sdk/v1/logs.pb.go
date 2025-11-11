@@ -174,8 +174,8 @@ const file_logs_proto_rawDesc = "" +
 	"\x06stream\x18\x05 \x01(\tR\x06stream2W\n" +
 	"\n" +
 	"LogService\x12I\n" +
-	"\x0fStreamBuildLogs\x12 .smidr.v1.StreamBuildLogsRequest\x1a\x12.smidr.v1.LogEntry0\x01B\x8f\x01\n" +
-	"\fcom.smidr.v1B\tLogsProtoP\x01Z3github.com/schererja/smidr/sdks/go/smidr/v1;smidrv1\xa2\x02\x03SXX\xaa\x02\bSmidr.V1\xca\x02\bSmidr\\V1\xe2\x02\x14Smidr\\V1\\GPBMetadata\xea\x02\tSmidr::V1b\x06proto3"
+	"\x0fStreamBuildLogs\x12 .smidr.v1.StreamBuildLogsRequest\x1a\x12.smidr.v1.LogEntry0\x01B\x94\x01\n" +
+	"\fcom.smidr.v1B\tLogsProtoP\x01Z8github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1\xa2\x02\x03SXX\xaa\x02\bSmidr.V1\xca\x02\bSmidr\\V1\xe2\x02\x14Smidr\\V1\\GPBMetadata\xea\x02\tSmidr::V1b\x06proto3"
 
 var (
 	file_logs_proto_rawDescOnce sync.Once

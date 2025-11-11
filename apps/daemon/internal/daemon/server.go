@@ -15,17 +15,19 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 
-	v1 "github.com/schererja/smidr-protos/gen/go/smidr/v1"
 	"github.com/schererja/smidr/internal/artifacts"
 	buildpkg "github.com/schererja/smidr/internal/build"
 	"github.com/schererja/smidr/internal/config"
 	"github.com/schererja/smidr/internal/db"
 	"github.com/schererja/smidr/pkg/logger"
+	v1 "github.com/schererja/smidr/pkg/smidr-sdk/v1"
 )
 
 // Server implements the Smidr gRPC service
 type Server struct {
-	v1.UnimplementedSmidrServer
+	v1.UnimplementedArtifactServiceServer
+	v1.UnimplementedBuildServiceServer
+	v1.UnimplementedLogServiceServer
 
 	address        string
 	grpcServer     *grpc.Server
@@ -50,9 +52,9 @@ type BuildInfo struct {
 	CompletedAt    time.Time
 	ConfigPath     string
 	Config         *config.Config
-	LogBuffer      []*v1.LogLine
+	LogBuffer      []*v1.LogEntry
 	LogMutex       sync.RWMutex
-	LogSubscribers map[chan *v1.LogLine]bool
+	LogSubscribers map[chan *v1.LogEntry]bool
 	cancel         context.CancelFunc
 	ArtifactPaths  []string
 }
@@ -64,10 +66,10 @@ type LogWriter struct {
 }
 
 func (lw *LogWriter) WriteLog(stream, content string) {
-	logLine := &v1.LogLine{
-		Timestamp: time.Now().UnixNano(),
-		Stream:    stream,
-		Content:   content,
+	logLine := &v1.LogEntry{
+		TimestampUnixSeconds: time.Now().UnixNano(),
+		Stream:               stream,
+		Message:              content,
 	}
 
 	lw.buildInfo.LogMutex.Lock()
@@ -115,6 +117,33 @@ func NewServer(address string, log *logger.Logger, database *db.DB) *Server {
 	}
 }
 
+// Start starts the gRPC server
+func (s *Server) Start() error {
+	// Attempt recovery of stale builds if DB is available
+	if s.database != nil {
+		if err := s.recoverStaleBuilds(); err != nil {
+			s.logger.Warn("Stale build recovery encountered errors", slog.String("error", err.Error()))
+		}
+	}
+
+	lis, err := net.Listen("tcp", s.address)
+	if err != nil {
+		return fmt.Errorf("failed to listen on %s: %w", s.address, err)
+	}
+
+	s.grpcServer = grpc.NewServer()
+	v1.RegisterArtifactServiceServer(s.grpcServer, s)
+	v1.RegisterBuildServiceServer(s.grpcServer, s)
+	v1.RegisterLogServiceServer(s.grpcServer, s)
+	s.logger.Info("Smidr daemon listening", slog.String("address", s.address))
+
+	if err := s.grpcServer.Serve(lis); err != nil {
+		return fmt.Errorf("failed to serve: %w", err)
+	}
+
+	return nil
+}
+
 // getOrCreateCustomerQueue returns a semaphore channel for the given customer.
 // Each customer gets their own queue to allow parallel builds across customers
 // while serializing builds within the same customer to prevent BitBake deadlocks.
@@ -136,32 +165,6 @@ func (s *Server) getOrCreateCustomerQueue(customer string) chan struct{} {
 // generateShortID creates a short unique identifier (first 8 chars of UUID)
 func generateShortID() string {
 	return uuid.New().String()[:8]
-}
-
-// Start starts the gRPC server
-func (s *Server) Start() error {
-	// Attempt recovery of stale builds if DB is available
-	if s.database != nil {
-		if err := s.recoverStaleBuilds(); err != nil {
-			s.logger.Warn("Stale build recovery encountered errors", slog.String("error", err.Error()))
-		}
-	}
-
-	lis, err := net.Listen("tcp", s.address)
-	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", s.address, err)
-	}
-
-	s.grpcServer = grpc.NewServer()
-	v1.RegisterSmidrServer(s.grpcServer, s)
-
-	s.logger.Info("Smidr daemon listening", slog.String("address", s.address))
-
-	if err := s.grpcServer.Serve(lis); err != nil {
-		return fmt.Errorf("failed to serve: %w", err)
-	}
-
-	return nil
 }
 
 // recoverStaleBuilds marks any previously running builds as failed so users can rebuild
@@ -227,7 +230,7 @@ func (s *Server) Stop() {
 }
 
 // StartBuild handles build start requests
-func (s *Server) StartBuild(ctx context.Context, req *v1.StartBuildRequest) (*v1.BuildStatus, error) {
+func (s *Server) StartBuild(ctx context.Context, req *v1.StartBuildRequest) (*v1.BuildStatusResponse, error) {
 	if req.Config == "" {
 		return nil, fmt.Errorf("config is required (path or inline YAML/JSON content)")
 	}
@@ -271,8 +274,8 @@ func (s *Server) StartBuild(ctx context.Context, req *v1.StartBuildRequest) (*v1
 		StartedAt:      time.Now(),
 		ConfigPath:     configPathLabel,
 		Config:         cfg,
-		LogBuffer:      make([]*v1.LogLine, 0),
-		LogSubscribers: make(map[chan *v1.LogLine]bool),
+		LogBuffer:      make([]*v1.LogEntry, 0),
+		LogSubscribers: make(map[chan *v1.LogEntry]bool),
 		cancel:         cancel,
 	}
 	s.builds[buildID] = buildInfo
@@ -280,13 +283,16 @@ func (s *Server) StartBuild(ctx context.Context, req *v1.StartBuildRequest) (*v1
 
 	// Start the build in a goroutine
 	go s.executeBuild(buildCtx, buildInfo, req)
-
-	return &v1.BuildStatus{
-		BuildId:    buildID,
-		Target:     req.Target,
-		State:      v1.BuildState_BUILD_STATE_QUEUED,
-		StartedAt:  buildInfo.StartedAt.Unix(),
-		ConfigPath: configPathLabel,
+	buildIdentifier := v1.BuildIdentifier{BuildId: buildID}
+	return &v1.BuildStatusResponse{
+		BuildIdentifier: &buildIdentifier,
+		State:           buildInfo.State,
+		Customer:        req.Customer,
+		Target:          req.Target,
+		Timestamps: &v1.TimeStampRange{
+			StartTimeUnixSeconds: buildInfo.StartedAt.Unix(),
+		},
+		ConfigPath: buildInfo.ConfigPath,
 	}, nil
 }
 
@@ -344,7 +350,7 @@ func (s *Server) executeBuild(ctx context.Context, buildInfo *BuildInfo, req *v1
 		Target:     req.Target,
 		Customer:   req.Customer,
 		ForceClean: req.ForceClean,
-		ForceImage: req.ForceImage,
+		ForceImage: req.ForceImageRebuild,
 		ConfigPath: buildInfo.ConfigPath,
 	}
 
@@ -572,21 +578,23 @@ func (s *Server) failBuild(buildID string, errorMsg string) {
 }
 
 // GetBuildStatus retrieves the status of a build
-func (s *Server) GetBuildStatus(ctx context.Context, req *v1.BuildStatusRequest) (*v1.BuildStatus, error) {
+func (s *Server) GetBuildStatus(ctx context.Context, req *v1.BuildStatusRequest) (*v1.BuildStatusResponse, error) {
 	s.buildsMutex.RLock()
-	build, exists := s.builds[req.BuildId]
+	build, exists := s.builds[req.BuildIdentifier.BuildId]
 	s.buildsMutex.RUnlock()
 
 	if !exists {
-		return nil, fmt.Errorf("build %s not found", req.BuildId)
+		return nil, fmt.Errorf("build %s not found", req.BuildIdentifier.BuildId)
 	}
 
-	status := &v1.BuildStatus{
-		BuildId:    build.ID,
-		Target:     build.Target,
-		State:      build.State,
-		ExitCode:   build.ExitCode,
-		StartedAt:  build.StartedAt.Unix(),
+	status := &v1.BuildStatusResponse{
+		BuildIdentifier: &v1.BuildIdentifier{BuildId: build.ID},
+		Target:          build.Target,
+		State:           build.State,
+		ExitCode:        build.ExitCode,
+		Timestamps: &v1.TimeStampRange{
+			StartTimeUnixSeconds: build.StartedAt.Unix(),
+		},
 		ConfigPath: build.ConfigPath,
 	}
 
@@ -595,20 +603,20 @@ func (s *Server) GetBuildStatus(ctx context.Context, req *v1.BuildStatusRequest)
 	}
 
 	if !build.CompletedAt.IsZero() {
-		status.CompletedAt = build.CompletedAt.Unix()
+		status.Timestamps.EndTimeUnixSeconds = build.CompletedAt.Unix()
 	}
 
 	return status, nil
 }
 
 // StreamLogs streams build logs to the client
-func (s *Server) StreamLogs(req *v1.StreamLogsRequest, stream v1.Smidr_StreamLogsServer) error {
+func (s *Server) StreamLogs(req *v1.StreamBuildLogsRequest, stream v1.LogService_StreamBuildLogsServer) error {
 	s.buildsMutex.RLock()
-	build, exists := s.builds[req.BuildId]
+	build, exists := s.builds[req.BuildIdentifier.BuildId]
 	s.buildsMutex.RUnlock()
 
 	if !exists {
-		return fmt.Errorf("build %s not found", req.BuildId)
+		return fmt.Errorf("build %s not found", req.BuildIdentifier.BuildId)
 	}
 
 	// Send existing logs
@@ -624,7 +632,7 @@ func (s *Server) StreamLogs(req *v1.StreamLogsRequest, stream v1.Smidr_StreamLog
 	// If follow=true, continue streaming new logs
 	if req.Follow {
 		// Create a channel for this subscriber
-		logChan := make(chan *v1.LogLine, 100)
+		logChan := make(chan *v1.LogEntry, 100)
 
 		build.LogMutex.Lock()
 		build.LogSubscribers[logChan] = true
@@ -676,51 +684,51 @@ func (s *Server) StreamLogs(req *v1.StreamLogsRequest, stream v1.Smidr_StreamLog
 }
 
 // ListArtifacts lists all artifacts from a completed build
-func (s *Server) ListArtifacts(ctx context.Context, req *v1.ListArtifactsRequest) (*v1.ArtifactsList, error) {
+func (s *Server) ListArtifacts(ctx context.Context, req *v1.ListArtifactsRequest) (*v1.ListArtifactsResponse, error) {
 	s.buildsMutex.RLock()
-	build, exists := s.builds[req.BuildId]
+	build, exists := s.builds[req.BuildIdentifier.BuildId]
 	s.buildsMutex.RUnlock()
 
 	if !exists {
-		return nil, fmt.Errorf("build %s not found", req.BuildId)
+		return nil, fmt.Errorf("build %s not found", req.BuildIdentifier.BuildId)
 	}
 
 	if build.State != v1.BuildState_BUILD_STATE_COMPLETED {
-		return nil, fmt.Errorf("build %s is not completed", req.BuildId)
+		return nil, fmt.Errorf("build %s is not completed", req.BuildIdentifier.BuildId)
 	}
 
 	// Return empty list if artifact manager is not available
 	if s.artifactMgr == nil {
-		return &v1.ArtifactsList{
-			BuildId:   req.BuildId,
-			Artifacts: []*v1.Artifact{},
+		return &v1.ListArtifactsResponse{
+			BuildIdentifier: req.BuildIdentifier,
+			Artifacts:       []*v1.ArtifactSummary{},
 		}, nil
 	}
 
 	// Get artifacts from artifact manager
-	artifactFiles, err := s.artifactMgr.ListArtifacts(req.BuildId)
+	artifactFiles, err := s.artifactMgr.ListArtifacts(req.BuildIdentifier.BuildId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list artifacts: %w", err)
 	}
 
 	// Load metadata to get file sizes
-	metadata, err := s.artifactMgr.LoadMetadata(req.BuildId)
+	metadata, err := s.artifactMgr.LoadMetadata(req.BuildIdentifier.BuildId)
 	if err != nil {
 		// If we can't load metadata, just return files without sizes
 		metadata = &artifacts.BuildMetadata{ArtifactSizes: make(map[string]int64)}
 	}
 
 	// Convert to protobuf artifacts
-	var protoArtifacts []*v1.Artifact
+	var protoArtifacts []*v1.ArtifactSummary
 	for _, artifactFile := range artifactFiles {
-		artifact := &v1.Artifact{
-			Name: filepath.Base(artifactFile),
-			Path: artifactFile,
-			Size: metadata.ArtifactSizes[artifactFile],
+		artifact := &v1.ArtifactSummary{
+			Name:        filepath.Base(artifactFile),
+			DownloadUrl: artifactFile,
+			SizeBytes:   metadata.ArtifactSizes[artifactFile],
 		}
 
 		// Calculate checksum if file exists
-		fullPath := filepath.Join(s.artifactMgr.GetArtifactPath(req.BuildId), artifactFile)
+		fullPath := filepath.Join(s.artifactMgr.GetArtifactPath(req.BuildIdentifier.BuildId), artifactFile)
 		if checksum, err := s.calculateChecksum(fullPath); err == nil {
 			artifact.Checksum = checksum
 		}
@@ -728,9 +736,9 @@ func (s *Server) ListArtifacts(ctx context.Context, req *v1.ListArtifactsRequest
 		protoArtifacts = append(protoArtifacts, artifact)
 	}
 
-	return &v1.ArtifactsList{
-		BuildId:   req.BuildId,
-		Artifacts: protoArtifacts,
+	return &v1.ListArtifactsResponse{
+		BuildIdentifier: req.BuildIdentifier,
+		Artifacts:       protoArtifacts,
 	}, nil
 }
 
@@ -751,22 +759,22 @@ func (s *Server) calculateChecksum(filePath string) (string, error) {
 }
 
 // CancelBuild cancels a running build
-func (s *Server) CancelBuild(ctx context.Context, req *v1.CancelBuildRequest) (*v1.CancelResult, error) {
+func (s *Server) CancelBuild(ctx context.Context, req *v1.CancelBuildRequest) (*v1.CancelBuildResponse, error) {
 	s.buildsMutex.Lock()
 	defer s.buildsMutex.Unlock()
 
-	build, exists := s.builds[req.BuildId]
+	build, exists := s.builds[req.BuildIdentifier.BuildId]
 	if !exists {
-		return &v1.CancelResult{
+		return &v1.CancelBuildResponse{
 			Success: false,
-			Message: fmt.Sprintf("build %s not found", req.BuildId),
+			Message: fmt.Sprintf("build %s not found", req.BuildIdentifier.BuildId),
 		}, nil
 	}
 
 	if build.State != v1.BuildState_BUILD_STATE_BUILDING {
-		return &v1.CancelResult{
+		return &v1.CancelBuildResponse{
 			Success: false,
-			Message: fmt.Sprintf("build %s is not in a cancellable state", req.BuildId),
+			Message: fmt.Sprintf("build %s is not in a cancellable state", req.BuildIdentifier.BuildId),
 		}, nil
 	}
 
@@ -778,14 +786,14 @@ func (s *Server) CancelBuild(ctx context.Context, req *v1.CancelBuildRequest) (*
 	build.State = v1.BuildState_BUILD_STATE_CANCELLED
 	build.CompletedAt = time.Now()
 
-	return &v1.CancelResult{
+	return &v1.CancelBuildResponse{
 		Success: true,
 		Message: "Build cancelled successfully",
 	}, nil
 }
 
 // ListBuilds lists all builds
-func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1.BuildsList, error) {
+func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1.ListBuildsResponse, error) {
 	// If a database is available, return persisted builds (includes historical and running)
 	if s.database != nil {
 		// Fetch without limit to allow filtering by state, then apply limit
@@ -814,10 +822,10 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 
 		// Optional state filter set from request
 		filterByState := func(state v1.BuildState) bool {
-			if len(req.States) == 0 {
+			if len(req.StateFilter) == 0 {
 				return true
 			}
-			for _, s := range req.States {
+			for _, s := range req.StateFilter {
 				if s == state {
 					return true
 				}
@@ -833,19 +841,19 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 			}
 
 			bd := &v1.BuildDetails{
-				Id:           b.ID,
-				TargetImage:  b.TargetImage,
-				Status:       protoState,
-				ConfigFile:   b.ConfigFile,
-				Customer:     b.Customer,
-				ProjectName:  b.ProjectName,
-				Machine:      b.Machine,
-				BuildDir:     b.BuildDir,
-				DeployDir:    b.DeployDir,
-				User:         b.User,
-				Host:         b.Host,
-				ErrorMessage: b.ErrorMessage,
-				Deleted:      b.Deleted,
+				BuildIdentifier:   &v1.BuildIdentifier{BuildId: b.ID},
+				TargetImage:       b.TargetImage,
+				BuildState:        protoState,
+				ConfigFile:        b.ConfigFile,
+				Customer:          b.Customer,
+				ProjectName:       b.ProjectName,
+				Machine:           b.Machine,
+				BuildDirectory:    b.BuildDir,
+				DownloadDirectory: b.DeployDir,
+				User:              b.User,
+				Host:              b.Host,
+				ErrorMessage:      b.ErrorMessage,
+				Deleted:           b.Deleted,
 			}
 			if b.ExitCode != nil {
 				bd.ExitCode = int32(*b.ExitCode)
@@ -854,10 +862,10 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 				bd.CreatedAt = b.CreatedAt.Unix()
 			}
 			if b.StartedAt != nil {
-				bd.StartedAt = b.StartedAt.Unix()
+				bd.Timestamps.StartTimeUnixSeconds = b.StartedAt.Unix()
 			}
 			if b.CompletedAt != nil {
-				bd.CompletedAt = b.CompletedAt.Unix()
+				bd.Timestamps.EndTimeUnixSeconds = b.CompletedAt.Unix()
 				if b.StartedAt != nil {
 					bd.DurationSeconds = int32(b.CompletedAt.Sub(*b.StartedAt).Seconds())
 				}
@@ -869,12 +877,12 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 			builds = append(builds, bd)
 
 			// Apply limit if requested
-			if req.Limit > 0 && len(builds) >= int(req.Limit) {
+			if req.PageSize > 0 && len(builds) >= int(req.PageSize) {
 				break
 			}
 		}
 
-		return &v1.BuildsList{Builds: builds}, nil
+		return &v1.ListBuildsResponse{Builds: builds}, nil
 	}
 
 	// Fallback to in-memory builds when DB is not enabled
@@ -884,9 +892,9 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 	builds := make([]*v1.BuildDetails, 0)
 	for _, build := range s.builds {
 		// Filter by state if requested
-		if len(req.States) > 0 {
+		if len(req.StateFilter) > 0 {
 			matched := false
-			for _, state := range req.States {
+			for _, state := range req.StateFilter {
 				if build.State == state {
 					matched = true
 					break
@@ -898,15 +906,15 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 		}
 
 		details := &v1.BuildDetails{
-			Id:          build.ID,
-			TargetImage: build.Target,
-			Status:      build.State,
-			ExitCode:    build.ExitCode,
-			ConfigFile:  build.ConfigPath,
+			BuildIdentifier: &v1.BuildIdentifier{BuildId: build.ID},
+			TargetImage:     build.Target,
+			BuildState:      build.State,
+			ExitCode:        build.ExitCode,
+			ConfigFile:      build.ConfigPath,
 		}
 
 		if !build.StartedAt.IsZero() {
-			details.StartedAt = build.StartedAt.Unix()
+			details.Timestamps.StartTimeUnixSeconds = build.StartedAt.Unix()
 		}
 
 		if build.ErrorMsg != "" {
@@ -914,7 +922,7 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 		}
 
 		if !build.CompletedAt.IsZero() {
-			details.CompletedAt = build.CompletedAt.Unix()
+			details.Timestamps.EndTimeUnixSeconds = build.CompletedAt.Unix()
 			if !build.StartedAt.IsZero() {
 				details.DurationSeconds = int32(build.CompletedAt.Sub(build.StartedAt).Seconds())
 			}
@@ -923,10 +931,10 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 		builds = append(builds, details)
 
 		// Limit results if requested
-		if req.Limit > 0 && len(builds) >= int(req.Limit) {
+		if req.PageSize > 0 && len(builds) >= int(req.PageSize) {
 			break
 		}
 	}
 
-	return &v1.BuildsList{Builds: builds}, nil
+	return &v1.ListBuildsResponse{Builds: builds}, nil
 }

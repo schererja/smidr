@@ -47,8 +47,8 @@ func New(logger *logger.Logger) *cobra.Command {
 }
 
 func runDaemon(cmd *cobra.Command, args []string) error {
-	log.Info("Starting Smidr daemon...")
-	log.Info("📡 Listening", slog.String("address", daemonAddress))
+
+	log.Info("Starting Smidr daemon... Listening", slog.String("address", daemonAddress))
 
 	// Initialize database if --db-path is provided
 	var database *db.DB
