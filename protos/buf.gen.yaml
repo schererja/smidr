@@ -12,9 +12,9 @@ plugins:
 
   # TypeScript SDK (for web/Next)
   - remote: buf.build/bufbuild/es
-    out: ../sdks/ts
+    out: ../sdks/ts/Generated
     opt: [target=ts]
 
   # C# SDK (for API)
   - remote: buf.build/grpc/csharp
-    out: ../sdks/csharp
+    out: ../sdks/csharp/Generated
