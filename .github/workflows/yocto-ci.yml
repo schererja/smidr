@@ -51,7 +51,7 @@ jobs:
 
       - name: Prepare cache directories
         run: |
-          mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate-ci-v2 $HOME/.smidr/tmp $HOME/.smidr/deploy
+          mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate-cache $HOME/.smidr/tmp $HOME/.smidr/deploy
           chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
 
       - name: Restore downloads cache
@@ -59,17 +59,21 @@ jobs:
         with:
           path: $HOME/.smidr/dl
           key: yocto-dl-${{ runner.os }}-${{ hashFiles('examples/smidr-ci.yaml') }}
+          restore-keys: |
+            yocto-dl-${{ runner.os }}-
 
       - name: Restore sstate cache
         uses: actions/cache/restore@v4
         with:
-          path: $HOME/.smidr/sstate-ci-v2
+          path: $HOME/.smidr/sstate-cache
           key: yocto-sstate-${{ runner.os }}-${{ hashFiles('examples/smidr-ci.yaml') }}
+          restore-keys: |
+            yocto-sstate-${{ runner.os }}-
 
       - name: Yocto smoke (no build)
         run: |
           export YOCTO_DL_DIR="$HOME/.smidr/dl"
-          export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate-ci-v2"
+          export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate-cache"
           export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
           export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
           make -C apps/daemon yocto-smoke ARGS="--config ../../examples/smidr-ci.yaml"
@@ -97,8 +101,7 @@ jobs:
       - name: Prepare cache directories
         run: |
           rm -rf $HOME/.smidr/tmp $HOME/.smidr/deploy
-          # Bump sstate namespace to v3 to invalidate old absolute-path entries (built with dynamic build-* workspaces)
-          mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate-ci-v3 $HOME/.smidr/tmp $HOME/.smidr/deploy
+          mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate-cache $HOME/.smidr/tmp $HOME/.smidr/deploy
           chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
 
       - name: Restore downloads cache (rw)
@@ -106,17 +109,21 @@ jobs:
         with:
           path: $HOME/.smidr/dl
           key: yocto-dl-${{ runner.os }}-${{ hashFiles('examples/smidr-ci.yaml') }}
+          restore-keys: |
+            yocto-dl-${{ runner.os }}-
 
       - name: Restore sstate cache (ro)
         uses: actions/cache/restore@v4
         with:
-          path: $HOME/.smidr/sstate-ci-v3
-          key: yocto-sstate-v3-${{ runner.os }}-${{ hashFiles('examples/smidr-ci.yaml') }}
+          path: $HOME/.smidr/sstate-cache
+          key: yocto-sstate-${{ runner.os }}-${{ hashFiles('examples/smidr-ci.yaml') }}
+          restore-keys: |
+            yocto-sstate-${{ runner.os }}-
 
       - name: Fetch-only
         run: |
           export YOCTO_DL_DIR="$HOME/.smidr/dl"
-          export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate-ci-v3"
+          export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate-cache"
           export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
           export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
           make -C apps/daemon yocto-fetch ARGS="--config ../../examples/smidr-ci.yaml"
@@ -126,7 +133,7 @@ jobs:
         run: |
           set -e
           DL_MB=$(du -sm "$HOME/.smidr/dl" 2>/dev/null | awk '{print $1}')
-          SSTATE_MB=$(du -sm "$HOME/.smidr/sstate-ci-v3" 2>/dev/null | awk '{print $1}')
+          SSTATE_MB=$(du -sm "$HOME/.smidr/sstate-cache" 2>/dev/null | awk '{print $1}')
           echo "DL_DIR: ${DL_MB:-0} MB, SSTATE: ${SSTATE_MB:-0} MB"
           echo "dl_mb=${DL_MB:-0}" >> $GITHUB_OUTPUT
           echo "sstate_mb=${SSTATE_MB:-0}" >> $GITHUB_OUTPUT
@@ -167,7 +174,7 @@ jobs:
 
       - name: Prepare cache directories
         run: |
-          mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate-ci-v2 $HOME/.smidr/tmp $HOME/.smidr/deploy
+          mkdir -p $HOME/.smidr/dl $HOME/.smidr/sstate-cache $HOME/.smidr/tmp $HOME/.smidr/deploy
           chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
 
       - name: Restore caches
@@ -175,25 +182,26 @@ jobs:
         with:
           path: |
             $HOME/.smidr/dl
-            $HOME/.smidr/sstate-ci-v3
-          key: yocto-all-v3-${{ runner.os }}-${{ hashFiles('examples/smidr-ci.yaml') }}
+            $HOME/.smidr/sstate-cache
+          key: yocto-all-${{ runner.os }}-${{ hashFiles('examples/smidr-ci.yaml') }}
+          restore-keys: |
+            yocto-all-${{ runner.os }}-
 
       - name: Clean tmp and deploy directories
         run: |
           rm -rf $HOME/.smidr/tmp $HOME/.smidr/deploy
           mkdir -p $HOME/.smidr/tmp $HOME/.smidr/deploy
           chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
-          # Also clear persistent per-customer build TMPDIR to avoid stale absolute paths in ipk.list
-          # e.g. ~/.smidr/builds/build-ci/core-image-minimal-initramfs/tmp
+          # Clear persistent per-customer build directories to avoid stale absolute paths
           rm -rf $HOME/.smidr/builds/build-ci/*/tmp || true
+          rm -rf $HOME/.smidr/builds/build-ci/*/deploy || true
 
       - name: Build with sstate restore
         run: |
           export YOCTO_DL_DIR="$HOME/.smidr/dl"
-          export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate-ci-v3"
+          export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate-cache"
           export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
           export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
-          # Explicitly disable SSTATE_MIRRORS by default to avoid shared area overlap with SSTATE_DIR
           export YOCTO_SSTATE_MIRRORS=""
           make -C apps/daemon yocto-sstate ARGS="--config ../../examples/smidr-ci.yaml"
 
