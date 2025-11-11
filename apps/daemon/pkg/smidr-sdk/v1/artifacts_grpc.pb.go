@@ -28,6 +28,8 @@ const (
 // ArtifactServiceClient is the client API for ArtifactService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ArtifactService manages artifacts associated with builds.
 type ArtifactServiceClient interface {
 	ListArtifacts(ctx context.Context, in *ListArtifactsRequest, opts ...grpc.CallOption) (*ListArtifactsResponse, error)
 	GetArtifact(ctx context.Context, in *GetArtifactRequest, opts ...grpc.CallOption) (*ArtifactSummary, error)
@@ -86,6 +88,8 @@ func (c *artifactServiceClient) DeleteArtifact(ctx context.Context, in *DeleteAr
 // ArtifactServiceServer is the server API for ArtifactService service.
 // All implementations must embed UnimplementedArtifactServiceServer
 // for forward compatibility.
+//
+// ArtifactService manages artifacts associated with builds.
 type ArtifactServiceServer interface {
 	ListArtifacts(context.Context, *ListArtifactsRequest) (*ListArtifactsResponse, error)
 	GetArtifact(context.Context, *GetArtifactRequest) (*ArtifactSummary, error)

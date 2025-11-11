@@ -16,5 +16,7 @@ plugins:
     opt: [target=ts]
 
   # C# SDK (for API)
+  - remote: buf.build/protocolbuffers/csharp
+    out: ../sdks/csharp/Generated
   - remote: buf.build/grpc/csharp
     out: ../sdks/csharp/Generated
