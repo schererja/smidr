@@ -4,6 +4,7 @@ package smidr.v1;
 import "common.proto";
 
 option go_package = "github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1";
+// ArtifactService manages artifacts associated with builds.
 service ArtifactService {
   rpc ListArtifacts(ListArtifactsRequest) returns (ListArtifactsResponse);
   rpc GetArtifact(GetArtifactRequest) returns (ArtifactSummary);
