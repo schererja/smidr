@@ -1,9 +1,10 @@
 name: Generate SDKs
 on:
+  workflow_dispatch:
+
   push:
     paths:
-      - "protos/**"
-
+      - "protos/**/**/**.proto"
 jobs:
   generate:
     runs-on: ubuntu-latest
