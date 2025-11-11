@@ -48,21 +48,52 @@ Note: Smidr defaults the BitBake shared state (sstate) cache to `${WORKDIR}/ssta
 
 ## 🚀 Quick Start
 
+### Run the Daemon
+
+Start the Smidr gRPC server to handle build requests:
+
 ```bash
-# Initialize a new project
-smidr init my-embedded-project
+# Start daemon on default port (50051)
+smidr daemon
 
-# Configure your build (edit smidr.yaml)
-vim smidr.yaml
+# Or specify a custom address and database path
+smidr daemon --address :8080 --db-path ~/.smidr/builds.db
+```
 
-# Build your image
-smidr build
+The daemon will print its listening address and database path at startup. Set `DEBUG=1` for detailed logging:
+
+```bash
+DEBUG=1 smidr daemon --address localhost:50051 --db-path ~/.smidr/builds.db
+```
+
+### Client Commands
+
+Once the daemon is running, use the client subcommands to interact with it:
+
+```bash
+# Start a new build
+smidr client start --config smidr.yaml --target core-image-minimal
+
+# Start a build and follow logs immediately
+smidr client start --config smidr.yaml --target core-image-minimal --follow
 
 # Check build status
-smidr status
+smidr client status --build-id build-123
 
-# Get your artifacts
-smidr artifacts list
+# Stream logs from a running build
+smidr client logs --build-id build-123 --follow
+
+# List all builds
+smidr client list
+
+# List artifacts from a completed build
+smidr client artifacts build-123
+
+# Cancel a running build
+smidr client cancel --build-id build-123
+
+# Connect to a remote daemon
+smidr client start --address remote-host:50051 --config smidr.yaml --target my-image
 ```
 
 ### Use an alternate config file
@@ -204,21 +235,41 @@ directories:
 
 ## 🛰️ Smidr Daemon (gRPC Server)
 
-The Smidr daemon is a planned gRPC server that exposes Smidr’s build and artifact management capabilities over a network API. This enables remote orchestration, integration with CI/CD systems, and future web UI or automation tools.
+The Smidr daemon is a gRPC server that exposes Smidr's build and artifact management capabilities over a network API. This enables remote orchestration, integration with CI/CD systems, and future web UI or automation tools.
 
-### Purpose
+### Running the Daemon
 
-- Provide a persistent service for build requests, status queries, and artifact retrieval
-- Enable remote clients (CLI, web UI, CI/CD) to interact with Smidr
-- Support streaming logs and build events
+```bash
+# Start the daemon on default port (:50051)
+smidr daemon
 
-### Core APIs (planned)
+# Or specify a custom address and database path
+smidr daemon --address :8080 --db-path ~/.smidr/builds.db
+```
 
-- `StartBuild`: Launch a new build with config and parameters
-- `GetBuildStatus`: Query status and logs for a build
-- `ListArtifacts`: Enumerate available build outputs
-- `StreamLogs`: Real-time log streaming for active builds
-- `CancelBuild`: Stop a running build
+For verbose logging, set `DEBUG=1`:
+
+```bash
+DEBUG=1 smidr daemon
+```
+
+### gRPC Services
+
+The daemon exposes three main service APIs:
+
+- **BuildService**:
+  - `StartBuild` — Launch a new build with config and parameters
+  - `GetBuildStatus` — Query status and logs for a build
+  - `ListBuilds` — List all builds (active and completed)
+  - `CancelBuild` — Stop a running build
+
+- **LogService**:
+  - `StreamBuildLogs` — Real-time log streaming for active builds
+
+- **ArtifactService**:
+  - `ListArtifacts` — Enumerate available build outputs and artifacts
+
+All requests use structured types (e.g., `BuildIdentifier`, `Timestamps`) and return detailed responses with state, exit codes, error messages, and artifact metadata.
 
 ### Security & Deployment
 
