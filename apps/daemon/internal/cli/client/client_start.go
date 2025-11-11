@@ -15,6 +15,7 @@ var (
 	startCustomer   string
 	startForceClean bool
 	startForceImage bool
+	startFollow     bool // reuse logs streaming behavior directly after starting
 )
 
 var clientStartCmd = &cobra.Command{
@@ -39,6 +40,7 @@ func init() {
 	clientStartCmd.Flags().StringVar(&startCustomer, "customer", "", "Optional customer/project name for build ID grouping")
 	clientStartCmd.Flags().BoolVar(&startForceClean, "force-clean", false, "Force a clean build")
 	clientStartCmd.Flags().BoolVar(&startForceImage, "force-image", false, "Force image regeneration only")
+	clientStartCmd.Flags().BoolVarP(&startFollow, "follow", "f", false, "Stream logs immediately after starting the build")
 
 	clientStartCmd.MarkFlagRequired("config")
 	clientStartCmd.MarkFlagRequired("target")
@@ -65,14 +67,35 @@ func runClientStart(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println("\n✅ Build started successfully!")
-	fmt.Printf("📝 Build ID: %s\n", status.BuildId)
+	fmt.Printf("Build ID: %s\n", status.BuildIdentifier.BuildId)
 	fmt.Printf("🎯 Target: %s\n", status.Target)
-	fmt.Printf("📊 State: %s\n", status.State)
-	fmt.Printf("⏰ Started: %s\n", time.Unix(status.StartedAt, 0).Format(time.RFC3339))
+	if status.Timestamps != nil && status.Timestamps.StartTimeUnixSeconds > 0 {
+		fmt.Printf("Started: %s\n", time.Unix(status.Timestamps.StartTimeUnixSeconds, 0).Format(time.RFC3339))
+	}
 
 	fmt.Printf("\n💡 Monitor the build with:\n")
-	fmt.Printf("   smidr client status --build-id %s\n", status.BuildId)
-	fmt.Printf("   smidr client logs --build-id %s --follow\n", status.BuildId)
+	fmt.Printf("   smidr client status --build-id %s\n", status.BuildIdentifier.BuildId)
+
+	if startFollow {
+		fmt.Printf("\n📜 Streaming logs for build %s...\n\n", status.BuildIdentifier.BuildId)
+		// Reuse client logs logic by invoking NewClient and streaming directly
+		ctxLogs := context.Background()
+		logStream, err := c.StreamLogs(ctxLogs, status.BuildIdentifier.BuildId, true)
+		if err != nil {
+			return fmt.Errorf("failed to stream logs: %w", err)
+		}
+		for {
+			logLine, err := logStream.Recv()
+			if err != nil {
+				break
+			}
+			if logLine.Stream == "stderr" {
+				fmt.Printf("[stderr] %s\n", logLine.Message)
+			} else {
+				fmt.Printf("%s\n", logLine.Message)
+			}
+		}
+	}
 
 	return nil
 }

@@ -47,6 +47,11 @@ func New(logger *logger.Logger) *cobra.Command {
 }
 
 func runDaemon(cmd *cobra.Command, args []string) error {
+	// Print a direct console line to guarantee visible startup feedback even if logging is misconfigured
+	fmt.Printf("Smidr daemon starting on %s\n", daemonAddress)
+	if daemonDBPath != "" {
+		fmt.Printf("Using database: %s\n", daemonDBPath)
+	}
 
 	log.Info("Starting Smidr daemon... Listening", slog.String("address", daemonAddress))
 

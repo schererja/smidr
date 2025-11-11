@@ -8,13 +8,15 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	v1 "github.com/schererja/smidr-protos/gen/go/smidr/v1"
+	v1 "github.com/schererja/smidr/pkg/smidr-sdk/v1"
 )
 
-// Client wraps the gRPC client for the Smidr daemon
+// Client wraps the gRPC clients for the Smidr daemon
 type Client struct {
-	conn   *grpc.ClientConn
-	client v1.SmidrClient
+	conn           *grpc.ClientConn
+	buildClient    v1.BuildServiceClient
+	artifactClient v1.ArtifactServiceClient
+	logClient      v1.LogServiceClient
 }
 
 // NewClient creates a new client connected to the daemon at the given address
@@ -31,8 +33,10 @@ func NewClient(address string) (*Client, error) {
 	}
 
 	return &Client{
-		conn:   conn,
-		client: v1.NewSmidrClient(conn),
+		conn:           conn,
+		buildClient:    v1.NewBuildServiceClient(conn),
+		artifactClient: v1.NewArtifactServiceClient(conn),
+		logClient:      v1.NewLogServiceClient(conn),
 	}, nil
 }
 
@@ -45,61 +49,69 @@ func (c *Client) Close() error {
 }
 
 // StartBuild starts a new build on the daemon
-func (c *Client) StartBuild(ctx context.Context, configPath, target, customer string, forceClean, forceImage bool) (*v1.BuildStatus, error) {
+func (c *Client) StartBuild(ctx context.Context, configPath, target, customer string, forceClean, forceImageRebuild bool) (*v1.BuildStatusResponse, error) {
 	req := &v1.StartBuildRequest{
-		Config:     configPath,
-		Target:     target,
-		Customer:   customer,
-		ForceClean: forceClean,
-		ForceImage: forceImage,
+		Config:            configPath,
+		Target:            target,
+		Customer:          customer,
+		ForceClean:        forceClean,
+		ForceImageRebuild: forceImageRebuild,
 	}
 
-	return c.client.StartBuild(ctx, req)
+	return c.buildClient.StartBuild(ctx, req)
 }
 
 // GetBuildStatus retrieves the status of a build
-func (c *Client) GetBuildStatus(ctx context.Context, buildID string) (*v1.BuildStatus, error) {
+func (c *Client) GetBuildStatus(ctx context.Context, buildID string) (*v1.BuildStatusResponse, error) {
 	req := &v1.BuildStatusRequest{
-		BuildId: buildID,
+		BuildIdentifier: &v1.BuildIdentifier{
+			BuildId: buildID,
+		},
 	}
 
-	return c.client.GetBuildStatus(ctx, req)
+	return c.buildClient.GetBuildStatus(ctx, req)
 }
 
 // StreamLogs streams logs from a build
-func (c *Client) StreamLogs(ctx context.Context, buildID string, follow bool) (v1.Smidr_StreamLogsClient, error) {
-	req := &v1.StreamLogsRequest{
-		BuildId: buildID,
-		Follow:  follow,
+func (c *Client) StreamLogs(ctx context.Context, buildID string, follow bool) (grpc.ServerStreamingClient[v1.LogEntry], error) {
+	req := &v1.StreamBuildLogsRequest{
+		BuildIdentifier: &v1.BuildIdentifier{
+			BuildId: buildID,
+		},
+		Follow: follow,
 	}
 
-	return c.client.StreamLogs(ctx, req)
+	return c.logClient.StreamBuildLogs(ctx, req)
 }
 
 // ListBuilds lists all builds
-func (c *Client) ListBuilds(ctx context.Context, states []v1.BuildState, limit int32) (*v1.BuildsList, error) {
+func (c *Client) ListBuilds(ctx context.Context, states []v1.BuildState, pageSize int32) (*v1.ListBuildsResponse, error) {
 	req := &v1.ListBuildsRequest{
-		States: states,
-		Limit:  limit,
+		StateFilter: states,
+		PageSize:    pageSize,
 	}
 
-	return c.client.ListBuilds(ctx, req)
+	return c.buildClient.ListBuilds(ctx, req)
 }
 
 // CancelBuild cancels a running build
-func (c *Client) CancelBuild(ctx context.Context, buildID string) (*v1.CancelResult, error) {
+func (c *Client) CancelBuild(ctx context.Context, buildID string) (*v1.CancelBuildResponse, error) {
 	req := &v1.CancelBuildRequest{
-		BuildId: buildID,
+		BuildIdentifier: &v1.BuildIdentifier{
+			BuildId: buildID,
+		},
 	}
 
-	return c.client.CancelBuild(ctx, req)
+	return c.buildClient.CancelBuild(ctx, req)
 }
 
 // ListArtifacts lists artifacts from a completed build
-func (c *Client) ListArtifacts(ctx context.Context, buildID string) (*v1.ArtifactsList, error) {
+func (c *Client) ListArtifacts(ctx context.Context, buildID string) (*v1.ListArtifactsResponse, error) {
 	req := &v1.ListArtifactsRequest{
-		BuildId: buildID,
+		BuildIdentifier: &v1.BuildIdentifier{
+			BuildId: buildID,
+		},
 	}
 
-	return c.client.ListArtifacts(ctx, req)
+	return c.artifactClient.ListArtifacts(ctx, req)
 }

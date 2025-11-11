@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	v1 "github.com/schererja/smidr-protos/gen/go/smidr/v1"
 	"github.com/schererja/smidr/internal/client"
+	v1 "github.com/schererja/smidr/pkg/smidr-sdk/v1"
 	"github.com/spf13/cobra"
 )
 
@@ -53,24 +53,24 @@ func runClientList(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Found %d build(s):\n\n", len(buildsList.Builds))
 
 	for _, build := range buildsList.Builds {
-		fmt.Printf("🔹 Build ID: %s\n", build.Id)
+		fmt.Printf("🔹 Build ID: %s\n", build.BuildIdentifier.BuildId)
 		fmt.Printf("   Target: %s\n", build.TargetImage)
-		fmt.Printf("   State: %s\n", formatBuildState(build.Status))
-		if build.StartedAt > 0 {
-			fmt.Printf("   Started: %s\n", time.Unix(build.StartedAt, 0).Format(time.RFC3339))
+		fmt.Printf("   State: %s\n", formatBuildState(build.BuildState))
+		if build.Timestamps != nil && build.Timestamps.StartTimeUnixSeconds > 0 {
+			fmt.Printf("   Started: %s\n", time.Unix(build.Timestamps.StartTimeUnixSeconds, 0).Format(time.RFC3339))
 		}
 
-		if build.CompletedAt > 0 {
-			completedTime := time.Unix(build.CompletedAt, 0)
-			if build.StartedAt > 0 {
-				duration := completedTime.Sub(time.Unix(build.StartedAt, 0))
+		if build.Timestamps != nil && build.Timestamps.EndTimeUnixSeconds > 0 {
+			completedTime := time.Unix(build.Timestamps.EndTimeUnixSeconds, 0)
+			if build.Timestamps.StartTimeUnixSeconds > 0 {
+				duration := completedTime.Sub(time.Unix(build.Timestamps.StartTimeUnixSeconds, 0))
 				fmt.Printf("   Completed: %s (took %s)\n", completedTime.Format(time.RFC3339), duration.Round(time.Second))
 			} else {
 				fmt.Printf("   Completed: %s\n", completedTime.Format(time.RFC3339))
 			}
 			fmt.Printf("   Exit Code: %d\n", build.ExitCode)
-		} else if build.Status == v1.BuildState_BUILD_STATE_BUILDING && build.StartedAt > 0 {
-			duration := time.Since(time.Unix(build.StartedAt, 0))
+		} else if build.BuildState == v1.BuildState_BUILD_STATE_BUILDING && build.Timestamps != nil && build.Timestamps.StartTimeUnixSeconds > 0 {
+			duration := time.Since(time.Unix(build.Timestamps.StartTimeUnixSeconds, 0))
 			fmt.Printf("   Duration: %s\n", duration.Round(time.Second))
 		}
 

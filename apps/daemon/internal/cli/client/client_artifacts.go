@@ -53,39 +53,32 @@ func runClientArtifacts(cmd *cobra.Command, args []string) error {
 
 	// Calculate max widths for formatting
 	maxNameWidth := 4 // "Name"
-	maxPathWidth := 4 // "Path"
 	for _, artifact := range resp.Artifacts {
 		if len(artifact.Name) > maxNameWidth {
 			maxNameWidth = len(artifact.Name)
 		}
-		if len(artifact.Path) > maxPathWidth {
-			maxPathWidth = len(artifact.Path)
-		}
 	}
 
 	// Print header
-	fmt.Printf("%-*s %-*s %10s %s\n",
+	fmt.Printf("%-*s %10s %s\n",
 		maxNameWidth, "Name",
-		maxPathWidth, "Path",
 		"Size",
 		"Checksum")
-	fmt.Printf("%s %s %s %s\n",
+	fmt.Printf("%s %s %s\n",
 		strings.Repeat("-", maxNameWidth),
-		strings.Repeat("-", maxPathWidth),
 		strings.Repeat("-", 10),
 		strings.Repeat("-", 16))
 
 	// Print artifacts
 	for _, artifact := range resp.Artifacts {
-		sizeStr := formatSize(artifact.Size)
+		sizeStr := formatSize(artifact.SizeBytes)
 		checksumStr := artifact.Checksum
 		if len(checksumStr) > 16 {
 			checksumStr = checksumStr[:16] + "..."
 		}
 
-		fmt.Printf("%-*s %-*s %10s %s\n",
+		fmt.Printf("%-*s %10s %s\n",
 			maxNameWidth, artifact.Name,
-			maxPathWidth, artifact.Path,
 			sizeStr,
 			checksumStr)
 	}

@@ -66,9 +66,9 @@ func runClientLogs(cmd *cobra.Command, args []string) error {
 
 		// Print the log line with stream prefix
 		if logLine.Stream == "stderr" {
-			fmt.Printf("[stderr] %s\n", logLine.Content)
+			fmt.Printf("[stderr] %s\n", logLine.Message)
 		} else {
-			fmt.Printf("%s\n", logLine.Content)
+			fmt.Printf("%s\n", logLine.Message)
 		}
 	}
 

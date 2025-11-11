@@ -45,19 +45,25 @@ func runClientStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Print status
-	fmt.Printf("📝 Build ID: %s\n", status.BuildId)
+	fmt.Printf("📝 Build ID: %s\n", status.BuildIdentifier.BuildId)
 	fmt.Printf("🎯 Target: %s\n", status.Target)
 	fmt.Printf("📊 State: %s\n", status.State)
 	fmt.Printf("📄 Config: %s\n", status.ConfigPath)
-	fmt.Printf("⏰ Started: %s\n", time.Unix(status.StartedAt, 0).Format(time.RFC3339))
-	
-	if status.CompletedAt > 0 {
-		completedTime := time.Unix(status.CompletedAt, 0)
-		duration := completedTime.Sub(time.Unix(status.StartedAt, 0))
-		fmt.Printf("✅ Completed: %s (took %s)\n", completedTime.Format(time.RFC3339), duration.Round(time.Second))
+	if status.Timestamps != nil && status.Timestamps.StartTimeUnixSeconds > 0 {
+		fmt.Printf("⏰ Started: %s\n", time.Unix(status.Timestamps.StartTimeUnixSeconds, 0).Format(time.RFC3339))
+	}
+
+	if status.Timestamps != nil && status.Timestamps.EndTimeUnixSeconds > 0 {
+		completedTime := time.Unix(status.Timestamps.EndTimeUnixSeconds, 0)
+		if status.Timestamps.StartTimeUnixSeconds > 0 {
+			duration := completedTime.Sub(time.Unix(status.Timestamps.StartTimeUnixSeconds, 0))
+			fmt.Printf("✅ Completed: %s (took %s)\n", completedTime.Format(time.RFC3339), duration.Round(time.Second))
+		} else {
+			fmt.Printf("✅ Completed: %s\n", completedTime.Format(time.RFC3339))
+		}
 		fmt.Printf("🔢 Exit Code: %d\n", status.ExitCode)
 	}
-	
+
 	if status.ErrorMessage != "" {
 		fmt.Printf("❌ Error: %s\n", status.ErrorMessage)
 	}
