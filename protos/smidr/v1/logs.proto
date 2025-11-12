@@ -5,6 +5,7 @@ package smidr.v1;
 import "common.proto";
 option go_package = "github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1";
 
+// LogService defines the logging service for streaming build logs.
 service LogService {
   rpc StreamBuildLogs(StreamBuildLogsRequest) returns (stream LogEntry);
 }
