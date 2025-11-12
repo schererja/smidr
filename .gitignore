@@ -59,4 +59,11 @@ PR*.md
 gui/node_modules/
 gui/*.log
 
-# (reserved for future SDK artifacts)
+# C# build artifacts
+bin/
+obj/
+*.dll
+*.pdb
+*.cache
+*.user
+*.suo
