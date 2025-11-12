@@ -1,0 +1,43 @@
+name: ci-smoke
+description: "CI fast tiers: parse/fetch/sstate"
+base:
+  provider: custom
+  machine: qemux86-64
+  distro: poky-tiny
+  version: "6.0.0"
+layers:
+  - name: poky
+    git: https://git.yoctoproject.org/poky
+    branch: kirkstone
+build:
+  image: core-image-minimal-initramfs
+  bb_number_threads: 8
+  parallel_make: 8
+directories:
+  layers: ${YOCTO_LAYERS_DIR:-~/.smidr/layers}
+  downloads: ${YOCTO_DL_DIR:-~/.smidr/downloads}
+  sstate: ${YOCTO_SSTATE_DIR:-~/.smidr/sstate}
+  # Intentionally omit tmp so BitBake uses TOPDIR/tmp per-build to avoid shared-area overlaps
+  # deploy is left to default (${TOPDIR}/deploy) inside container for isolation
+container:
+  base_image: crops/yocto:ubuntu-22.04-builder
+advanced:
+  bb_signature_handler: OEEquivHash
+  conf_version: "2"
+  # Optional: set via env to point to your mirror (example for documentation)
+  # bb_hashserve: "auto"
+  # Prefer using a shared SSTATE_DIR without SSTATE_MIRRORS in CI.
+  # Do NOT point SSTATE_MIRRORS at the same path as SSTATE_DIR (e.g. /home/builder/sstate-cache),
+  # as it can cause shared area overlap errors during setscene.
+  # Provide YOCTO_SSTATE_MIRRORS only when using a distinct remote mirror.
+  sstate_mirrors: ${YOCTO_SSTATE_MIRRORS:-}
+  # Optionally accelerate fetches via premirror; point this to your artifact store
+  premirrors: ${YOCTO_PREMIRRORS:-}
+  # If your CI has no outbound network, set these
+  bb_no_network: ${YOCTO_BB_NO_NETWORK:-false}
+  bb_fetch_premirroronly: ${YOCTO_BB_FETCH_PREMIRRORONLY:-false}
+packages:
+  classes: package_ipk
+features:
+  # Keep CI images as small as possible; avoid extra image features
+  extra_image_features: []

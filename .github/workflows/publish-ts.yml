@@ -1,0 +1,37 @@
+name: Release TS SDK
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release-ts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bufbuild/buf-setup-action@v1
+      - run: buf generate protos
+
+      - name: Clone TS SDK repo
+        run: |
+          git clone https://github.com/schererja/smidr-ts-sdk.git
+          rsync -a --delete sdks/ts/ smidr-ts-sdk/src/
+
+      - name: Commit and tag SDK
+        working-directory: smidr-ts-sdk
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add .
+          git diff --cached --quiet || git commit -m "auto: update from smidr $GITHUB_REF_NAME"
+          git tag $GITHUB_REF_NAME || true
+          git push https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/schererja/smidr-ts-sdk.git main --tags
+
+      - name: Publish to npm
+        working-directory: smidr-ts-sdk
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm install
+          npm version ${GITHUB_REF_NAME#v} --no-git-tag-version
+          npm publish --access public

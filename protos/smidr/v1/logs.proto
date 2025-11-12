@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package smidr.v1;
+
+import "common.proto";
+option go_package = "github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1";
+
+service LogService {
+  rpc StreamBuildLogs(StreamBuildLogsRequest) returns (stream LogEntry);
+}
+
+// StreamBuildLogsRequest is used to request streaming logs for a build.
+message StreamBuildLogsRequest {
+  // Identifier of the build whose logs are to be streamed.
+  BuildIdentifier build_identifier = 1;
+
+  // If true, continue streaming new logs as they are generated.
+  bool follow = 2;
+}
+
+message LogEntry {
+  // Timestamp of the log entry in Unix seconds.
+  int64 timestamp_unix_seconds = 1;
+
+  // The actual log message.
+  string message = 2;
+
+  // Log level (e.g., INFO, WARN, ERROR).
+  string level = 3;
+
+  // Source of the log entry (e.g., build step name).
+  string source = 4;
+
+  // Which stream the log belongs to (e.g., stdout, stderr).
+  string stream = 5;
+}

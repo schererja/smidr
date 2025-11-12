@@ -26,6 +26,7 @@ jobs:
           go-version: "1.25.1"
 
       - name: Go build
+        working-directory: apps/daemon
         run: go build -v ./...
 
       - name: Ensure Docker is available
@@ -54,7 +55,7 @@ jobs:
             CLEAN_FLAG="--clean-image"
           fi
 
-          go run ./cmd/smidr --config smidr-toradex-ci.yaml build --customer ci-toradex $CLEAN_FLAG
+          go run ./apps/daemon/cmd/smidr --config examples/smidr-toradex-ci.yaml build --customer ci-toradex $CLEAN_FLAG
 
       - name: List artifacts for Toradex build
         run: |

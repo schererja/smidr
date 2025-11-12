@@ -31,6 +31,7 @@ go.work.sum
 # .idea/
 .vscode/
 /build/
+/apps/daemon/build/
 meta-smidr-custom/
 
 # macOS junk
@@ -58,4 +59,11 @@ PR*.md
 gui/node_modules/
 gui/*.log
 
-# (reserved for future SDK artifacts)
+# C# build artifacts
+bin/
+obj/
+*.dll
+*.pdb
+*.cache
+*.user
+*.suo
