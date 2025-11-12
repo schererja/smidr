@@ -8,16 +8,38 @@ on:
 jobs:
   generate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
       - uses: bufbuild/buf-setup-action@v1
       - name: Generate SDKs
         working-directory: protos
         run: buf generate
-      - name: Commit generated SDKs
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add sdks/
-          git diff --cached --quiet || git commit -m "chore: regenerate SDKs"
-          git push
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore: regenerate SDKs from proto changes"
+          branch: chore/regenerate-sdks
+          delete-branch: true
+          title: "chore: Regenerate SDKs from proto changes"
+          body: |
+            ## Auto-generated SDK updates
+
+            This PR was automatically created because proto files were modified.
+
+            ### Changes
+            - Regenerated SDK code from updated `.proto` files
+            - Generated files are in `sdks/` directory
+
+            ### Verification
+            - [ ] Review generated code changes
+            - [ ] Ensure SDK builds successfully
+            - [ ] Test SDK functionality if needed
+          labels: |
+            automated
+            codegen
