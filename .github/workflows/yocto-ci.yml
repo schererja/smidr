@@ -33,7 +33,14 @@ jobs:
         with:
           go-version-file: apps/daemon/go.mod
 
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libc6-dev
+
       - name: Go build and unit tests
+        env:
+          CGO_ENABLED: 1
         run: |
           make check
 
