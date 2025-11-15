@@ -23,13 +23,24 @@ jobs:
         with:
           go-version: "1.25.1"
 
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libc6-dev
+
       - name: Build
+        env:
+          CGO_ENABLED: 1
         run: go build -v ./...
 
       - name: Test
+        env:
+          CGO_ENABLED: 1
         run: go test -v ./...
 
       - name: Run Integration Tests
+        env:
+          CGO_ENABLED: 1
         run: |
           if ! command -v docker &> /dev/null; then
             echo "Docker not found, skipping integration tests."
