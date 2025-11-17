@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/daemon/**"
+      - "protos/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-go:
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: apps/daemon
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/daemon/go.mod
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y gcc libc6-dev
+
+      - name: Build and test
+        env:
+          CGO_ENABLED: 1
+        run: make check
+
+      - name: Integration tests
+        env:
+          CGO_ENABLED: 1
+        if: github.event_name == 'push'
+        run: |
+          if command -v docker &> /dev/null; then
+            go test -v -tags=integration -timeout=5m ./...
+          fi
+
+  yocto-smoke:
+    runs-on: self-hosted
+    needs: test-go
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/daemon/go.mod
+
+      - name: Setup cache dirs
+        run: |
+          mkdir -p $HOME/.smidr/{dl,sstate-cache,tmp,deploy}
+          chmod 1777 $HOME/.smidr/tmp || chmod 0777 $HOME/.smidr/tmp
+
+      - name: Restore caches
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.smidr/dl
+            ~/.smidr/sstate-cache
+          key: yocto-${{ runner.os }}-${{ hashFiles('examples/smidr-ci.yaml') }}
+          restore-keys: yocto-${{ runner.os }}-
+
+      - name: Yocto smoke test
+        run: |
+          export YOCTO_DL_DIR="$HOME/.smidr/dl"
+          export YOCTO_SSTATE_DIR="$HOME/.smidr/sstate-cache"
+          export YOCTO_TMP_DIR="$HOME/.smidr/tmp"
+          export YOCTO_DEPLOY_DIR="$HOME/.smidr/deploy"
+          make -C apps/daemon yocto-smoke ARGS="--config ../../examples/smidr-ci.yaml"
