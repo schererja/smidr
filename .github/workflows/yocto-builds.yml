@@ -1,0 +1,86 @@
+name: Yocto Build Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_clean:
+        description: "Force clean build"
+        type: boolean
+        default: false
+      config:
+        description: "Config to test"
+        type: choice
+        options:
+          - all
+          - poky
+          - toradex
+          - raspberrypi
+          - intel
+        default: all
+  schedule:
+    - cron: "0 3 * * 1" # Weekly on Mondays
+
+jobs:
+  yocto-build:
+    runs-on: self-hosted
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: "Poky"
+            file: "smidr-ci.yaml"
+            customer: "ci"
+          - name: "Toradex"
+            file: "smidr-toradex-ci.yaml"
+            customer: "ci-toradex"
+          - name: "Raspberry Pi"
+            file: "smidr-raspberrypi-ci.yaml"
+            customer: "ci-raspberrypi"
+          - name: "Intel"
+            file: "smidr-intel-ci.yaml"
+            customer: "ci-intel"
+
+    name: ${{ matrix.config.name }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/daemon/go.mod
+
+      - name: Build daemon
+        working-directory: apps/daemon
+        env:
+          CGO_ENABLED: 1
+        run: go build -v ./...
+
+      - name: Verify Docker
+        run: docker info
+
+      - name: Run Yocto build
+        env:
+          YOCTO_DL_DIR: ~/.smidr/downloads
+          YOCTO_SSTATE_DIR: ~/.smidr/sstate
+          YOCTO_TMP_DIR: ~/.smidr/tmp
+          YOCTO_DEPLOY_DIR: ~/.smidr/deploy
+        run: |
+          FORCE_FLAG=""
+          if [ "${{ github.event.inputs.force_clean }}" = "true" ]; then
+            FORCE_FLAG="--force-image-rebuild"
+          fi
+
+          ./apps/daemon/smidr build \
+            --config examples/${{ matrix.config.file }} \
+            --customer ${{ matrix.config.customer }} \
+            $FORCE_FLAG
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.config.customer }}-artifacts
+          path: ~/.smidr/artifacts/${{ matrix.config.customer }}/
+          retention-days: 7
