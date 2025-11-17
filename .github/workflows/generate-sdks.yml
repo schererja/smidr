@@ -16,9 +16,6 @@ jobs:
         with:
           token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
           fetch-depth: 0
-
-    steps:
-      - uses: actions/checkout@v4
       - uses: bufbuild/buf-setup-action@v1
       - name: Generate SDKs
         working-directory: protos
@@ -47,10 +44,4 @@ jobs:
           labels: |
             automated
             codegen
-      - name: Commit generated SDKs
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add sdks/
-          git diff --cached --quiet || git commit -m "chore: regenerate SDKs"
-          git push
+

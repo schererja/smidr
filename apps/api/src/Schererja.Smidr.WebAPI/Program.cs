@@ -3,8 +3,23 @@ using Smidr.V1;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add CORS
+builder.Services.AddCors(options =>
+{
+  options.AddPolicy("AllowAll", policy =>
+  {
+    policy.AllowAnyOrigin()
+          .AllowAnyMethod()
+          .AllowAnyHeader();
+  });
+});
+
 // Add services to the container
-builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+  c.SwaggerDoc("v1", new() { Title = "Smidr API", Version = "v1" });
+});
 
 // Configure gRPC client for Smidr daemon
 var daemonUrl = builder.Configuration["Smidr:DaemonUrl"] ?? "http://localhost:50051";
@@ -12,10 +27,18 @@ builder.Services.AddSingleton(new SmidrClient(daemonUrl));
 
 var app = builder.Build();
 
+// Use CORS
+app.UseCors("AllowAll");
+
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
-  app.MapOpenApi();
+  app.UseSwagger();
+  app.UseSwaggerUI(c =>
+  {
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Smidr API v1");
+    c.RoutePrefix = string.Empty; // Serve Swagger UI at root
+  });
 }
 
 app.UseHttpsRedirection();
@@ -34,13 +57,11 @@ app.MapPost("/api/builds", async (StartBuildDto dto, SmidrClient client) =>
 
   return Results.Ok(new
   {
-    buildId = response.BuildIdentifier.BuildId,
-    message = response.Message
+    buildId = response.BuildIdentifier.BuildId
   });
 })
 .WithName("StartBuild")
-.WithSummary("Start a new Yocto build")
-.WithOpenApi();
+.WithSummary("Start a new Yocto build");
 
 app.MapGet("/api/builds/{buildId}", async (string buildId, SmidrClient client) =>
 {
@@ -65,8 +86,7 @@ app.MapGet("/api/builds/{buildId}", async (string buildId, SmidrClient client) =
   }
 })
 .WithName("GetBuildStatus")
-.WithSummary("Get the status of a specific build")
-.WithOpenApi();
+.WithSummary("Get the status of a specific build");
 
 app.MapGet("/api/builds", async (SmidrClient client, int? pageSize = null, string? state = null) =>
 {
@@ -76,22 +96,21 @@ app.MapGet("/api/builds", async (SmidrClient client, int? pageSize = null, strin
     states = new[] { parsedState };
   }
 
-  var response = await client.ListBuildsAsync(states: states, pageSize: pageSize);
+  var response = await client.ListBuildsAsync(states: states, pageSize: pageSize ?? 0);
 
   return Results.Ok(new
   {
     builds = response.Builds.Select(b => new
     {
       buildId = b.BuildIdentifier.BuildId,
-      state = b.State.ToString(),
+      state = b.BuildState.ToString(),
       startTime = DateTimeOffset.FromUnixTimeSeconds(b.Timestamps.StartTimeUnixSeconds),
-      target = b.Target
+      target = b.TargetImage
     })
   });
 })
 .WithName("ListBuilds")
-.WithSummary("List all builds with optional filtering")
-.WithOpenApi();
+.WithSummary("List all builds with optional filtering");
 
 app.MapDelete("/api/builds/{buildId}", async (string buildId, SmidrClient client) =>
 {
@@ -106,8 +125,7 @@ app.MapDelete("/api/builds/{buildId}", async (string buildId, SmidrClient client
   }
 })
 .WithName("CancelBuild")
-.WithSummary("Cancel a running build")
-.WithOpenApi();
+.WithSummary("Cancel a running build");
 
 // Artifact Endpoints
 
@@ -122,7 +140,6 @@ app.MapGet("/api/builds/{buildId}/artifacts", async (string buildId, SmidrClient
       artifacts = response.Artifacts.Select(a => new
       {
         name = a.Name,
-        path = a.Path,
         sizeBytes = a.SizeBytes,
         downloadUrl = a.DownloadUrl,
         checksum = a.Checksum
@@ -135,8 +152,7 @@ app.MapGet("/api/builds/{buildId}/artifacts", async (string buildId, SmidrClient
   }
 })
 .WithName("ListArtifacts")
-.WithSummary("List artifacts for a completed build")
-.WithOpenApi();
+.WithSummary("List artifacts for a specific build");
 
 // Log Streaming Endpoint (Server-Sent Events)
 
@@ -164,9 +180,8 @@ app.MapGet("/api/builds/{buildId}/logs", async (string buildId, bool follow, Smi
     await context.Response.WriteAsync("event: error\ndata: Build not found\n\n");
   }
 })
-.WithName("StreamLogs")
+.WithName("StreamBuildLogs")
 .WithSummary("Stream build logs in real-time using Server-Sent Events")
-.WithOpenApi()
 .ExcludeFromDescription(); // SSE doesn't work well with OpenAPI
 
 app.Run();
@@ -179,3 +194,6 @@ record StartBuildDto(
     bool? ForceClean = null,
     bool? ForceImageRebuild = null
 );
+
+// Make Program class public for testing
+public partial class Program { }
