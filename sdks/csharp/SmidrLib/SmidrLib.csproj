@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>SmidrLib</RootNamespace>
+    <AssemblyName>SmidrLib</AssemblyName>
+    <Version>0.1.0</Version>
+    <Authors>Jason Scherer</Authors>
+    <Description>C# client library for Smidr gRPC daemon</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.28.3" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.70.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.68.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../Generated/*.cs" />
+  </ItemGroup>
+
+</Project>

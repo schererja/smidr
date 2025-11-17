@@ -1,0 +1,50 @@
+name: Generate SDKs
+on:
+  workflow_dispatch:
+
+  push:
+    paths:
+      - "protos/**/**/**.proto"
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Use PAT if provided, otherwise fallback to the built-in GitHub token
+          token: ${{ secrets.PAT_TOKEN != '' && secrets.PAT_TOKEN || github.token }}
+          fetch-depth: 0
+      - uses: bufbuild/buf-setup-action@v1
+      - name: Generate SDKs
+        working-directory: protos
+        run: buf generate
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          # Use PAT if provided, otherwise fallback to the built-in GitHub token
+          token: ${{ secrets.PAT_TOKEN != '' && secrets.PAT_TOKEN || github.token }}
+          base: main
+          commit-message: "chore: regenerate SDKs from proto changes"
+          branch: chore/regenerate-sdks
+          delete-branch: true
+          title: "chore: Regenerate SDKs from proto changes"
+          body: |
+            ## Auto-generated SDK updates
+
+            This PR was automatically created because proto files were modified.
+
+            ### Changes
+            - Regenerated SDK code from updated `.proto` files
+            - Generated files are in `sdks/` directory
+
+            ### Verification
+            - [ ] Review generated code changes
+            - [ ] Ensure SDK builds successfully
+            - [ ] Test SDK functionality if needed
+          labels: |
+            automated
+            codegen
+

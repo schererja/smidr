@@ -1,0 +1,32 @@
+{
+  "name": "@smidr/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript/JavaScript SDK for Smidr gRPC daemon",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "smidr",
+    "yocto",
+    "bitbake",
+    "embedded",
+    "grpc"
+  ],
+  "author": "Jason Scherer",
+  "license": "MIT",
+  "peerDependencies": {
+    "@bufbuild/protobuf": "^2.0.0",
+    "@connectrpc/connect": "^1.0.0",
+    "@connectrpc/connect-node": "^1.0.0"
+  },
+  "devDependencies": {
+    "@bufbuild/protobuf": "^2.10.0",
+    "@connectrpc/connect": "^1.6.1",
+    "@connectrpc/connect-node": "^1.6.1",
+    "typescript": "^5.7.2"
+  }
+}

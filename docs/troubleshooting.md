@@ -51,6 +51,15 @@ Common issues and how to resolve them when using Smidr with Yocto/BitBake.
   - Run a cleansstate/full build tier.
   - Configure a nightly job to publish sstate/downloads, leaving PR tiers fast.
 
+## "shared area overlap" during do_package_write_*_setscene
+
+- Symptom: Errors like `trying to install files into a shared area when those files already exist` for many recipes during `do_package_write_ipk_setscene` (or rpm/deb).
+- Common cause: `SSTATE_MIRRORS` points to the same directory as `SSTATE_DIR` (e.g., both set to `/home/builder/sstate-cache`), so BitBake attempts to install sstate objects from the mirror into the same shared area, triggering overlap.
+- Fix:
+  - In CI, prefer using only a shared `SSTATE_DIR` and leave `SSTATE_MIRRORS` unset.
+  - If you need mirrors, ensure they point to a distinct location (HTTP/remote or a different path), not the same directory used by `SSTATE_DIR`.
+  - If the error persists after changing mirrors, wipe the `TMPDIR` for a clean build context (keep `SSTATE_DIR`), or run targeted `bitbake -c cleansstate <recipe>` for the failing recipe(s).
+
 ## Meta-layer compatibility with Yocto series
 
 - Symptom: Layer compatibility warnings or parse failures.

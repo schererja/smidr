@@ -1,0 +1,22 @@
+# Build outputs
+bin/
+obj/
+*.dll
+*.pdb
+*.exe
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Mac
+.DS_Store

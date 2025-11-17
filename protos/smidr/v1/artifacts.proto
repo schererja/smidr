@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package smidr.v1;
+import "common.proto";
+
+option go_package = "github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1";
+// ArtifactService manages artifacts associated with builds.
+service ArtifactService {
+  rpc ListArtifacts(ListArtifactsRequest) returns (ListArtifactsResponse);
+  rpc GetArtifact(GetArtifactRequest) returns (ArtifactSummary);
+  rpc DownloadArtifact(DownloadArtifactRequest) returns (DownloadArtifactResponse);
+  rpc DeleteArtifact(DeleteArtifactRequest) returns (DeleteArtifactResponse);
+}
+
+// ListArtifactsRequest is used to request a list of artifacts for an build.
+message ListArtifactsRequest {
+  BuildIdentifier build_identifier = 1;
+}
+
+// ListArtifactsResponse contains a list of artifacts associated with a build.
+message ListArtifactsResponse {
+  repeated ArtifactSummary artifacts = 1;
+  BuildIdentifier build_identifier = 2;
+}
+
+// GetArtifactRequest is used to request details of a specific artifact.
+message GetArtifactRequest {
+  string artifact_id = 1;
+}
+
+// DownloadArtifactRequest is used to request the download of an artifact.
+message DownloadArtifactRequest {
+  string artifact_id = 1;
+}
+
+// DownloadArtifactResponse provides the download URL for a requested artifact.
+message DownloadArtifactResponse {
+  string download_url = 1;
+}
+// DeleteArtifactRequest is used to request deletion of a specific artifact.
+message DeleteArtifactRequest {
+  string artifact_id = 1;
+}
+// DeleteArtifactResponse confirms the deletion of an artifact.
+message DeleteArtifactResponse {
+  bool success = 1;
+}
+
+// ArtifactSummary is used to download a specific artifact.
+message ArtifactSummary {
+  string artifact_id = 1;
+  string name = 2;
+  string type = 3;
+  string download_url = 4;
+  int64 size_bytes = 5;
+  string checksum = 6;
+}
