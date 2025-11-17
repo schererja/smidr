@@ -14,7 +14,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          # Use PAT if provided, otherwise fallback to the built-in GitHub token
+          token: ${{ secrets.PAT_TOKEN != '' && secrets.PAT_TOKEN || github.token }}
           fetch-depth: 0
       - uses: bufbuild/buf-setup-action@v1
       - name: Generate SDKs
@@ -23,7 +24,9 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          # Use PAT if provided, otherwise fallback to the built-in GitHub token
+          token: ${{ secrets.PAT_TOKEN != '' && secrets.PAT_TOKEN || github.token }}
+          base: main
           commit-message: "chore: regenerate SDKs from proto changes"
           branch: chore/regenerate-sdks
           delete-branch: true
