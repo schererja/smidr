@@ -21,7 +21,18 @@ jobs:
       - name: Generate SDKs
         working-directory: protos
         run: buf generate
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No SDK changes detected"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "SDK changes detected"
+          fi
       - name: Create Pull Request
+        if: steps.check_changes.outputs.has_changes == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           # Use PAT if provided, otherwise fallback to the built-in GitHub token
