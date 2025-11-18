@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
-
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
 	v1 "github.com/schererja/smidr/pkg/smidr-sdk/v1"
 )
 

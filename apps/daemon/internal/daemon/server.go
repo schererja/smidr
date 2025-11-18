@@ -13,14 +13,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"google.golang.org/grpc"
-
 	"github.com/schererja/smidr/internal/artifacts"
 	buildpkg "github.com/schererja/smidr/internal/build"
 	"github.com/schererja/smidr/internal/config"
 	"github.com/schererja/smidr/internal/db"
 	"github.com/schererja/smidr/pkg/logger"
 	v1 "github.com/schererja/smidr/pkg/smidr-sdk/v1"
+	"google.golang.org/grpc"
 )
 
 // Server implements the Smidr gRPC service
@@ -854,6 +853,7 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 				Host:              b.Host,
 				ErrorMessage:      b.ErrorMessage,
 				Deleted:           b.Deleted,
+				Timestamps:        &v1.TimeStampRange{},
 			}
 			if b.ExitCode != nil {
 				bd.ExitCode = int32(*b.ExitCode)
@@ -870,6 +870,7 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 					bd.DurationSeconds = int32(b.CompletedAt.Sub(*b.StartedAt).Seconds())
 				}
 			}
+
 			if b.DeletedAt != nil {
 				bd.DeletedAt = b.DeletedAt.Unix()
 			}
@@ -911,6 +912,7 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 			BuildState:      build.State,
 			ExitCode:        build.ExitCode,
 			ConfigFile:      build.ConfigPath,
+			Timestamps:      &v1.TimeStampRange{},
 		}
 
 		if !build.StartedAt.IsZero() {
