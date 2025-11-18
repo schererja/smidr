@@ -11,14 +11,15 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
 	"github.com/google/uuid"
-	"google.golang.org/grpc"
 	"github.com/schererja/smidr/internal/artifacts"
 	buildpkg "github.com/schererja/smidr/internal/build"
 	"github.com/schererja/smidr/internal/config"
 	"github.com/schererja/smidr/internal/db"
 	"github.com/schererja/smidr/pkg/logger"
 	v1 "github.com/schererja/smidr/pkg/smidr-sdk/v1"
+	"google.golang.org/grpc"
 )
 
 // Server implements the Smidr gRPC service
@@ -839,21 +840,6 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 			}
 
 			bd := &v1.BuildDetails{
-<<<<<<< HEAD:internal/daemon/server.go
-				Id:           b.ID,
-				TargetImage:  b.TargetImage,
-				Status:       protoState,
-				ConfigFile:   b.ConfigFile,
-				Customer:     b.Customer,
-				ProjectName:  b.ProjectName,
-				Machine:      b.Machine,
-				BuildDir:     b.BuildDir,
-				DeployDir:    b.DeployDir,
-				User:         b.User,
-				Host:         b.Host,
-				ErrorMessage: b.ErrorMessage,
-				Deleted:      b.Deleted,
-=======
 				BuildIdentifier:   &v1.BuildIdentifier{BuildId: b.ID},
 				TargetImage:       b.TargetImage,
 				BuildState:        protoState,
@@ -867,7 +853,7 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 				Host:              b.Host,
 				ErrorMessage:      b.ErrorMessage,
 				Deleted:           b.Deleted,
->>>>>>> e73b5cf168c6534cab24d9771eef5581b620991b:apps/daemon/internal/daemon/server.go
+				Timestamps:        &v1.TimeStampRange{},
 			}
 			if b.ExitCode != nil {
 				bd.ExitCode = int32(*b.ExitCode)
@@ -876,21 +862,15 @@ func (s *Server) ListBuilds(ctx context.Context, req *v1.ListBuildsRequest) (*v1
 				bd.CreatedAt = b.CreatedAt.Unix()
 			}
 			if b.StartedAt != nil {
-<<<<<<< HEAD:internal/daemon/server.go
-				bd.StartedAt = b.StartedAt.Unix()
-			}
-			if b.CompletedAt != nil {
-				bd.CompletedAt = b.CompletedAt.Unix()
-=======
 				bd.Timestamps.StartTimeUnixSeconds = b.StartedAt.Unix()
 			}
 			if b.CompletedAt != nil {
 				bd.Timestamps.EndTimeUnixSeconds = b.CompletedAt.Unix()
->>>>>>> e73b5cf168c6534cab24d9771eef5581b620991b:apps/daemon/internal/daemon/server.go
 				if b.StartedAt != nil {
 					bd.DurationSeconds = int32(b.CompletedAt.Sub(*b.StartedAt).Seconds())
 				}
 			}
+
 			if b.DeletedAt != nil {
 				bd.DeletedAt = b.DeletedAt.Unix()
 			}
