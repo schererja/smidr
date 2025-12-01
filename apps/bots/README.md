@@ -1,6 +1,6 @@
 # SMIDR Bots
 
-Optional Elixir-based bots and extensions for SMIDR.
+Optional  bots and extensions for SMIDR.
 
 ## Status
 
@@ -12,5 +12,3 @@ Extensible bot framework for automating SMIDR workflows and integrations.
 
 ## Tech Stack (Planned)
 
-- **Language**: Elixir
-- **Framework**: TBD

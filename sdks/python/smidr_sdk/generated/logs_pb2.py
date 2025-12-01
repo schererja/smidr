@@ -22,7 +22,7 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-import common_pb2 as common__pb2
+from . import common_pb2 as common__pb2
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nlogs.proto\x12\x08smidr.v1\x1a\x0c\x63ommon.proto\"v\n\x16StreamBuildLogsRequest\x12\x44\n\x10\x62uild_identifier\x18\x01 \x01(\x0b\x32\x19.smidr.v1.BuildIdentifierR\x0f\x62uildIdentifier\x12\x16\n\x06\x66ollow\x18\x02 \x01(\x08R\x06\x66ollow\"\xa0\x01\n\x08LogEntry\x12\x34\n\x16timestamp_unix_seconds\x18\x01 \x01(\x03R\x14timestampUnixSeconds\x12\x18\n\x07message\x18\x02 \x01(\tR\x07message\x12\x14\n\x05level\x18\x03 \x01(\tR\x05level\x12\x16\n\x06source\x18\x04 \x01(\tR\x06source\x12\x16\n\x06stream\x18\x05 \x01(\tR\x06stream2W\n\nLogService\x12I\n\x0fStreamBuildLogs\x12 .smidr.v1.StreamBuildLogsRequest\x1a\x12.smidr.v1.LogEntry0\x01\x42\x94\x01\n\x0c\x63om.smidr.v1B\tLogsProtoP\x01Z8github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1\xa2\x02\x03SXX\xaa\x02\x08Smidr.V1\xca\x02\x08Smidr\\V1\xe2\x02\x14Smidr\\V1\\GPBMetadata\xea\x02\tSmidr::V1b\x06proto3')

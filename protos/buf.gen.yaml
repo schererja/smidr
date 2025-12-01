@@ -23,3 +23,9 @@ plugins:
     out: ../sdks/csharp/Generated
   - remote: buf.build/grpc/csharp
     out: ../sdks/csharp/Generated
+
+  # Python SDK
+  - remote: buf.build/protocolbuffers/python
+    out: ../sdks/python/smidr_sdk/generated
+  - remote: buf.build/grpc/python
+    out: ../sdks/python/smidr_sdk/generated

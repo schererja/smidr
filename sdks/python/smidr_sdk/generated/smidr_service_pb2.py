@@ -22,9 +22,9 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-import builds_pb2 as builds__pb2
-import artifacts_pb2 as artifacts__pb2
-import logs_pb2 as logs__pb2
+from . import builds_pb2 as builds__pb2
+from . import artifacts_pb2 as artifacts__pb2
+from . import logs_pb2 as logs__pb2
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x13smidr_service.proto\x12\x08smidr.v1\x1a\x0c\x62uilds.proto\x1a\x0f\x61rtifacts.proto\x1a\nlogs.protoB\x9c\x01\n\x0c\x63om.smidr.v1B\x11SmidrServiceProtoP\x01Z8github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1\xa2\x02\x03SXX\xaa\x02\x08Smidr.V1\xca\x02\x08Smidr\\V1\xe2\x02\x14Smidr\\V1\\GPBMetadata\xea\x02\tSmidr::V1b\x06proto3')

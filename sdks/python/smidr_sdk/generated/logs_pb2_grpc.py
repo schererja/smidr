@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import logs_pb2 as logs__pb2
+from . import logs_pb2 as logs__pb2
 
 
 class LogServiceStub(object):

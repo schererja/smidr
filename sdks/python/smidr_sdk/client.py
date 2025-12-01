@@ -6,10 +6,8 @@ import grpc
 from typing import AsyncIterator, Optional, List
 
 # Import generated protobuf code
-# The protobuf files are generated directly in the generated/ directory
-# and use relative imports (e.g., import common_pb2)
-# We need to import from the generated package
-from generated import (
+# The protobuf files are generated in the generated/ subdirectory
+from smidr_sdk.generated import (
     builds_pb2,
     builds_pb2_grpc,
     logs_pb2,
