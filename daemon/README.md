@@ -265,9 +265,12 @@ WantedBy=multi-user.target
 
 ## Documentation
 
-- [Architecture Overview](../docs/smidr-dotnet.md)
+- [Architecture Overview](../docs/architecture/overview.md)
+- [Daemon Design](../docs/architecture/daemon-design.md)
+- [ADRs](../docs/decisions/)
 - [Protocol Definitions](../protos/smidr/v1/)
 - [REST API](../api/README.md)
+- [UI](../ui/README.md)
 
 ## License
 

@@ -1,6 +1,6 @@
 # ⚒️ Smidr
 
-**The Digital Forge for Embedded Linux**
+## The Digital Forge for Embedded Linux**
 
 Smidr is a modern, cloud-native build orchestration system for embedded Linux development. Built with .NET/C# and gRPC, it provides a robust API-first approach to managing Yocto/BitBake builds with container isolation, intelligent caching, and real-time monitoring.
 
@@ -189,6 +189,77 @@ Common environment variable overrides:
              - Layer repositories
              - Downloads (DL_DIR)
              - Shared state (sstate-cache)
+```
+
+## Full Repository Structure
+
+```
+smidr/
+├── .editorconfig
+├── .gitignore
+├── README.md
+├── LICENSE
+│
+├── docs/
+│   ├── architecture/
+│   │   ├── overview.md
+│   │   ├── api-design.md
+│   │   ├── daemon-design.md
+│   │   └── frontend-architecture.md
+│   ├── decisions/
+│   │   ├── ADR-0001-project-structure.md
+│   │   └── ADR-0002-container-runtime-strategy.md
+│   ├── specs/
+│   │   ├── api/
+│   │   ├── daemon/
+│   │   └── ui/
+│   └── ops/
+│       ├── deployment.md
+│       ├── ci-cd.md
+│       └── environments.md
+│
+├── infra/
+│   ├── docker/           # Container definitions, compose, build contexts
+│   ├── k8s/              # Kubernetes resources (optional)
+│   ├── terraform/        # Infra-as-code (optional)
+│   └── scripts/          # Utility scripts, build, release, packaging
+│
+├── tools/                # Future internal tools (CLI, generators, etc.)
+│
+├── api/
+│   ├── src/
+│   │   ├── Smidr.Api/                # Main API project
+│   │   ├── Smidr.Core/               # Core domain & shared contracts
+│   │   ├── Smidr.Infrastructure/     # DB, integrations, providers
+│   │   ├── Smidr.Application/        # Application services, logic
+│   │   └── Smidr.Contracts/          # API DTOs, shared models
+│   ├── tests/
+│   │   ├── Smidr.Api.Tests/
+│   │   ├── Smidr.Core.Tests/
+│   │   └── Smidr.Application.Tests/
+│   ├── smidr-api.sln
+│   └── README.md
+│
+├── daemon/
+│   ├── src/
+│   │   ├── Smidr.Daemon/            # Main daemon executable
+│   │   ├── Smidr.Daemon.Core/       # Interfaces, providers
+│   │   ├── Smidr.Daemon.Runtime/    # Container/VM runtimes abstraction layer
+│   │   └── Smidr.Daemon.Workers/    # Task workers/executors
+│   ├── tests/
+│   │   ├── Smidr.Daemon.Tests/
+│   ├── smidr-daemon.sln
+│   └── README.md
+│
+└── ui/
+    ├── app/                          # Next.js app router
+    ├── components/
+    ├── lib/
+    ├── public/
+    ├── scripts/
+    ├── package.json
+    ├── tsconfig.json
+    └── README.md
 ```
 
 ### Technology Stack
