@@ -1,0 +1,7 @@
+{"level":"info","message":"Database initialized","service":"smidr-daemon","timestamp":"2025-12-10T03:39:36.131Z"}
+{"error":{"code":"ENOENT","errno":-2,"path":"/Users/schererja/src/github.com/schererja/smidr/apps/daemon-ts/protos/smidr_service.proto","syscall":"open"},"level":"error","message":"Failed to start server","service":"smidr-daemon","timestamp":"2025-12-10T03:39:37.521Z"}
+{"level":"info","message":"Database initialized","service":"smidr-daemon","timestamp":"2025-12-10T03:40:40.044Z"}
+{"error":{"code":"ENOENT","errno":-2,"path":"/Users/schererja/src/github.com/schererja/smidr/apps/protos/smidr/v1/smidr_service.proto","syscall":"open"},"level":"error","message":"Failed to start server","service":"smidr-daemon","timestamp":"2025-12-10T03:40:40.056Z"}
+{"level":"info","message":"Database initialized","service":"smidr-daemon","timestamp":"2025-12-10T03:40:49.091Z"}
+{"level":"info","message":"gRPC server listening on 0.0.0.0:50051","service":"smidr-daemon","timestamp":"2025-12-10T03:40:49.116Z"}
+{"level":"info","message":"Smidr daemon started successfully","service":"smidr-daemon","timestamp":"2025-12-10T03:40:49.116Z"}
