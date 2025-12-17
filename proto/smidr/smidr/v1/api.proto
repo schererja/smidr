@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package smidr.v1;
+
+option csharp_namespace = "Smidr.Proto.V1";
+
+import "smidr/v1/daemon.proto";
+import "smidr/v1/task.proto";
+
+// API-hosted services. The daemon initiates outbound connections to these.
+service DaemonApiService {
+  // One-time or periodic registration to declare capabilities.
+  rpc RegisterDaemon(RegisterDaemonRequest) returns (RegisterDaemonResponse);
+
+  // Periodic heartbeat for liveness/health.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // Long-lived stream of task assignments to the daemon.
+  rpc ReceiveTasks(ReceiveTasksRequest) returns (stream ReceiveTasksResponse);
+
+  // Acknowledge receipt/acceptance (or rejection) of an assignment.
+  rpc AcknowledgeTask(AcknowledgeTaskRequest) returns (AcknowledgeTaskResponse);
+
+  // State transition updates for tasks being executed.
+  rpc ReportTaskUpdate(ReportTaskUpdateRequest) returns (ReportTaskUpdateResponse);
+
+  // Metrics reporting from the daemon.
+  rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsResponse);
+}
+
+// Empty responses for RPCs that do not return payloads.
+message AcknowledgeTaskResponse {}
+message ReportTaskUpdateResponse {}
