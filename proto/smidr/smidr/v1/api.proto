@@ -4,8 +4,8 @@ package smidr.v1;
 
 option csharp_namespace = "Smidr.Proto.V1";
 
-import "smidr/v1/daemon.proto";
-import "smidr/v1/task.proto";
+import "daemon.proto";
+import "task.proto";
 
 // API-hosted services. The daemon initiates outbound connections to these.
 service DaemonApiService {

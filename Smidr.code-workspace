@@ -1,0 +1,14 @@
+{
+  "folders": [
+	{
+		"path": "api/src/Smidr.Api"
+	},
+	{
+		"path": "daemon/src/Smidr.Daemon"
+	},
+	{
+		"path": "docs"
+	}
+],
+  "settings": {}
+}

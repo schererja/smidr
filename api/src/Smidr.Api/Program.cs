@@ -3,6 +3,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+builder.Services.AddGrpc();
 
 var app = builder.Build();
 
@@ -13,6 +14,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// gRPC endpoint for daemon connections
+app.MapGrpcService<Smidr.Api.Services.DaemonApiServiceImpl>();
 
 var summaries = new[]
 {

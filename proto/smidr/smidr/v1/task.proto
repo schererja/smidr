@@ -6,7 +6,7 @@ option csharp_namespace = "Smidr.Proto.V1";
 
 import "google/protobuf/timestamp.proto";
 
-import "smidr/v1/common.proto";
+import "common.proto";
 
 // Task instruction sent from API to daemon.
 message TaskInstruction {

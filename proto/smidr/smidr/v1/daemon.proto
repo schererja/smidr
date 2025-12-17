@@ -6,7 +6,7 @@ option csharp_namespace = "Smidr.Proto.V1";
 
 import "google/protobuf/timestamp.proto";
 
-import "smidr/v1/common.proto";
+import "common.proto";
 
 // Daemon registration and capabilities.
 message RegisterDaemonRequest {
