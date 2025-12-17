@@ -1,35 +1,33 @@
-
-
 using Docker.DotNet.Models;
 using Grpc.Core;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
+using Smidr.Daemon.Core.Configuration;
 
 namespace Smidr.Daemon
 {
     public class DaemonHost : IHostedService
     {
         private readonly ILogger<DaemonHost> _logger;
-        private readonly IConfiguration _configuration;
+        private readonly DaemonConfiguration _configuration;
         private Server? _server;
 
-        public DaemonHost(ILogger<DaemonHost> logger, IConfiguration configuration)
+        public DaemonHost(ILogger<DaemonHost> logger, DaemonConfiguration configuration)
         {
             _logger = logger;
             _configuration = configuration;
         }
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            var host = _configuration["SMIDR_DAEMON_HOST"] ?? "localhost";
-            var port = _configuration["SMIDR_DAEMON_PORT"] ?? "50051";
+            var host = _configuration.Hostname;
+            var port = _configuration.Port;
 
             _server = new Server
             {
                 Ports =
               {
-                new ServerPort(host, int.Parse(port), ServerCredentials.Insecure)
+                new ServerPort(host, port, ServerCredentials.Insecure)
               }
             };
             _server.Start();

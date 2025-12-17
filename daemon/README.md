@@ -14,30 +14,49 @@ The Smidr daemon is the core build orchestration service that:
 
 ## Project Structure
 
-``` shell
+```shell
 daemon/
-├── Smidr.Daemon.sln           # Solution file
-├── src/
-│   └── Smidr.Daemon/          # Main daemon project
-│       ├── Services/          # gRPC service implementations
-│       │   ├── BuildServiceImpl.cs
-│       │   ├── LogServiceImpl.cs
-│       │   └── ArtifactServiceImpl.cs
-│       ├── Data/              # Database & EF Core
-│       │   ├── SmidrDbContext.cs
-│       │   ├── Models/
-│       │   └── Migrations/
-│       ├── Config/            # YAML configuration
-│       │   └── ConfigParser.cs
-│       ├── Container/         # Docker integration
-│       │   └── DockerManager.cs
-│       ├── Build/             # Build orchestration
-│       │   ├── BuildRunner.cs
-│       │   └── BuildQueue.cs
-│       ├── Program.cs         # Entry point & hosting
-│       └── appsettings.json   # Configuration
-└── tests/
-    └── Smidr.Daemon.Tests/    # Unit & integration tests
+  src/
+    Smidr.Daemon/
+      Core/
+        Configuration/
+        Scheduling/
+        Diagnostics/
+        Security/
+      Providers/
+        Containers/
+          Docker/
+          Podman/
+        Virtualization/
+          LXC/
+          QEMU/
+        Networking/
+      Services/
+        Grpc/
+        ApiModels/
+      State/
+        TaskState/
+        SystemState/
+      DaemonHost.cs
+      Program.cs
+  tests/
+    Smidr.Daemon.Tests/
+      Core/
+      Providers/
+      Services/
+  docs/
+    architecture/
+      overview.md
+      providers.md
+      scheduler.md
+      runtime.md
+    setup/
+      install-linux.md
+      install-macos.md
+      install-windows.md
+  build/
+    scripts/
+    service-config/
 ```
 
 ## Getting Started

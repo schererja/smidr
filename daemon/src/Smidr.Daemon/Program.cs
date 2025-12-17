@@ -1,56 +1,57 @@
-﻿using Serilog;
-using Smidr.Daemon.Commands;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Serilog;
+using Smidr.Daemon;
+using Smidr.Daemon.Core.Configuration;
+using Smidr.Daemon.Core.Scheduling;
 
-var logger = new LoggerConfiguration()
+// ...existing code...
+// Replace everything with the Generic Host bootstrap:
+
+Log.Logger = new LoggerConfiguration()
+    .Enrich.FromLogContext()
     .WriteTo.Console()
     .WriteTo.File("logs/daemon.log", rollingInterval: RollingInterval.Day)
     .CreateLogger();
 
 try
 {
-    var commandArgs = args.Length == 0 ? new[] { "--help" } : args;
-    var command = commandArgs[0].ToLower();
+    var builder = Host.CreateDefaultBuilder(args)
+        .UseSerilog()
+        .ConfigureAppConfiguration((context, config) =>
+        {
+            config.AddEnvironmentVariables(prefix: "SMIDR_");
+            // Optional: add JSON/YAML later
+        })
+        .ConfigureServices((context, services) =>
+        {
+            // Configuration loader
+            services.AddSingleton<DaemonConfiguration>(sp =>
+            {
+                var cfg = sp.GetRequiredService<IConfiguration>();
+                return ConfigurationLoader.LoadConfiguration(cfg);
+            });
 
-    switch (command)
-    {
-        case "init":
-            // await InitCommand.ExecuteAsync(commandArgs.Skip(1).ToArray(), logger);
-            break;
-        case "build":
-            await BuildCommand.ExecuteAsync(commandArgs.Skip(1).ToArray(), logger);
-            break;
-        case "--help":
-        case "-h":
-        case "help":
-            PrintHelp();
-            break;
-        default:
-            logger.Error("Unknown command: {Command}", command);
-            PrintHelp();
-            Environment.Exit(1);
-            break;
-    }
+            // Core scheduling
+            services.AddSingleton<BuildQueue>(sp =>
+            {
+                var dc = sp.GetRequiredService<DaemonConfiguration>();
+                return new BuildQueue(dc.MaxConcurrentBuilds);
+            });
+            services.AddSingleton<BuildScheduler>();
+
+            // Hosted daemon
+            services.AddHostedService<DaemonHost>();
+        });
+
+    await builder.Build().RunAsync();
 }
 catch (Exception ex)
 {
-    logger.Fatal(ex, "Fatal error");
-    Environment.Exit(1);
+    Log.Fatal(ex, "Smidr daemon terminated unexpectedly");
 }
-
-void PrintHelp()
+finally
 {
-    Console.WriteLine("""
-        Smidr Daemon v0.1.0
-
-        Usage: smidr <command> [options]
-
-        Commands:
-          init       Initialize a new smidr project
-          build      Start a build
-          help       Show this help message
-
-        Examples:
-          smidr init -o smidr.yaml
-          smidr build --config smidr.yaml
-        """);
+    await Log.CloseAndFlushAsync();
 }
