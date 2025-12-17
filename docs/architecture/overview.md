@@ -252,7 +252,31 @@ The daemon is configurated through a combination of configuration files, environ
 
 ---
 
-## 9. Security Model
+## 9. Shared Contracts
+
+The Smidr system uses Protocol Buffers (protobuf) to define gRPC service contracts and message schemas shared between the API and daemon.
+
+### Proto Organization
+
+Protobuf definitions are located in the `/proto` directory at the repository root:
+
+* `daemon.proto` – Daemon registration, heartbeat, and state reporting services
+* `task.proto` – Task instruction and execution result messages
+* `api.proto` – API-hosted gRPC services that the daemon connects to
+* `common.proto` – Shared enums and types (TaskState, TaskType, etc.)
+
+Both the API and daemon projects generate language-specific code from these definitions. This ensures a single source of truth for all daemon-API communication contracts.
+
+### Code Generation
+
+* **API** (`Smidr.Api.csproj`) – Generates C# server-side stubs
+* **Daemon** (`Smidr.Daemon.csproj`) – Generates C# client-side stubs
+
+Each project is configured to reference the proto files and generate code during build
+
+---
+
+## 10. Security Model
 
 For security, the daemon implements several controls to ensure safe operation. This will be critical given its role in executing potentially sensitive tasks.  The following security aspects will be covered:
 
@@ -266,7 +290,7 @@ For security, the daemon implements several controls to ensure safe operation. T
 
 ---
 
-## 10. Deployment and Lifecycle
+## 11. Deployment and Lifecycle
 
 Smidr Daemon deployment and lifecycle management is designed to be straightforward and robust. It will be packaged for easy installation across supported operating systems.  It should be able to run as a background service/daemon, managed by standard service managers.  The lifecycle management includes:
 
@@ -279,7 +303,7 @@ We will have github releases for versioned binaries.  There will be support for 
 
 ---
 
-## 11. Observability
+## 12. Observability
 
 Observability is a key aspect of the Smidr Daemon, enabling operators to monitor its health and performance.  The daemon will expose various diagnostics through logging, metrics, and health checks.  This includes:
 
@@ -292,6 +316,6 @@ Observability is a key aspect of the Smidr Daemon, enabling operators to monitor
 
 ---
 
-## 12. Future Considerations
+## 13. Future Considerations
 
 There are many nice to have features that can be considered for future versions of the Smidr Daemon. Included in that are plugins to extend functionality, enhanced security features, and improved performance optimizations. Multi-node coordination could be another area of future development to allow for more complex distributed task execution scenarios. Remote ex Pecution capabilities could also be explored to enable tasks to be run on other nodes or systems as needed, this however may introduce additional security and complexity considerations. And sandboxing and isolation improvements to enhance security and reliability of task execution.
