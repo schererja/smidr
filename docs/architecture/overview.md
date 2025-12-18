@@ -1,4 +1,36 @@
-# Smidr Daemon – Architecture Overview
+# Smidr v0.1.0 – Architecture Overview
+
+## 0. System Topology
+
+Smidr separates the control plane (C#) from executors (Go) and uses versioned contracts to keep them compatible. Executors pull work, report status and logs, and register capabilities; the control plane schedules, stores results, and enforces policy. The Web UI (TypeScript/React) calls the control plane via REST/gRPC. Docker isolation is available when the host supports it; native execution is the fallback. Mock executors can simulate jobs for demo and testing.
+
+```text
+Web UI (TS/React) -> REST/gRPC -> Control Plane API (C#)
+
+Control Plane API <--> Contracts (Job Definition, Executor Capabilities, Events/Logs)
+
+Executors (Go, Docker or Native)
+  - Pull Jobs  -> Control Plane
+  - Status/Logs -> Control Plane
+  - Capability Registration -> Control Plane/Contracts
+
+Mock Executors (Go)
+  - Pull Jobs  -> Control Plane
+  - Status/Logs -> Control Plane
+
+Docker Isolation (when available) wraps Executor job runs
+```
+
+![Smidr architecture diagram](../image/Architecture.png)
+
+Key behaviors
+
+- Pull-based executors: outbound-only connectivity, suitable for NAT/firewalled hosts
+- Capability negotiation: executors declare labels/resources; scheduler matches jobs
+- Versioned contracts: executors register supported versions; control plane assigns only compatible jobs
+- Isolation choices: Docker (containerized) or native; jobs declare requirements
+- Observability: status, logs, and artifacts flow from executors back to the control plane
+- Mock mode: fake jobs/logs for demo and integration testing without real builds
 
 ## 1. Purpose
 
@@ -16,10 +48,10 @@ The Smidr API is the authoritative control plane. The daemon acts as a managed e
 
 There are things that the Smidr Daemon is explicitly not responsible for, including but not limited to:
 
-* User interface rendering or management
-* Long-term data storage or database management
-* Complex business logic processing
-* Cross-node orchestration or clustering
+- User interface rendering or management
+- Long-term data storage or database management
+- Complex business logic processing
+- Cross-node orchestration or clustering
 
 ---
 
@@ -27,12 +59,12 @@ There are things that the Smidr Daemon is explicitly not responsible for, includ
 
 This section outlines the primary functions of the Smidr Daemon. Those include:
 
-* Orchestrating local system resources to execute tasks
-* Managing container runtimes and other execution environments
-* Executing and monitoring tasks as instructed by the Smidr API
-* Establishing secure communication channels with the Smidr API for receiving commands and reporting state transitions
-* Reporting task state transitions and daemon health back to the Smidr API
-* Handling configuration and runtime parameters for task execution
+- Orchestrating local system resources to execute tasks
+- Managing container runtimes and other execution environments
+- Executing and monitoring tasks as instructed by the Smidr API
+- Establishing secure communication channels with the Smidr API for receiving commands and reporting state transitions
+- Reporting task state transitions and daemon health back to the Smidr API
+- Handling configuration and runtime parameters for task execution
 
 ---
 
@@ -46,10 +78,10 @@ The daemon communicates with the API to receive task instructions and report bac
 
 ### Interaction Patterns
 
-* **Task Reception**: The daemon maintains an outbound, persistent, secure connection (e.g., gRPC over TLS) to the API, listening for new task assignments
-* **State Transition Reporting**: Daemon reports state transitions for tasks and itself to the API via outbound channels; no inbound ports are required on the daemon
-* **Resource Registration**: On startup, the daemon registers its capabilities and available resources with the API
-* **Event Streaming**: Real-time event notifications are streamed outbound to the API for critical state changes
+- **Task Reception**: The daemon maintains an outbound, persistent, secure connection (e.g., gRPC over TLS) to the API, listening for new task assignments
+- **State Transition Reporting**: Daemon reports state transitions for tasks and itself to the API via outbound channels; no inbound ports are required on the daemon
+- **Resource Registration**: On startup, the daemon registers its capabilities and available resources with the API
+- **Event Streaming**: Real-time event notifications are streamed outbound to the API for critical state changes
 
 ### Data Flow
 
@@ -64,9 +96,9 @@ The daemon communicates with the API to receive task instructions and report bac
 
 When multiple daemons are deployed, the API serves as the coordination point. Daemons operate independently and do not communicate directly with each other. The API is responsible for:
 
-* Load balancing tasks across available daemons
-* Ensuring tasks are assigned to daemons with appropriate capabilities
-* Handling failover if a daemon becomes unavailable
+- Load balancing tasks across available daemons
+- Ensuring tasks are assigned to daemons with appropriate capabilities
+- Handling failover if a daemon becomes unavailable
 
 ---
 
@@ -76,35 +108,35 @@ The daemon interacts with the Smidr API through API-hosted services. The daemon 
 
 ### Service Interaction Model
 
-* **API-hosted services**: The API exposes services for task assignment, status ingestion, metrics, and capability registration
-* **Daemon as client**: The daemon connects outward to consume task assignments and report state transitions and metrics
-* **Streaming patterns**: Bidirectional or server-streaming channels may be used for task assignments and state reports depending on QoS and latency needs
-* **Protocols**: gRPC over TLS is preferred; REST endpoints may be provided for compatibility and tooling
+- **API-hosted services**: The API exposes services for task assignment, status ingestion, metrics, and capability registration
+- **Daemon as client**: The daemon connects outward to consume task assignments and report state transitions and metrics
+- **Streaming patterns**: Bidirectional or server-streaming channels may be used for task assignments and state reports depending on QoS and latency needs
+- **Protocols**: gRPC over TLS is preferred; REST endpoints may be provided for compatibility and tooling
 
 ### Responsibilities (non-normative)
 
-* Register daemon identity, capabilities, and available resources
-* Receive task assignments and acknowledgements
-* Fetch task specifications and required artifacts
-* Report task state transitions (accepted, running, completed, failed, canceled)
-* Stream execution progress, logs, and result metadata
-* Report daemon health and runtime metrics
-* Send heartbeats and participate in liveness checks
-* Apply retry/backoff policies and idempotent reporting
+- Register daemon identity, capabilities, and available resources
+- Receive task assignments and acknowledgements
+- Fetch task specifications and required artifacts
+- Report task state transitions (accepted, running, completed, failed, canceled)
+- Stream execution progress, logs, and result metadata
+- Report daemon health and runtime metrics
+- Send heartbeats and participate in liveness checks
+- Apply retry/backoff policies and idempotent reporting
 
 ### Task State Machine
 
 Tasks follow a well-defined state machine throughout their lifecycle. The daemon is responsible for correctly capturing and reporting state transitions to the API. The minimal set of states includes:
 
-* `PENDING`: Task received and queued, awaiting execution resources
-* `ACCEPTED`: Daemon has claimed the task and begun setup
-* `RUNNING`: Task is actively executing
-* `COMPLETED`: Task finished successfully
-* `FAILED`: Task encountered a fatal error during execution
-* `CANCELED`: Task was canceled by the API or user
-* `TIMED_OUT`: Task exceeded its deadline
-* `REJECTED`: Daemon rejected the task before execution (e.g., unsupported type)
-* `ORPHANED`: Task state is unknown due to daemon restart or crash
+- `PENDING`: Task received and queued, awaiting execution resources
+- `ACCEPTED`: Daemon has claimed the task and begun setup
+- `RUNNING`: Task is actively executing
+- `COMPLETED`: Task finished successfully
+- `FAILED`: Task encountered a fatal error during execution
+- `CANCELED`: Task was canceled by the API or user
+- `TIMED_OUT`: Task exceeded its deadline
+- `REJECTED`: Daemon rejected the task before execution (e.g., unsupported type)
+- `ORPHANED`: Task state is unknown due to daemon restart or crash
 
 Exact state definitions, including any intermediate or provider-specific states, will be formalized in the API specification.
 
@@ -153,8 +185,8 @@ message TaskStatusReport {
 
 Notes:
 
-* Task types are represented as an enum to avoid stringly-typed contracts.
-* Exact enums, fields, and services will be finalized alongside API implementation.
+- Task types are represented as an enum to avoid stringly-typed contracts.
+- Exact enums, fields, and services will be finalized alongside API implementation.
 
 ---
 
@@ -164,14 +196,14 @@ Notes:
 
 The Smidr Daemon consists of the following major components and their interactions:
 
-* **API Communication Layer**: Maintains bidirectional gRPC connections with the Smidr API
-* **Task Manager**: Receives task instructions and coordinates execution
-* **Provider System**: Abstracts runtime-specific implementations (Docker, Podman, etc.)
-* **Execution Engine**: Manages task lifecycle and monitors execution
-* **Scheduler**: Queues and prioritizes tasks based on resources
-* **State Manager**: Persists task and system state
-* **Health Monitor**: Tracks daemon and task health
-* **Metrics Collector**: Gathers performance metrics
+- **API Communication Layer**: Maintains bidirectional gRPC connections with the Smidr API
+- **Task Manager**: Receives task instructions and coordinates execution
+- **Provider System**: Abstracts runtime-specific implementations (Docker, Podman, etc.)
+- **Execution Engine**: Manages task lifecycle and monitors execution
+- **Scheduler**: Queues and prioritizes tasks based on resources
+- **State Manager**: Persists task and system state
+- **Health Monitor**: Tracks daemon and task health
+- **Metrics Collector**: Gathers performance metrics
 
 These components work together to provide a robust, scalable task execution environment.
 
@@ -181,9 +213,9 @@ These components work together to provide a robust, scalable task execution envi
 
 The provider system abstracts the underlying execution environments. This allows the daemon to support multiple runtimes (e.g., Docker, Podman, native processes) without changing its core logic.  This subsystem is responsible for:
 
-* Detecting available runtimes on the host system
-* Providing a uniform interface for task execution regardless of the underlying runtime
-* Managing runtime-specific configurations and optimizations
+- Detecting available runtimes on the host system
+- Providing a uniform interface for task execution regardless of the underlying runtime
+- Managing runtime-specific configurations and optimizations
 
 ---
 
@@ -191,9 +223,9 @@ The provider system abstracts the underlying execution environments. This allows
 
 The execution engine is responsible for the actual execution of tasks while this subsystem manages the lifecycle of these tasks.  The execution engine handles:
 
-* Starting and stopping tasks
-* Monitoring task health and status
-* Reporting task results back to the main daemon logic
+- Starting and stopping tasks
+- Monitoring task health and status
+- Reporting task results back to the main daemon logic
 
 ---
 
@@ -201,18 +233,18 @@ The execution engine is responsible for the actual execution of tasks while this
 
 Communication for Smidr Daemon is handled through a dedicated communication layer. This will be using gRPC as the main form of communication, but other protocols may be supported in the future. This subsystem is responsible for:
 
-* Establishing secure connections to the Smidr API
-* Sending and receiving messages (task instructions, status updates)
-* Handling retries and error conditions in communication
-* Supporting multiple communication protocols if needed
-* Ensuring message integrity and confidentiality
-* Managing connection lifecycle (reconnects, timeouts)
-* Logging communication events for diagnostics
-* Supporting asynchronous communication patterns
-* Facilitating local inter-process communication if required
-* Implementing protocol versioning and compatibility checks
-* Providing hooks for custom communication handlers or plugins
-* Monitoring communication performance and latency
+- Establishing secure connections to the Smidr API
+- Sending and receiving messages (task instructions, status updates)
+- Handling retries and error conditions in communication
+- Supporting multiple communication protocols if needed
+- Ensuring message integrity and confidentiality
+- Managing connection lifecycle (reconnects, timeouts)
+- Logging communication events for diagnostics
+- Supporting asynchronous communication patterns
+- Facilitating local inter-process communication if required
+- Implementing protocol versioning and compatibility checks
+- Providing hooks for custom communication handlers or plugins
+- Monitoring communication performance and latency
 
 Authentication and authorization mechanisms to ensure secure access to the Smidr API will also be part of this subsystem. Along with encryption of data in transit to protect sensitive information.  There will be an expected request/response pattern for task instructions and status updates.  This will follow a publish/subscribe model for certain event notifications.
 
@@ -222,10 +254,10 @@ Authentication and authorization mechanisms to ensure secure access to the Smidr
 
 The daemon includes a scheduling subsystem to manage background tasks and long-running jobs.  This subsystem is responsible for:
 
-* Scheduling tasks based on priority and resource availability
-* Managing task queues
-* Allocating system resources for task execution
-* Retrying failed tasks based on configurable policies
+- Scheduling tasks based on priority and resource availability
+- Managing task queues
+- Allocating system resources for task execution
+- Retrying failed tasks based on configurable policies
 
 ---
 
@@ -233,10 +265,10 @@ The daemon includes a scheduling subsystem to manage background tasks and long-r
 
 Tasks and system state are tracked by the daemon to ensure accurate execution and reporting.  This subsystem is responsible for:
 
-* Maintaining the current state of tasks (running, completed, failed, etc.)
-* Tracking system resource usage
-* Persisting state information to survive restarts
-* Providing state information to other subsystems as needed
+- Maintaining the current state of tasks (running, completed, failed, etc.)
+- Tracking system resource usage
+- Persisting state information to survive restarts
+- Providing state information to other subsystems as needed
 
 ---
 
@@ -244,11 +276,11 @@ Tasks and system state are tracked by the daemon to ensure accurate execution an
 
 The daemon is configurated through a combination of configuration files, environment variables, and API-driven settings. This will allow for flexible deployment and management of the daemon across different environments.  The configuration model includes:
 
-* Support for multiple configuration sources with precedence rules
-* Runtime-specific configuration options for different execution environments
-* Secure handling of sensitive information such as API keys and credentials through secrets management mechanisms
-* Dynamic reloading of configuration without requiring a restart
-* Validation of configuration parameters to prevent misconfiguration
+- Support for multiple configuration sources with precedence rules
+- Runtime-specific configuration options for different execution environments
+- Secure handling of sensitive information such as API keys and credentials through secrets management mechanisms
+- Dynamic reloading of configuration without requiring a restart
+- Validation of configuration parameters to prevent misconfiguration
 
 ---
 
@@ -260,17 +292,17 @@ The Smidr system uses Protocol Buffers (protobuf) to define gRPC service contrac
 
 Protobuf definitions are located in the `/proto` directory at the repository root:
 
-* `daemon.proto` – Daemon registration, heartbeat, and state reporting services
-* `task.proto` – Task instruction and execution result messages
-* `api.proto` – API-hosted gRPC services that the daemon connects to
-* `common.proto` – Shared enums and types (TaskState, TaskType, etc.)
+- `daemon.proto` – Daemon registration, heartbeat, and state reporting services
+- `task.proto` – Task instruction and execution result messages
+- `api.proto` – API-hosted gRPC services that the daemon connects to
+- `common.proto` – Shared enums and types (TaskState, TaskType, etc.)
 
 Both the API and daemon projects generate language-specific code from these definitions. This ensures a single source of truth for all daemon-API communication contracts.
 
 ### Code Generation
 
-* **API** (`Smidr.Api.csproj`) – Generates C# server-side stubs
-* **Daemon** (`Smidr.Daemon.csproj`) – Generates C# client-side stubs
+- **API** (`Smidr.Api.csproj`) – Generates C# server-side stubs
+- **Daemon** (`Smidr.Daemon.csproj`) – Generates C# client-side stubs
 
 Each project is configured to reference the proto files and generate code during build
 
@@ -280,13 +312,13 @@ Each project is configured to reference the proto files and generate code during
 
 For security, the daemon implements several controls to ensure safe operation. This will be critical given its role in executing potentially sensitive tasks.  The following security aspects will be covered:
 
-* Local vs remote trust
-* API authentication
-* Privileged operations
-* OS-level permissions
-* Secure storage of sensitive data
-* Network security measures (e.g., TLS encryption)
-* Regular security audits and updates
+- Local vs remote trust
+- API authentication
+- Privileged operations
+- OS-level permissions
+- Secure storage of sensitive data
+- Network security measures (e.g., TLS encryption)
+- Regular security audits and updates
 
 ---
 
@@ -294,10 +326,10 @@ For security, the daemon implements several controls to ensure safe operation. T
 
 Smidr Daemon deployment and lifecycle management is designed to be straightforward and robust. It will be packaged for easy installation across supported operating systems.  It should be able to run as a background service/daemon, managed by standard service managers.  The lifecycle management includes:
 
-* Installation procedures for different platforms - package managers, binaries, etc.
-* Starting, stopping, and restarting the daemon
-* Monitoring and automatic recovery from failures
-* Upgrade strategies to ensure minimal downtime and data integrity
+- Installation procedures for different platforms - package managers, binaries, etc.
+- Starting, stopping, and restarting the daemon
+- Monitoring and automatic recovery from failures
+- Upgrade strategies to ensure minimal downtime and data integrity
 
 We will have github releases for versioned binaries.  There will be support for containerized deployments using Docker or similar technologies.  The daemon will also support auto-updates to ensure it remains current with the latest features and security patches.  Github actions can be used to build and publish releases automatically.
 
@@ -307,12 +339,12 @@ We will have github releases for versioned binaries.  There will be support for 
 
 Observability is a key aspect of the Smidr Daemon, enabling operators to monitor its health and performance.  The daemon will expose various diagnostics through logging, metrics, and health checks.  This includes:
 
-* Detailed logging of operations, errors, and significant events
-* Metrics collection for performance monitoring and alerting
-* Health check endpoints to verify the daemon's operational status
-* Integration with external monitoring systems (e.g., Prometheus, Grafana)
-* Support for log aggregation and analysis tools
-* Tracing capabilities to follow task execution flows
+- Detailed logging of operations, errors, and significant events
+- Metrics collection for performance monitoring and alerting
+- Health check endpoints to verify the daemon's operational status
+- Integration with external monitoring systems (e.g., Prometheus, Grafana)
+- Support for log aggregation and analysis tools
+- Tracing capabilities to follow task execution flows
 
 ---
 
