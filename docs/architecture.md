@@ -84,6 +84,57 @@ The platform is designed to support:
 
 ---
 
+## Project Structure
+
+```text
+smidr/
+├── LICENSE
+├── README.md
+├── docs/
+│   ├── architecture.md
+│   ├── job_lifecycle.md
+│   ├── agent_contract.md
+│   ├── control_plane_contract.md
+│   ├── artifact_lineage.md
+│   ├── tenant_policy.md
+│   └── blueprint.md
+├── agents/
+│   ├── go/                 # Go-based cross-platform agent
+│   │   ├── cmd/            # CLI entry points for agent
+│   │   ├── internal/       # Core agent logic
+│   │   └── plugins/        # gRPC plugin interface helpers
+│   └── rust/               # Optional Rust implementation for performance
+├── control-plane/
+│   ├── src/
+│   │   ├── api/            # REST / GraphQL endpoints
+│   │   ├── job-controller/ # Job scheduling and lifecycle
+│   │   ├── policies/       # Policy enforcement engine (OPA integration)
+│   │   ├── services/       # Business logic services
+│   │   └── models/         # DB models, schemas
+│   └── tests/
+├── frontend/
+│   ├── nextjs/             # Next.js + React frontend
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── hooks/
+│   │   └── styles/
+├── plugins/                # External plugins for builds or monitoring
+│   ├── go/
+│   ├── python/
+│   └── bash/
+├── artifacts/              # Local dev environment artifact store
+├── proto/                  # Shared protobuf definitions (gRPC)
+├── deployments/
+│   ├── docker/             # Docker Compose configs, Dockerfiles
+│   ├── k8s/                # Kubernetes manifests
+│   └── helm/               # Helm charts for production deployment
+├── scripts/                # Build, test, release scripts
+└── tools/                  # Dev tools, linters, CI/CD helpers
+
+```
+
+---
+
 ## Conceptual Diagram
 
 ```text
