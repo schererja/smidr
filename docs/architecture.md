@@ -1,0 +1,133 @@
+# Architecture Overview
+
+## Purpose
+
+This document provides a high-level view of the platform, including the interaction between agents, the control plane, users, jobs, and artifacts. It serves as the guiding blueprint for all subsequent design and development efforts.
+
+The platform is designed to support:
+
+- Embedded systems and custom Linux/Yocto builds
+- MSP-style multi-tenant operations
+- Reproducible, auditable job execution
+- Extensible plugins without modifying core services
+
+---
+
+## Core Components
+
+### Agent (Edge Execution Node)
+
+- Installed on Windows, Linux, or macOS hosts
+- Executes jobs in isolated environments
+- Reports logs, progress, and artifacts to the Control Plane
+- Enforces job-level policies received from Control Plane
+
+### Control Plane API
+
+- Central authority for policy enforcement
+- Orchestrates job lifecycle
+- Maintains artifact lineage and audit logs
+- Provides multi-tenant separation
+
+### Job Controller
+
+- Matches jobs to capable agents
+- Tracks job states and retries
+- Enforces job-specific constraints and policies
+
+### Artifact Store
+
+- Stores job outputs and logs
+- Maintains immutable references for lineage tracking
+- Supports promotion, retention, and signing rules
+
+### Policy Engine
+
+- Evaluates execution, agent, artifact, and security policies
+- Applies tenant/project-scoped rules
+- Returns deterministic decisions to Job Controller
+
+### Web UI / Frontend
+
+- Written in TypeScript
+- Provides job submission, monitoring, and management
+- Supports tenant and project dashboards
+- Provides plugin configuration and monitoring insights
+
+---
+
+## Data Flows
+
+### Job Submission Flow
+
+1. User submits a job via the frontend or API.
+2. Control Plane validates permissions and evaluates policies.
+3. Job Controller determines eligible agents.
+4. Agent pulls the job, executes it, and reports progress.
+5. Artifacts and logs are uploaded and registered in the Artifact Store.
+6. Completion status is communicated back to the user and logged for audit.
+
+### Artifact Lineage
+
+- All outputs are tagged with job ID, agent ID, and plugin version.
+- Lineage ensures reproducibility and traceability.
+
+---
+
+## Design Principles
+
+- **Secure by Default:** Multi-tenant isolation, least privilege, sandboxed agents.
+- **Deterministic Execution:** Jobs and plugins execute in reproducible environments.
+- **Extensible:** Plugins allow new build and monitoring capabilities without core changes.
+- **Auditable:** Every state transition, artifact, and policy decision is logged.
+- **Policy-Driven:** Policies define allowed operations, agent capabilities, artifact handling, and security requirements.
+
+---
+
+## Conceptual Diagram
+
+```text
+                +-------------------+
+                |   Web Frontend    |
+                +---------+---------+
+                          |
+                          v
+                +-------------------+
+                |   Control Plane   |
+                | (Policy Engine &  |
+                |  Job Controller)  |
+                +---------+---------+
+                          |
+         -----------------+-----------------
+         |                                 |
+         v                                 v
+   +-------------+                   +-------------+
+   |   Agent 1   |                   |   Agent N   |
+   | (Linux/mac) |                   | (Windows)   |
+   +------+------+                   +------+------+
+          |                                 |
+          v                                 v
+     +---------+                       +---------+
+     | Artifact|                       | Artifact|
+     +---------+                       +---------+
+```
+
+## User Stories
+
+### Embedded Systems Engineer
+
+- I want builds for multiple hardware targets without modifying the core platform.
+
+- I want deterministic builds to ensure reproducibility.
+
+### MSP Operator
+
+- I want to manage multiple customer tenants with strict isolation.
+
+- I want to enforce resource and job type limits per tenant.
+
+### Platform Administrator
+
+- I want complete audit logs of job execution and artifact creation.
+
+- I want to manage plugin versions and agent registrations safely.
