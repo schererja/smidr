@@ -6,11 +6,11 @@ This TODO list outlines the first set of tasks to get the **Smidr platform** up 
 
 ## 1. Repository Setup
 
-- [ ] Initialize monorepo with folder structure
-- [ ] Add LICENSE (BUSL 1.1)
-- [ ] Add README with basic description
-- [ ] Add `docs/` folder with existing documentation
-- [ ] Setup `.gitignore` and common linter/prettier configs
+- [X] Initialize monorepo with folder structure
+- [X] Add LICENSE (BUSL 1.1)
+- [X] Add README with basic description
+- [X] Add `docs/` folder with existing documentation
+- [X] Setup `.gitignore` and common linter/prettier configs
 
 ---
 

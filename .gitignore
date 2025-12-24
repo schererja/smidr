@@ -1,69 +1,117 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-# Test binary, built with `go test -c`
-*.test
-
-# Code coverage profiles and other test artifacts
-*.out
-coverage.*
-*.coverprofile
-profile.cov
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
-go.work
-go.work.sum
-
-# env file
-.env
-
-# Editor/IDE
-# .idea/
-.vscode/
-/build/
-/apps/daemon/build/
-meta-smidr-custom/
-
-# macOS junk
+# ------------------------------
+# General
+# ------------------------------
 .DS_Store
-
-# Yocto/Smidr generated config and output
-conf/
-confbackup/
-deploy/
-tmp/
-downloads/
-sstate-cache/
-sources/
-
-# Test and coverage artifacts
-integration_test_output.txt
-coverage.out
-
-# Backups and env
-*.bak
+Thumbs.db
+node_modules/
+.vscode/
+.idea/
+*.log
+*.tmp
 *.swp
-.env.local
-PR*.md
-# Web UI
-gui/node_modules/
-gui/*.log
+*.swo
+*.bak
 
-# C# build artifacts
-bin/
-obj/
-*.dll
-*.pdb
-*.cache
+# ------------------------------
+# Go (agents)
+# ------------------------------
+# Binaries
+/bin/
+/build/
+/dist/
+/*.exe
+/*.exe~
+/*.dll
+/*.so
+/*.dylib
+
+# Dependency directories
+/vendor/
+
+# Go module files
+/go.sum
+
+# IDE/editor
+*.test
+*.out
+
+# ------------------------------
+# C# / .NET (Control Plane)
+# ------------------------------
+# Build directories
+/bin/
+/obj/
+/publish/
+
+# User-specific files
 *.user
 *.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# Rider / VS Code
+.idea/
+.vscode/
+
+# ------------------------------
+# Node.js / TypeScript (Frontend)
+# ------------------------------
+node_modules/
+dist/
+build/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ------------------------------
+# Protobuf / Generated Code
+# ------------------------------
+*.pb.go
+*.pb.gw.go
+*.pb.cc
+*.pb.h
+*.pb.js
+*.grpc.pb.go
+*.grpc.pb.cc
+*.grpc.pb.h
+
+# ------------------------------
+# Docker
+# ------------------------------
+docker-compose.override.yml
+*.env
+*.tar
+Dockerfile*
+
+# ------------------------------
+# Artifacts / temp
+# ------------------------------
+artifacts/
+tmp/
+temp/
+*.bak
+*.swp
+*.swo
+
+# ------------------------------
+# Logs
+# ------------------------------
+logs/
+*.log
+*.out
