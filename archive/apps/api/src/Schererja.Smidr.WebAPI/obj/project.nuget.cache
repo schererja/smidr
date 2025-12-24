@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "dgSpecHash": "JvWITZwidNU=",
+  "success": true,
+  "projectFilePath": "/Users/schererja/src/github.com/schererja/smidr/apps/api/src/Schererja.Smidr.WebAPI/Schererja.Smidr.WebAPI.csproj",
+  "expectedPackageFiles": [
+    "/Users/schererja/.nuget/packages/google.protobuf/3.28.3/google.protobuf.3.28.3.nupkg.sha512",
+    "/Users/schererja/.nuget/packages/grpc.core.api/2.70.0/grpc.core.api.2.70.0.nupkg.sha512",
+    "/Users/schererja/.nuget/packages/grpc.net.client/2.70.0/grpc.net.client.2.70.0.nupkg.sha512",
+    "/Users/schererja/.nuget/packages/grpc.net.common/2.70.0/grpc.net.common.2.70.0.nupkg.sha512",
+    "/Users/schererja/.nuget/packages/microsoft.aspnetcore.openapi/10.0.0/microsoft.aspnetcore.openapi.10.0.0.nupkg.sha512",
+    "/Users/schererja/.nuget/packages/microsoft.extensions.apidescription.server/10.0.0/microsoft.extensions.apidescription.server.10.0.0.nupkg.sha512",
+    "/Users/schererja/.nuget/packages/microsoft.openapi/2.3.0/microsoft.openapi.2.3.0.nupkg.sha512",
+    "/Users/schererja/.nuget/packages/swashbuckle.aspnetcore/10.0.1/swashbuckle.aspnetcore.10.0.1.nupkg.sha512",
+    "/Users/schererja/.nuget/packages/swashbuckle.aspnetcore.swagger/10.0.1/swashbuckle.aspnetcore.swagger.10.0.1.nupkg.sha512",
+    "/Users/schererja/.nuget/packages/swashbuckle.aspnetcore.swaggergen/10.0.1/swashbuckle.aspnetcore.swaggergen.10.0.1.nupkg.sha512",
+    "/Users/schererja/.nuget/packages/swashbuckle.aspnetcore.swaggerui/10.0.1/swashbuckle.aspnetcore.swaggerui.10.0.1.nupkg.sha512"
+  ],
+  "logs": []
+}

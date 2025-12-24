@@ -39,10 +39,12 @@ node_modules/
 # C# / .NET (Control Plane)
 # ------------------------------
 # Build directories
-/bin/
-/obj/
-/publish/
-
+**/bin/
+**/obj/
+**/publish/
+*/bin/
+*/obj/
+*/publish/
 # User-specific files
 *.user
 *.suo
