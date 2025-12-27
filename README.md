@@ -31,11 +31,11 @@ Smidr is a multi-tenant, cross-platform orchestration platform for building, dep
 
 Smidr provides a **secure and extensible platform** for automating build and monitoring workflows across heterogeneous systems. It consists of:
 
-- **Agents**: Installed on Windows, Linux, or macOS machines to execute jobs.
-- **Control Plane**: Central orchestrator enforcing policies, managing multi-tenant operations, and coordinating jobs.
-- **Job Controller**: Assigns jobs to agents and tracks lifecycle states.
-- **Artifact Store**: Immutable storage with full lineage tracking.
-- **Plugins**: Extend the platform for builds, monitoring, and custom workflows.
+- **Agents**: Installed on Windows, Linux, or macOS machines to execute jobs. Written in Go for portability.
+- **Control Plane**: Serverless orchestrator (TypeScript/Lambda) enforcing policies, managing multi-tenant operations, and coordinating jobs via REST APIs.
+- **Job Controller**: Serverless Lambda functions assign jobs to agents via SQS and track lifecycle states.
+- **Artifact Store**: Immutable storage with full lineage tracking (S3/DynamoDB).
+- **Plugins**: Extend agents for builds, monitoring, and custom workflows.
 - **Frontend**: TypeScript/React dashboards for monitoring and management.
 
 The platform is designed for **reproducibility, security, and scalability**.
@@ -44,12 +44,12 @@ The platform is designed for **reproducibility, security, and scalability**.
 
 ## Key Features
 
-- Multi-tenant architecture with strict isolation
+- Multi-tenant architecture with strict isolation and HMAC authentication
 - Deterministic job execution with policy enforcement
 - Plugin extensibility via gRPC for cross-platform compatibility
 - Artifact lineage tracking with promotion and retention policies
-- Streaming logs and progress reporting
-- Observability with Prometheus/Grafana
+- Real-time log streaming and progress reporting
+- Serverless infrastructure for cost efficiency and auto-scaling
 - Enterprise-ready stack with strong typing and maintainability
 
 ---
@@ -62,17 +62,19 @@ The platform is designed for **reproducibility, security, and scalability**.
        |  (React + TypeScript)  |
        +------------------------+
                  |
-          REST / GraphQL
+             REST / HTTPS
                  |
-       +------------------------+
-       |    Control Plane       |
-       |  (C# ASP.NET Core)    |
-       +------------------------+
-       | Job Controller / Policy|
-       +------------------------+
+   +-------------------------------+
+   |      AWS API Gateway         |
+   +-------------------------------+
                  |
-             gRPC / TLS
-                 |
+   +-------------------------------+
+   |  Control Plane (Lambda)      |
+   |   (TypeScript/Node.js)       |
+   +-------------------------------+
+         |                  |
+       SQS            DynamoDB
+         |                  |
    +-------------------------------+
    |           Agent               |
    |       (Go binary)            |
@@ -80,7 +82,7 @@ The platform is designed for **reproducibility, security, and scalability**.
    |   Plugins (gRPC processes)   |
    +-------------------------------+
                  |
-      Artifact Store (MinIO/PostgreSQL)
+      Artifact Store (S3/DynamoDB)
 ```
 
 ---
@@ -96,10 +98,11 @@ The platform is designed for **reproducibility, security, and scalability**.
 
 ### 2. Control Plane
 
-- Multi-tenant orchestrator
-- Policy enforcement and job scheduling
-- Tracks agent health, jobs, and artifacts
-- Provides REST/GraphQL API for frontend
+- Multi-tenant orchestrator running on AWS Lambda
+- Policy enforcement and job scheduling via REST APIs
+- Tracks agent health, jobs, and artifacts using DynamoDB
+- Scales automatically with workload; pay-per-request pricing
+- HMAC authentication for agent-to-control-plane communication
 
 ### 3. Job Controller
 
@@ -109,9 +112,9 @@ The platform is designed for **reproducibility, security, and scalability**.
 
 ### 4. Artifact Store
 
-- Immutable object storage (S3-compatible MinIO)
-- Relational DB (PostgreSQL) for metadata and lineage
-- Retention and promotion policies
+- Immutable object storage (AWS S3)
+- NoSQL metadata and lineage tracking (DynamoDB)
+- Retention and promotion policies enforced by Control Plane
 
 ### 5. Plugins
 
@@ -131,11 +134,12 @@ The platform is designed for **reproducibility, security, and scalability**.
 
 | Source | Destination | Protocol | Notes |
 |--------|------------|---------|-------|
-| Agent | Control Plane | gRPC over TLS | Bi-directional job control, streaming logs |
-| Frontend | Control Plane | REST / GraphQL | Dashboards, job submissions |
-| Control Plane | Artifact Store | S3 API / DB | Artifact uploads and metadata |
+| Agent | Control Plane | REST + HMAC | Job claims, heartbeat, completion reports |
+| Frontend | Control Plane | REST + HTTPS | Dashboards, job submissions |
+| Control Plane | Artifact Store | S3 API / DynamoDB | Artifact uploads and metadata |
+| Control Plane | Job Queue | SQS | Job dispatch and agent pull-based claims |
 | Plugins | Agent | gRPC | Isolated execution, logging, artifact reporting |
-| Internal services | Each other | gRPC / HTTP | Typed service contracts |
+| Internal services | Each other | Lambda / SQS | Event-driven serverless architecture |
 
 ---
 
@@ -151,24 +155,26 @@ The platform is designed for **reproducibility, security, and scalability**.
 
 ## Deployment
 
-- Agents: distributed binaries per platform
-- Control Plane & Job Controller: Dockerized, scalable via Kubernetes
-- Artifact Store: MinIO cluster + PostgreSQL DB
-- Observability: Prometheus + Grafana
-- Plugins: containerized or process-isolated execution
+- Agents: distributed binaries per platform (Windows, Linux, macOS)
+- Control Plane: Serverless on AWS Lambda with API Gateway
+- Job Queue: AWS SQS for job distribution
+- Artifact Store: AWS S3 with DynamoDB metadata
+- Observability: CloudWatch Logs & Metrics, optional X-Ray tracing
+- Plugins: containerized or process-isolated execution on agent hosts
 
 ---
 
 ## Getting Started
 
 1. Clone the repository
-2. Build the Control Plane and Agent binaries
-3. Start PostgreSQL and MinIO for artifact storage
-4. Launch Control Plane and Job Controller services
-5. Register Agents
-6. Use Frontend to create tenants, projects, and submit jobs
+2. Build the Agent binaries for your platforms
+3. Set up AWS infrastructure (S3, DynamoDB, SQS, Lambda, API Gateway) via SAM template
+4. Deploy Control Plane Lambda functions
+5. Configure tenant HMAC secrets in AWS Secrets Manager
+6. Register Agents with Control Plane
+7. Use Frontend to create tenants, projects, and submit jobs
 
-> Detailed installation instructions and environment setup are provided in the `docs/` folder.
+> Detailed installation instructions and AWS deployment guide are provided in the `docs/` folder.
 
 ---
 
@@ -176,9 +182,10 @@ The platform is designed for **reproducibility, security, and scalability**.
 
 We welcome contributions from the community:
 
-- Follow coding conventions (C# for Control Plane, Go for Agent, TypeScript/React for frontend)
+- Follow coding conventions (TypeScript for Control Plane/Lambda, Go for Agent, TypeScript/React for Frontend)
 - Write tests for new features or plugins
 - Document architecture changes in Markdown files
+- Follow serverless best practices (Lambda optimization, DynamoDB design, SQS batching)
 
 ---
 

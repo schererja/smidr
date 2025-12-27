@@ -24,22 +24,23 @@ The platform is designed to support:
 
 ### Control Plane API
 
-- Central authority for policy enforcement
-- Orchestrates job lifecycle
-- Maintains artifact lineage and audit logs
-- Provides multi-tenant separation
+- Central authority for policy enforcement (runs on AWS Lambda)
+- Orchestrates job lifecycle via REST + HMAC authentication
+- Maintains artifact lineage and audit logs (DynamoDB)
+- Provides multi-tenant separation via tenant context
 
 ### Job Controller
 
-- Matches jobs to capable agents
+- Serverless Lambda function matches jobs to capable agents
 - Tracks job states and retries
+- Distributes jobs via SQS queue; agents pull jobs on demand
 - Enforces job-specific constraints and policies
 
 ### Artifact Store
 
-- Stores job outputs and logs
-- Maintains immutable references for lineage tracking
-- Supports promotion, retention, and signing rules
+- Stores job outputs and logs (AWS S3)
+- Maintains immutable references and lineage tracking (DynamoDB)
+- Supports promotion, retention, and signing rules enforced by Control Plane
 
 ### Policy Engine
 
@@ -49,10 +50,11 @@ The platform is designed to support:
 
 ### Web UI / Frontend
 
-- Written in TypeScript
+- Written in TypeScript and React
 - Provides job submission, monitoring, and management
 - Supports tenant and project dashboards
 - Provides plugin configuration and monitoring insights
+- Communicates with Control Plane via REST + HTTPS
 
 ---
 
@@ -60,11 +62,11 @@ The platform is designed to support:
 
 ### Job Submission Flow
 
-1. User submits a job via the frontend or API.
-2. Control Plane validates permissions and evaluates policies.
-3. Job Controller determines eligible agents.
+1. User submits a job via the frontend or REST API.
+2. Control Plane (Lambda) validates permissions and evaluates policies.
+3. Job is placed on SQS queue for agent pickup.
 4. Agent pulls the job, executes it, and reports progress.
-5. Artifacts and logs are uploaded and registered in the Artifact Store.
+5. Artifacts and logs are uploaded to S3 and registered in DynamoDB.
 6. Completion status is communicated back to the user and logged for audit.
 
 ### Artifact Lineage

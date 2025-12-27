@@ -2,18 +2,19 @@
 
 ## Purpose
 
-The Job Controller is responsible for orchestrating jobs between the Control Plane and agents. It ensures that jobs are assigned, tracked, and executed according to policies and tenant constraints.
+The Job Controller is a serverless Lambda function responsible for orchestrating jobs between the Control Plane and agents via SQS. It ensures that jobs are queued, assigned, and executed according to policies and tenant constraints.
 
 ---
 
 ## Responsibilities
 
-- **Job Matching:** Assign jobs to compatible agents based on capabilities, availability, and tenant/project policies.
-- **Policy Enforcement:** Apply execution constraints such as resource limits, approved plugins, or execution windows.
-- **State Tracking:** Monitor job progress through the lifecycle (Submitted → Queued → Dispatched → Running → Completed).
-- **Retries and Failures:** Handle failed, timed out, or cancelled jobs according to policy.
-- **Reporting:** Provide logs, status updates, and metrics to the Control Plane and frontend.
-- **Integration:** Communicate with artifact store and policy engine for complete lifecycle visibility.
+- **Job Queuing:** Place jobs on SQS queue after Control Plane validation
+- **Job Matching:** Select agents with compatible capabilities from DynamoDB registry
+- **Policy Enforcement:** Apply execution constraints such as resource limits, approved plugins, or execution windows
+- **State Tracking:** Monitor job progress through the lifecycle (Submitted → Queued → Dispatched → Running → Completed) in DynamoDB
+- **Retries and Failures:** Handle failed, timed out, or cancelled jobs according to policy
+- **Reporting:** Provide logs, status updates, and metrics to the Control Plane and frontend via DynamoDB
+- **Integration:** Communicate with artifact store (S3/DynamoDB) and policy engine for complete lifecycle visibility
 
 ---
 
@@ -31,23 +32,29 @@ The Job Controller is responsible for orchestrating jobs between the Control Pla
 ```text
       +------------------------+
       |     Control Plane      |
-      | (Policy Engine, UI API)|
+      | (Policy, DynamoDB)     |
       +-----------+------------+
                   |
                   v
          +-----------------+
          | Job Controller  |
+         | (Lambda)        |
          +---+---------+---+
              |         |
-   Assigns job|         |Monitors state
+   Queue job |         |Monitor state
+        on SQS|         |in DynamoDB
              v         v
        +-----------+  +-----------+
        |  Agent 1  |  |  Agent N  |
        +-----------+  +-----------+
              |         |
-       Reports logs & status
+       Reports via REST+HMAC
              v
       +-----------------+
+      | Control Plane   |
+      | (State store)   |
+      +-----------------+
+```
       | Artifact Store  |
       +-----------------+
 ```
