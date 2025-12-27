@@ -1,0 +1,223 @@
+syntax = "proto3";
+package smidr.agent;
+
+import "google/protobuf/timestamp.proto";
+import "smidr/v1/common/policy.proto";
+import "smidr/v1/common/types.proto";
+import "smidr/v1/control_plane/job.proto";
+
+option go_package = "github.com/schererja/smidr/agents/go/pkg/smidr/v1/agent";
+
+// ========================================
+// Agent Service - Bidirectional gRPC
+// ========================================
+
+service AgentService {
+  // Agent registers with control plane
+  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
+
+  // Agent sends periodic heartbeats
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // Agent requests job assignments (pull model)
+  rpc GetJobAssignment(GetJobAssignmentRequest) returns (GetJobAssignmentResponse);
+
+  // Agent reports job progress
+  rpc ReportJobProgress(ReportJobProgressRequest) returns (ReportJobProgressResponse);
+
+  // Agent reports job completion
+  rpc ReportJobCompletion(ReportJobCompletionRequest) returns (ReportJobCompletionResponse);
+
+  // Agent streams logs during execution
+  rpc StreamJobLogs(stream StreamJobLogsRequest) returns (StreamJobLogsResponse);
+
+  // Agent uploads artifact metadata
+  rpc ReportArtifact(ReportArtifactRequest) returns (ReportArtifactResponse);
+
+  // Deregister agent from service
+  rpc DeregisterAgent(DeregisterAgentRequest) returns (DeregisterAgentResponse);
+}
+
+// ========================================
+// Agent Definition
+// ========================================
+
+message Agent {
+  smidr.common.AgentID agent_id = 1;
+  smidr.common.TenantID tenant_id = 2;
+  smidr.common.ProjectID project_id = 3;
+
+  string name = 4;
+  string version = 5;
+  string hostname = 6;
+
+  smidr.common.AgentCapabilities capabilities = 7;
+  smidr.common.AgentState state = 8;
+
+  // Runtime information
+  int32 current_job_count = 9;
+  int32 max_concurrent_jobs = 10;
+  google.protobuf.Timestamp last_heartbeat = 11;
+
+  // Networking
+  string ip_address = 12;
+
+  // Metadata
+  smidr.common.Metadata metadata = 13;
+  smidr.common.AuditMetadata audit = 14;
+}
+
+// ========================================
+// Registration
+// ========================================
+
+message RegisterAgentRequest {
+  smidr.common.TenantID tenant_id = 1;
+  smidr.common.ProjectID project_id = 2;
+  string name = 3;
+  string version = 4;
+  string hostname = 5;
+  smidr.common.AgentCapabilities capabilities = 6;
+  int32 max_concurrent_jobs = 7;
+  smidr.common.Metadata metadata = 8;
+}
+
+message RegisterAgentResponse {
+  smidr.common.AgentID agent_id = 1;
+  bool success = 2;
+  string message = 3;
+  smidr.common.AgentPolicy assigned_policy = 4;
+}
+
+// ========================================
+// Heartbeat
+// ========================================
+
+message HeartbeatRequest {
+  smidr.common.AgentID agent_id = 1;
+  smidr.common.AgentState state = 2;
+  int32 current_job_count = 3;
+  SystemMetrics metrics = 4;
+}
+
+message SystemMetrics {
+  float cpu_usage_percent = 1;
+  int64 memory_used_bytes = 2;
+  int64 memory_total_bytes = 3;
+  int64 disk_used_bytes = 4;
+  int64 disk_total_bytes = 5;
+}
+
+message HeartbeatResponse {
+  bool alive = 1;
+  repeated smidr.common.JobID jobs_to_cancel = 2; // Control plane can request cancellation
+  smidr.common.AgentPolicy updated_policy = 3; // Policy updates
+}
+
+// ========================================
+// Job Assignment
+// ========================================
+
+message GetJobAssignmentRequest {
+  smidr.common.AgentID agent_id = 1;
+  int32 available_slots = 2; // How many jobs can agent accept
+}
+
+message GetJobAssignmentResponse {
+  repeated JobAssignment jobs = 1;
+}
+
+message JobAssignment {
+  smidr.common.JobID job_id = 1;
+  string job_type = 2;
+  map<string, string> parameters = 3;
+  smidr.common.ResourceLimits resource_limits = 4;
+  smidr.common.PolicySet policy = 5;
+  google.protobuf.Timestamp deadline = 6;
+}
+
+// ========================================
+// Job Execution Reporting
+// ========================================
+
+message ReportJobProgressRequest {
+  smidr.common.AgentID agent_id = 1;
+  smidr.common.JobID job_id = 2;
+  smidr.common.JobState state = 3;
+  int32 progress_percent = 4;
+  string progress_message = 5;
+  SystemMetrics current_metrics = 6;
+}
+
+message ReportJobProgressResponse {
+  bool acknowledged = 1;
+  bool should_cancel = 2; // Control plane signals cancellation
+}
+
+message ReportJobCompletionRequest {
+  smidr.common.AgentID agent_id = 1;
+  smidr.common.JobID job_id = 2;
+  smidr.common.JobState final_state = 3;
+  string exit_code = 4;
+  string error_message = 5;
+  repeated smidr.common.ArtifactID artifact_ids = 6;
+  google.protobuf.Timestamp started_at = 7;
+  google.protobuf.Timestamp completed_at = 8;
+}
+
+message ReportJobCompletionResponse {
+  bool acknowledged = 1;
+  string message = 2;
+}
+
+// ========================================
+// Log Streaming
+// ========================================
+
+message StreamJobLogsRequest {
+  smidr.common.AgentID agent_id = 1;
+  smidr.common.JobID job_id = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  string message = 4;
+  smidr.control_plane.LogLevel level = 5;
+  string source = 6;
+}
+
+message StreamJobLogsResponse {
+  bool acknowledged = 1;
+}
+
+// ========================================
+// Artifact Reporting
+// ========================================
+
+message ReportArtifactRequest {
+  smidr.common.AgentID agent_id = 1;
+  smidr.common.JobID job_id = 2;
+  string artifact_name = 3;
+  string artifact_type = 4; // e.g., "binary", "image", "log"
+  string storage_path = 5; // S3 path or similar
+  int64 size_bytes = 6;
+  string checksum = 7; // SHA256 or similar
+  map<string, string> metadata = 8;
+}
+
+message ReportArtifactResponse {
+  smidr.common.ArtifactID artifact_id = 1;
+  bool accepted = 2;
+  string message = 3;
+}
+
+// ========================================
+// Deregistration
+// ========================================
+
+message DeregisterAgentRequest {
+  smidr.common.AgentID agent_id = 1;
+  string reason = 2;
+}
+
+message DeregisterAgentResponse {
+  bool success = 1;
+  string message = 2;
+}

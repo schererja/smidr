@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package smidr.common;
+
+import "smidr/v1/common/types.proto";
+
+option go_package = "github.com/schererja/smidr/agents/go/pkg/smidr/v1/common";
+
+// Deprecated: All ID types are defined in types.proto
+// This file is kept for backward compatibility

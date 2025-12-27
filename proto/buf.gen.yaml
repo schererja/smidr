@@ -1,0 +1,25 @@
+version: v2
+managed:
+  enabled: false
+plugins:
+  # Go (for agents)
+  - remote: buf.build/protocolbuffers/go
+    out: ../agents/go/pkg/
+    opt:
+      - paths=source_relative
+  - remote: buf.build/grpc/go
+    out: ../agents/go/pkg/
+    opt:
+      - paths=source_relative
+
+  # C# (for control-plane API)
+  - remote: buf.build/protocolbuffers/csharp
+    out: ../control-plane/Generated
+  - remote: buf.build/grpc/csharp
+    out: ../control-plane/Generated
+
+  # # Python SDK
+  # - remote: buf.build/protocolbuffers/python
+  #   out: ../sdks/python/smidr_sdk/generated
+  # - remote: buf.build/grpc/python
+  #   out: ../sdks/python/smidr_sdk/generated

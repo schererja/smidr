@@ -1,0 +1,180 @@
+syntax = "proto3";
+package smidr.control_plane;
+
+import "google/protobuf/timestamp.proto";
+import "smidr/v1/common/policy.proto";
+import "smidr/v1/common/types.proto";
+
+option go_package = "github.com/schererja/smidr/agents/go/pkg/smidr/v1/control_plane";
+
+// ========================================
+// Job Service - Control Plane API
+// ========================================
+
+service JobService {
+  // Submit a new job for execution
+  rpc SubmitJob(SubmitJobRequest) returns (SubmitJobResponse);
+
+  // Get current status of a job
+  rpc GetJobStatus(GetJobStatusRequest) returns (GetJobStatusResponse);
+
+  // Stream real-time logs from a running job
+  rpc StreamJobLogs(StreamJobLogsRequest) returns (stream JobLogEntry);
+
+  // Cancel a running or queued job
+  rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
+
+  // List jobs with filtering
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
+
+  // Get detailed job information including full history
+  rpc GetJobDetails(GetJobDetailsRequest) returns (GetJobDetailsResponse);
+}
+
+// ========================================
+// Job Definition
+// ========================================
+
+message Job {
+  smidr.common.JobID job_id = 1;
+  smidr.common.TenantID tenant_id = 2;
+  smidr.common.ProjectID project_id = 3;
+  smidr.common.UserID created_by_user_id = 4;
+
+  string job_type = 5; // e.g., "yocto-build", "binary-build", "test"
+  string name = 6;
+  string description = 7;
+
+  // Job configuration
+  map<string, string> parameters = 8; // Job-specific parameters
+  smidr.common.ResourceLimits resource_limits = 9;
+  repeated string required_capabilities = 10;
+
+  // State and timing
+  smidr.common.JobState state = 11;
+  google.protobuf.Timestamp submitted_at = 12;
+  google.protobuf.Timestamp started_at = 13;
+  google.protobuf.Timestamp completed_at = 14;
+
+  // Assignment
+  smidr.common.AgentID assigned_agent_id = 15;
+
+  // Policy and retry
+  smidr.common.PolicySet applied_policy = 16;
+  int32 retry_count = 17;
+  int32 max_retries = 18;
+
+  // Results
+  repeated smidr.common.ArtifactID artifact_ids = 19;
+  string exit_code = 20;
+  string error_message = 21;
+
+  // Metadata
+  smidr.common.Metadata metadata = 22;
+  smidr.common.AuditMetadata audit = 23;
+}
+
+// ========================================
+// Job State Transition
+// ========================================
+
+message JobStateTransition {
+  smidr.common.JobID job_id = 1;
+  smidr.common.JobState from_state = 2;
+  smidr.common.JobState to_state = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  string reason = 5;
+  oneof triggered_by_id {
+    smidr.common.UserID user_id = 6;
+    smidr.common.AgentID agent_id = 7;
+  }
+}
+
+// ========================================
+// Request/Response Messages
+// ========================================
+message SubmitJobRequest {
+  smidr.common.TenantID tenant_id = 1;
+  smidr.common.ProjectID project_id = 2;
+  string job_type = 3;
+  string name = 4;
+  string description = 5;
+  map<string, string> parameters = 6;
+  smidr.common.ResourceLimits resource_limits = 7;
+  repeated string required_capabilities = 8;
+  int32 max_retries = 9;
+  smidr.common.Metadata metadata = 10;
+}
+
+message SubmitJobResponse {
+  smidr.common.JobID job_id = 1;
+  smidr.common.JobState state = 2;
+  smidr.common.PolicyDecision policy_decision = 3;
+}
+
+message GetJobStatusRequest {
+  smidr.common.JobID job_id = 1;
+}
+
+message GetJobStatusResponse {
+  smidr.common.JobID job_id = 1;
+  smidr.common.JobState state = 2;
+  string progress_message = 3;
+  int32 progress_percent = 4;
+  google.protobuf.Timestamp last_updated = 5;
+}
+
+message GetJobDetailsRequest {
+  smidr.common.JobID job_id = 1;
+}
+
+message GetJobDetailsResponse {
+  Job job = 1;
+  repeated JobStateTransition state_history = 2;
+  repeated JobLogEntry recent_logs = 3;
+}
+
+message StreamJobLogsRequest {
+  smidr.common.JobID job_id = 1;
+  bool follow = 2; // Continue streaming until job completes
+  int64 since_timestamp = 3; // Unix timestamp
+}
+
+message JobLogEntry {
+  google.protobuf.Timestamp timestamp = 1;
+  string message = 2;
+  LogLevel level = 3;
+  string source = 4; // e.g., "agent", "executor", "plugin"
+}
+
+enum LogLevel {
+  LOG_LEVEL_UNSPECIFIED = 0;
+  LOG_LEVEL_DEBUG = 1;
+  LOG_LEVEL_INFO = 2;
+  LOG_LEVEL_WARNING = 3;
+  LOG_LEVEL_ERROR = 4;
+}
+
+message CancelJobRequest {
+  smidr.common.JobID job_id = 1;
+  string reason = 2;
+}
+
+message CancelJobResponse {
+  bool success = 1;
+  smidr.common.JobState current_state = 2;
+}
+
+message ListJobsRequest {
+  smidr.common.TenantID tenant_id = 1;
+  smidr.common.ProjectID project_id = 2; // Optional filter
+  repeated smidr.common.JobState states = 3; // Optional filter
+  int32 page_size = 4;
+  string page_token = 5;
+}
+
+message ListJobsResponse {
+  repeated Job jobs = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}

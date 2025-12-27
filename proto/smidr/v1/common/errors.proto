@@ -1,0 +1,4 @@
+syntax = "proto3";
+package smidr.common;
+
+option go_package = "github.com/schererja/smidr/agents/go/pkg/smidr/v1/common";

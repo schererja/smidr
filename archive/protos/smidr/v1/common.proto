@@ -13,9 +13,20 @@ enum BuildState {
   BUILD_STATE_FAILED = 6;
   BUILD_STATE_CANCELLED = 7;
 }
+message JobID {
+  string job_id = 1;
+}
 
-message BuildIdentifier {
+message TaskID {
+  string task_id = 1;
+}
+
+message BuildID {
   string build_id = 1;
+}
+
+message AgentID {
+  string agent_id = 1;
 }
 
 message TimeStampRange {

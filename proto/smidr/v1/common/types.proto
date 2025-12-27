@@ -1,0 +1,132 @@
+syntax = "proto3";
+
+package smidr.common;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/schererja/smidr/agents/go/pkg/smidr/v1/common";
+
+// ========================================
+// Core Identifiers
+// ========================================
+
+// Job unique identifier
+message JobID {
+  string value = 1; // UUID format recommended
+}
+
+// Agent unique identifier
+message AgentID {
+  string value = 1; // UUID format recommended
+}
+
+// Tenant unique identifier
+message TenantID {
+  string value = 1; // UUID format recommended
+}
+
+// Project unique identifier
+message ProjectID {
+  string value = 1; // UUID format recommended
+}
+
+// User unique identifier
+message UserID {
+  string value = 1; // UUID format recommended
+}
+
+// Artifact unique identifier
+message ArtifactID {
+  string value = 1; // UUID format recommended
+}
+
+// Policy unique identifier
+message PolicyID {
+  string value = 1; // UUID format recommended
+}
+
+// ========================================
+// Job State and Lifecycle
+// ========================================
+
+enum JobState {
+  JOB_STATE_UNSPECIFIED = 0;
+  JOB_STATE_SUBMITTED = 1; // Job created and accepted
+  JOB_STATE_QUEUED = 2; // Waiting for agent assignment
+  JOB_STATE_DISPATCHED = 3; // Assigned to agent
+  JOB_STATE_RUNNING = 4; // Executing on agent
+  JOB_STATE_SUCCEEDED = 5; // Completed successfully
+  JOB_STATE_FAILED = 6; // Completed with errors
+  JOB_STATE_CANCELLED = 7; // Cancelled by user or policy
+  JOB_STATE_TIMED_OUT = 8; // Exceeded execution timeout
+}
+
+// ========================================
+// Agent State
+// ========================================
+
+enum AgentState {
+  AGENT_STATE_UNSPECIFIED = 0;
+  AGENT_STATE_REGISTERING = 1; // Initial registration
+  AGENT_STATE_IDLE = 2; // Available for jobs
+  AGENT_STATE_BUSY = 3; // Executing jobs
+  AGENT_STATE_OFFLINE = 4; // Not responding to heartbeats
+  AGENT_STATE_DECOMMISSIONED = 5; // Removed from service
+}
+
+// ========================================
+// Resource Limits and Constraints
+// ========================================
+
+message ResourceLimits {
+  int64 cpu_millicores = 1; // CPU in millicores (1000 = 1 core)
+  int64 memory_bytes = 2; // Memory in bytes
+  int64 disk_bytes = 3; // Disk space in bytes
+  google.protobuf.Duration timeout = 4; // Maximum execution time
+}
+
+// ========================================
+// Platform and Capability
+// ========================================
+
+enum Platform {
+  PLATFORM_UNSPECIFIED = 0;
+  PLATFORM_LINUX = 1;
+  PLATFORM_WINDOWS = 2;
+  PLATFORM_MACOS = 3;
+}
+
+enum Architecture {
+  ARCHITECTURE_UNSPECIFIED = 0;
+  ARCHITECTURE_AMD64 = 1;
+  ARCHITECTURE_ARM64 = 2;
+  ARCHITECTURE_ARM = 3;
+}
+
+message AgentCapabilities {
+  Platform platform = 1;
+  Architecture architecture = 2;
+  repeated string features = 3; // e.g., "docker", "yocto", "cross-compile"
+  map<string, string> labels = 4; // Custom key-value pairs
+}
+
+// ========================================
+// Timestamps and Audit Trail
+// ========================================
+
+message AuditMetadata {
+  google.protobuf.Timestamp created_at = 1;
+  google.protobuf.Timestamp updated_at = 2;
+  UserID created_by_user_id = 3;
+  UserID updated_by_user_id = 4;
+}
+
+// ========================================
+// Generic Key-Value Metadata
+// ========================================
+
+message Metadata {
+  map<string, string> labels = 1;
+  map<string, string> annotations = 2;
+}

@@ -1,0 +1,13 @@
+syntax = "proto3";
+package smidr.common;
+
+import "smidr/v1/common/types.proto";
+
+option go_package = "github.com/schererja/smidr/agents/go/pkg/smidr/v1/common";
+
+// Deprecated: Use Job message from control_plane/job.proto instead
+message ExecutionContext {
+  JobID job_id = 1;
+  string task_id = 2;
+  string build_id = 3;
+}

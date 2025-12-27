@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package smidr.common;
+
+import "google/protobuf/duration.proto";
+import "smidr/v1/common/types.proto";
+
+option go_package = "github.com/schererja/smidr/agents/go/pkg/smidr/v1/common";
+
+// ========================================
+// Policy Types
+// ========================================
+
+// Execution policy defines constraints on how jobs can run
+message ExecutionPolicy {
+  repeated string allowed_job_types = 1;
+  ResourceLimits resource_limits = 2;
+  int32 max_concurrent_jobs = 3;
+  google.protobuf.Duration max_execution_time = 4;
+  repeated string required_agent_labels = 5;
+  bool allow_network_access = 6;
+  repeated string allowed_registries = 7; // For container pulls
+}
+
+// Agent policy defines what an agent can do
+message AgentPolicy {
+  repeated string allowed_job_types = 1;
+  int32 max_concurrent_jobs = 2;
+  repeated string required_capabilities = 3;
+  repeated Platform allowed_platforms = 4;
+  map<string, string> required_labels = 5;
+}
+
+// Artifact policy defines retention and promotion rules
+message ArtifactPolicy {
+  google.protobuf.Duration retention_duration = 1;
+  bool require_signing = 2;
+  repeated string promotion_stages = 3; // e.g., ["dev", "qa", "prod"]
+  bool auto_promote = 4;
+  repeated string allowed_artifact_types = 5;
+}
+
+// Security policy for authentication and authorization
+message SecurityPolicy {
+  bool require_mfa = 1;
+  bool require_approval = 2;
+  repeated smidr.common.UserID approver_user_ids = 3;
+  google.protobuf.Duration credential_ttl = 4;
+  repeated string allowed_secret_scopes = 5;
+}
+
+// Complete policy definition for a tenant or project
+message PolicySet {
+  smidr.common.PolicyID policy_id = 1;
+  string name = 2;
+  ExecutionPolicy execution = 3;
+  AgentPolicy agent = 4;
+  ArtifactPolicy artifact = 5;
+  SecurityPolicy security = 6;
+  AuditMetadata audit = 7;
+}
+
+// Policy evaluation result
+message PolicyDecision {
+  bool allowed = 1;
+  string reason = 2;
+  repeated string violations = 3;
+  map<string, string> applied_constraints = 4;
+}
