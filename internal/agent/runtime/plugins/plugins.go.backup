@@ -1,0 +1,116 @@
+package plugins
+
+import (
+	"context"
+	"fmt"
+	"os/exec"
+	"strings"
+	"time"
+
+	"github.com/intrik8-labs/smidr/internal/agent/job"
+	"github.com/intrik8-labs/smidr/internal/logging"
+)
+
+// Plugin defines the interface for job execution plugins
+type Plugin interface {
+	Execute(ctx context.Context, job job.Job) error
+}
+
+// BuildPlugin implements the Plugin interface for build jobs
+type BuildPlugin struct{}
+
+// NewBuildPlugin creates a new build plugin
+func NewBuildPlugin() *BuildPlugin {
+	return &BuildPlugin{}
+}
+
+// Execute runs the build job
+func (p *BuildPlugin) Execute(ctx context.Context, job job.Job) error {
+	log := logging.FromContext(ctx)
+
+	log.InfoContext(ctx, "executing build job",
+		logging.String("job_id", job.ID),
+		logging.String("target", job.Payload["target"].(string)),
+	)
+
+	// Simulate build by running a command (e.g., make build)
+	cmd := exec.CommandContext(ctx, "echo", "Building target:", job.Payload["target"].(string))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("build failed: %w, output: %s", err, string(output))
+	}
+
+	log.InfoContext(ctx, "build completed",
+		logging.String("job_id", job.ID),
+		logging.String("output", string(output)),
+	)
+
+	return nil
+}
+
+// YoctoPlugin implements the Plugin interface for Yocto builds
+type YoctoPlugin struct{}
+
+// NewYoctoPlugin creates a new Yocto plugin
+func NewYoctoPlugin() *YoctoPlugin {
+	return &YoctoPlugin{}
+}
+
+// Execute runs the Yocto build job
+func (p *YoctoPlugin) Execute(ctx context.Context, job job.Job) error {
+	log := logging.FromContext(ctx)
+
+	log.InfoContext(ctx, "executing Yocto build job",
+		logging.String("job_id", job.ID),
+	)
+
+	// Assume payload has "config" as YAML string
+	configYAML, ok := job.Payload["config"].(string)
+	if !ok {
+		return fmt.Errorf("missing config in payload")
+	}
+
+	// Parse the config (simplified)
+	log.InfoContext(ctx, "parsing Yocto config",
+		logging.String("job_id", job.ID),
+		logging.String("config_length", fmt.Sprintf("%d", len(configYAML))),
+	)
+
+	// Simulate Yocto build steps based on config
+	// In real implementation, this would use the daemon's build logic
+	log.InfoContext(ctx, "initializing build environment",
+		logging.String("job_id", job.ID),
+	)
+
+	// Simulate container setup
+	log.InfoContext(ctx, "setting up build container",
+		logging.String("job_id", job.ID),
+		logging.String("image", "crops/yocto:ubuntu-22.04-builder"),
+	)
+
+	// Simulate source fetching
+	log.InfoContext(ctx, "fetching sources",
+		logging.String("job_id", job.ID),
+	)
+
+	// Simulate bitbake execution
+	log.InfoContext(ctx, "running bitbake",
+		logging.String("job_id", job.ID),
+		logging.String("target", "core-image-weston"),
+	)
+
+	// Simulate build time
+	time.Sleep(2 * time.Second)
+
+	// Simulate artifact extraction
+	log.InfoContext(ctx, "extracting artifacts",
+		logging.String("job_id", job.ID),
+		logging.String("artifacts", strings.Join([]string{"*.wic", "*.tar.bz2"}, ", ")),
+	)
+
+	log.InfoContext(ctx, "Yocto build completed",
+		logging.String("job_id", job.ID),
+	)
+
+	return nil
+}

@@ -134,20 +134,31 @@ func (p *Poller) simulatePoll(ctx context.Context, req PollRequest) (*PollRespon
 	if len(p.jobQueue) < 5 { // Limit queue size for simulation
 		// Simple random: add if a random number is even
 		if time.Now().UnixNano()%2 == 0 {
+			pluginType := "yocto" // Force yocto for testing
+			payload := map[string]interface{}{
+				"config": `# Smidr Build Configuration
+name: my-embedded-project
+base:
+  provider: toradex
+  machine: verdin-imx8mp
+build:
+  image: core-image-weston
+`,
+			}
 			newJob := job.Job{
 				ID:              fmt.Sprintf("job-%d", time.Now().UnixNano()),
 				TenantID:        "tenant-abc",
 				ProjectID:       "project-xyz",
-				PluginType:      "build",
+				PluginType:      pluginType,
 				PluginVersion:   "1.0.0",
-				Payload:         map[string]interface{}{"target": "release"},
+				Payload:         payload,
 				ResourceLimits:  job.ResourceLimits{MaxCPU: 2.0, MaxMemory: 1024, MaxDisk: 2048},
 				TimeoutSeconds:  30, // Shorter for simulation
 				SubmissionTime:  time.Now().UTC(),
 				SubmittedByUser: "user@example.com",
 			}
 			p.jobQueue = append(p.jobQueue, newJob)
-			log.DebugContext(ctx, "added simulated job to queue", logging.String("job_id", newJob.ID))
+			log.DebugContext(ctx, "added simulated job to queue", logging.String("job_id", newJob.ID), logging.String("plugin_type", pluginType))
 		}
 	}
 

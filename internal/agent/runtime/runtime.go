@@ -8,6 +8,9 @@ import (
 	"github.com/intrik8-labs/smidr/internal/agent/config"
 	"github.com/intrik8-labs/smidr/internal/agent/job"
 	"github.com/intrik8-labs/smidr/internal/agent/runtime/plugins"
+	buildplugin "github.com/intrik8-labs/smidr/internal/agent/runtime/plugins/build"
+	monitorplugin "github.com/intrik8-labs/smidr/internal/agent/runtime/plugins/monitor"
+	yoctoplugin "github.com/intrik8-labs/smidr/internal/agent/runtime/plugins/yocto"
 	"github.com/intrik8-labs/smidr/internal/logging"
 )
 
@@ -38,10 +41,11 @@ func New(cfg *config.Config, log *logging.Logger) *Runtime {
 			AgentID:         cfg.AgentConfig.ID,
 			ControlPlaneURI: cfg.ControlPlane.URI,
 		}),
-		poller: NewPoller(cfg.AgentConfig.ID, cfg.ControlPlane.URI, 5, 1, []string{"build", "monitor"}), // Poll every 5s, max 1 job
+		poller: NewPoller(cfg.AgentConfig.ID, cfg.ControlPlane.URI, 5, 1, []string{"build", "monitor", "yocto"}), // Poll every 5s, max 1 job
 		plugins: map[string]plugins.Plugin{
-			"build":   plugins.NewBuildPlugin(),
-			"monitor": plugins.NewMonitorPlugin(),
+			"build":   buildplugin.NewBuildPlugin(),
+			"monitor": monitorplugin.NewMonitorPlugin(),
+			"yocto":   yoctoplugin.NewYoctoPlugin(),
 		},
 		activeJobs: 0,
 	}
