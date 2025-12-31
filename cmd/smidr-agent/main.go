@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/intrik8-labs/smidr/internal/cli"
 	"github.com/intrik8-labs/smidr/internal/logging"
@@ -19,6 +20,6 @@ func main() {
 	log := logging.FromContext(ctx)
 	err := cli.Execute(log)
 	if err != nil {
-		log.Error("Error running Smidr", err)
+		log.Error("Error running Smidr", slog.String("error", err.Error()))
 	}
 }

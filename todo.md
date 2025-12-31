@@ -110,3 +110,18 @@ This TODO list outlines the first set of tasks to get the **Smidr platform** up 
 - Focus first on the **core agent ↔ control plane communication** and job lifecycle.
 - Keep early jobs and plugins simple; the goal is to **prove the architecture works**.
 - Once foundational layers are solid, expand to **multi-tenant policies**, **artifact lineage**, and **frontend**.
+
+### Loop Diagram
+
+```plaintext
+startup
+ ├─ load config
+ ├─ detect capabilities
+ ├─ register
+ └─ loop
+     ├─ heartbeat
+     ├─ poll for job
+     ├─ execute job
+     ├─ stream logs
+     └─ report result
+```

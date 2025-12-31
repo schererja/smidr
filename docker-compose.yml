@@ -1,0 +1,53 @@
+services:
+  # LocalStack: Emulates AWS services (API Gateway, Lambda, DynamoDB, SQS, S3)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: smidr-localstack
+    ports:
+      - "4566:4566" # LocalStack edge endpoint (all services)
+      - "4571:4571" # Legacy port (if needed)
+    environment:
+      - DEBUG=1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - LOCALSTACK_LAMBDA_EXECUTOR=docker-reuse
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - SERVICES=apigateway,lambda,dynamodb,sqs,s3,logs,cloudwatch
+      - LAMBDA_EXECUTOR=docker
+      - LAMBDA_DOCKER_NETWORK=smidr-network
+    volumes:
+      - "localstack-data:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh"
+    networks:
+      - smidr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # DynamoDB Admin UI (optional, for debugging)
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin:latest
+    container_name: smidr-dynamodb-admin
+    ports:
+      - "8001:8001"
+    environment:
+      - DYNAMO_ENDPOINT=http://localstack:4566
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    depends_on:
+      localstack:
+        condition: service_healthy
+    networks:
+      - smidr-network
+
+volumes:
+  localstack-data:
+
+networks:
+  smidr-network:
+    driver: bridge

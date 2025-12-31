@@ -55,10 +55,12 @@ Defines the responsibilities of the serverless Control Plane (TypeScript/Lambda 
 
 ### Audit & Observability
 
-- Log all policy decisions, job state transitions, and agent interactions to CloudWatch
-- Provide metric data (job counts, execution times, error rates)
-- Enable tracing via CloudWatch Logs and optional X-Ray
-- Support tenant-scoped audit log retrieval via REST API
+- Accept log batches from agents via HTTP POST endpoint
+- Persist append-only logs to S3 (durable) with metadata index in DynamoDB
+- Support on-demand log streaming via Server-Sent Events (SSE) for real-time viewing
+- Provide metric data (job counts, execution times, error rates) from DynamoDB
+- Enable CloudWatch Logs for Control Plane internal tracing and optional X-Ray
+- Support tenant-scoped audit log retrieval via REST API (filtered by job_id, build_id, timestamp)
 
 ---
 
@@ -68,12 +70,15 @@ Defines the responsibilities of the serverless Control Plane (TypeScript/Lambda 
 - Host-level operations or sandboxing
 - Storing artifacts permanently (Artifact Store responsibility)
 - Interpreting or enforcing plugin-specific logic outside policies
+- **Real-time log streaming** (agents batch and push logs; on-demand SSE available but not default)
+- **Long-lived connections** (stateless HTTP only)
 
 ---
 
 ## Control Plane Metadata
 
 All metadata stored in DynamoDB on-demand:
+
 - Tenant and project definitions (tenant_id, project_id, policies, quotas)
 - Policy definitions per tenant/project (execution, agent, artifact, security)
 - Job records and state history (job_id, state transitions, assigned agent, result)
