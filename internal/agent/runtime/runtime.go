@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -50,12 +51,41 @@ func New(cfg *config.Config, log *logging.Logger) *Runtime {
 	}
 }
 
+func (r *Runtime) ensureDirectories(ctx context.Context) error {
+	log := logging.FromContext(ctx)
+
+	dirs := []string{
+		r.cfg.Runtime.WorkDir,
+	}
+
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.ErrorContext(ctx, "failed to create directory",
+				logging.String("path", dir),
+				logging.Err(err),
+			)
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
+		log.InfoContext(ctx, "ensured directory exists",
+			logging.String("path", dir),
+		)
+	}
+
+	return nil
+}
+
 func (r *Runtime) Start() error {
 	ctx := logging.WithExecutor(r.ctx, r.cfg.AgentConfig.ID)
 	r.log.InfoContext(ctx, "starting agent runtime",
 		logging.String("executor_id", r.cfg.AgentConfig.ID),
 		logging.String("control_plane", r.cfg.ControlPlane.URI),
 	)
+
+	// Ensure required directories exist
+	if err := r.ensureDirectories(ctx); err != nil {
+		r.log.ErrorContext(ctx, "failed to create required directories", logging.Err(err))
+		return err
+	}
 
 	// Register with control plane
 	if err := r.Register(ctx, r.cfg.AgentConfig.Demo); err != nil {
