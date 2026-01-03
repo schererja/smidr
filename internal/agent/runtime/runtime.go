@@ -2,14 +2,14 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/intrik8-labs/smidr/internal/agent/config"
 	"github.com/intrik8-labs/smidr/internal/agent/job"
 	"github.com/intrik8-labs/smidr/internal/agent/runtime/plugins"
-	buildplugin "github.com/intrik8-labs/smidr/internal/agent/runtime/plugins/build"
-	monitorplugin "github.com/intrik8-labs/smidr/internal/agent/runtime/plugins/monitor"
+	commandplugin "github.com/intrik8-labs/smidr/internal/agent/runtime/plugins/command"
 	yoctoplugin "github.com/intrik8-labs/smidr/internal/agent/runtime/plugins/yocto"
 	"github.com/intrik8-labs/smidr/internal/logging"
 )
@@ -19,7 +19,7 @@ type Runtime struct {
 	log       *logging.Logger
 	heartbeat *Heartbeat
 	poller    *Poller
-	plugins   map[string]plugins.Plugin
+	plugins   map[string]interface{}
 	// Add fields as necessary
 	activeJobs int
 	activeMu   sync.Mutex
@@ -40,11 +40,10 @@ func New(cfg *config.Config, log *logging.Logger) *Runtime {
 		heartbeat: NewHeartbeat(cfg.AgentConfig.HeartBeatInterval, &HeartbeatConfig{
 			AgentID:         cfg.AgentConfig.ID,
 			ControlPlaneURI: cfg.ControlPlane.URI,
-		}),
-		poller: NewPoller(cfg.AgentConfig.ID, cfg.ControlPlane.URI, 5, 1, []string{"build", "monitor", "yocto"}), // Poll every 5s, max 1 job
-		plugins: map[string]plugins.Plugin{
-			"build":   buildplugin.NewBuildPlugin(),
-			"monitor": monitorplugin.NewMonitorPlugin(),
+		}, cfg.AgentConfig.Demo),
+		poller: NewPoller(cfg.AgentConfig.ID, cfg.ControlPlane.URI, 5, 1, []string{"yocto", "command"}, cfg.AgentConfig.Demo),
+		plugins: map[string]interface{}{
+			"command": commandplugin.NewCommandPlugin(),
 			"yocto":   yoctoplugin.NewYoctoPlugin(),
 		},
 		activeJobs: 0,
@@ -59,7 +58,7 @@ func (r *Runtime) Start() error {
 	)
 
 	// Register with control plane
-	if err := r.Register(ctx); err != nil {
+	if err := r.Register(ctx, r.cfg.AgentConfig.Demo); err != nil {
 		r.log.ErrorContext(ctx, "failed to register with control plane", logging.Err(err))
 		return err
 	}
@@ -164,7 +163,7 @@ func (r *Runtime) runPoller(ctx context.Context) {
 }
 
 // executeJob simulates job execution
-func (r *Runtime) executeJob(ctx context.Context, job job.Job) {
+func (r *Runtime) executeJob(ctx context.Context, j job.Job) {
 	defer r.wg.Done()
 
 	log := logging.FromContext(ctx)
@@ -173,28 +172,74 @@ func (r *Runtime) executeJob(ctx context.Context, job job.Job) {
 	r.activeJobs++
 	r.activeMu.Unlock()
 
-	log.InfoContext(ctx, "job execution started", logging.String("job_id", job.ID))
+	log.InfoContext(ctx, "job execution started", logging.String("job_id", j.ID))
 
 	// Execute job using plugin
-	plugin, ok := r.plugins[job.PluginType]
+	plugin, ok := r.plugins[j.PluginType]
 	if !ok {
-		log.ErrorContext(ctx, "unsupported plugin type", logging.String("plugin_type", job.PluginType))
+		log.ErrorContext(ctx, "unsupported plugin type", logging.String("plugin_type", j.PluginType))
 		r.activeMu.Lock()
 		r.activeJobs--
 		r.activeMu.Unlock()
 		return
 	}
 
-	if err := plugin.Execute(ctx, job); err != nil {
-		log.ErrorContext(ctx, "job execution failed", logging.String("job_id", job.ID), logging.Err(err))
-		// Still report completion with failure status
-		if reportErr := r.poller.ReportJobCompletion(ctx, job.ID, "failed", err.Error(), []string{}); reportErr != nil {
-			log.ErrorContext(ctx, "failed to report job failure", logging.String("job_id", job.ID), logging.Err(reportErr))
+	// Execute based on plugin type with proper request unmarshaling
+	var response *job.JobResponse
+	var execErr error
+
+	switch j.PluginType {
+	case "yocto":
+		yoctoPlugin := plugin.(*yoctoplugin.YoctoPlugin)
+		var req plugins.YoctoBuildRequest
+		if unmarshalErr := j.UnmarshalRequest(&req); unmarshalErr != nil {
+			log.ErrorContext(ctx, "failed to unmarshal request", logging.String("job_id", j.ID), logging.Err(unmarshalErr))
+			execErr = unmarshalErr
+		} else {
+			response, execErr = yoctoPlugin.Execute(ctx, j, req)
+		}
+	case "command":
+		commandPlugin := plugin.(*commandplugin.CommandPlugin)
+		var req plugins.CommandRequest
+		if unmarshalErr := j.UnmarshalRequest(&req); unmarshalErr != nil {
+			log.ErrorContext(ctx, "failed to unmarshal request", logging.String("job_id", j.ID), logging.Err(unmarshalErr))
+			execErr = unmarshalErr
+		} else {
+			response, execErr = commandPlugin.Execute(ctx, j, req)
+		}
+	default:
+		execErr = fmt.Errorf("unsupported plugin type: %s", j.PluginType)
+	}
+
+	if execErr != nil {
+		log.ErrorContext(ctx, "job execution failed", logging.String("job_id", j.ID), logging.Err(execErr))
+		// Report failure using response if available
+		status := "failed"
+		message := execErr.Error()
+		artifacts := []string{}
+		if response != nil {
+			status = response.Status
+			message = response.Message
+			if response.ErrorMessage != "" {
+				message = response.ErrorMessage
+			}
+			artifacts = response.Artifacts
+		}
+		if reportErr := r.poller.ReportJobCompletion(ctx, j.ID, status, message, artifacts); reportErr != nil {
+			log.ErrorContext(ctx, "failed to report job failure", logging.String("job_id", j.ID), logging.Err(reportErr))
 		}
 	} else {
-		// Report completion
-		if err := r.poller.ReportJobCompletion(ctx, job.ID, "completed", "job executed successfully", []string{}); err != nil {
-			log.ErrorContext(ctx, "failed to report job completion", logging.String("job_id", job.ID), logging.Err(err))
+		// Report completion with response data
+		status := "completed"
+		message := "job executed successfully"
+		artifacts := []string{}
+		if response != nil {
+			status = response.Status
+			message = response.Message
+			artifacts = response.Artifacts
+		}
+		if err := r.poller.ReportJobCompletion(ctx, j.ID, status, message, artifacts); err != nil {
+			log.ErrorContext(ctx, "failed to report job completion", logging.String("job_id", j.ID), logging.Err(err))
 		}
 	}
 
@@ -202,5 +247,5 @@ func (r *Runtime) executeJob(ctx context.Context, job job.Job) {
 	r.activeJobs--
 	r.activeMu.Unlock()
 
-	log.InfoContext(ctx, "job execution completed", logging.String("job_id", job.ID))
+	log.InfoContext(ctx, "job execution completed", logging.String("job_id", j.ID))
 }

@@ -20,6 +20,7 @@ type Config struct {
 	JSON      bool // Always use JSON (recommended)
 	Output    io.Writer
 	AddSource bool
+	Pretty    bool // Pretty-print for development (ignored if JSON is false)
 }
 
 var (
@@ -47,7 +48,12 @@ func Init(cfg Config) {
 
 	var handler slog.Handler
 	if cfg.JSON {
-		handler = slog.NewJSONHandler(cfg.Output, opts)
+		if cfg.Pretty {
+			// Pretty JSON for development debugging
+			handler = NewPrettyHandler(cfg.Output, opts)
+		} else {
+			handler = slog.NewJSONHandler(cfg.Output, opts)
+		}
 	} else {
 		handler = slog.NewTextHandler(cfg.Output, opts)
 	}

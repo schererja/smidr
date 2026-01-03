@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/intrik8-labs/smidr/internal/cli"
+	"github.com/intrik8-labs/smidr/internal/agent/cli"
 	"github.com/intrik8-labs/smidr/internal/logging"
 )
 
@@ -12,8 +12,10 @@ func main() {
 	logging.Init(logging.Config{
 		Service:   "smidr-agent", // Binary name
 		Component: "executor",    // Component within binary
-		Level:     logging.LevelInfo,
+		Level:     logging.LevelDebug,
 		JSON:      true, // Always true for production
+		Pretty:    true, // Clean output for debugging
+		AddSource: true, // Set to true to see file:line info
 	})
 	ctx := context.Background()
 

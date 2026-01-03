@@ -1,4 +1,4 @@
-package root
+package cli
 
 import (
 	"context"
@@ -7,9 +7,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/intrik8-labs/smidr/internal/agent/config"
-	"github.com/intrik8-labs/smidr/internal/agent/runtime"
-	initcmd "github.com/intrik8-labs/smidr/internal/cli/init"
 	"github.com/intrik8-labs/smidr/internal/logging"
 
 	"github.com/spf13/cobra"
@@ -23,8 +20,8 @@ var (
 	added   bool
 )
 var rootCmd = &cobra.Command{
-	Use:   "smidr",
-	Short: "The digital forge for your embedded Linux builds",
+	Use:   "smidr-core",
+	Short: "The digital forge for your embedded Linux builds (core)",
 	Long: `Smidr is a command-line tool designed to streamline and enhance the process of building
 embedded Linux systems. It provides a comprehensive suite of features to manage configurations,
 dependencies, and build processes, making it easier for developers to create and maintain
@@ -34,27 +31,19 @@ custom Linux distributions for embedded devices.`,
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		cfg, err := config.LoadFromViper()
-		if err != nil {
-			return fmt.Errorf("failed to load configuration: %w", err)
-		}
-		ctx = logging.WithExecutor(ctx, cfg.AgentConfig.ID)
-		log.InfoContext(ctx, "agent starting up",
-			logging.String("executor_id", cfg.AgentConfig.ID),
-			logging.String("control_plane", cfg.ControlPlane.URI),
-			logging.String("config_file", viper.ConfigFileUsed()),
-		)
+		// cfg, err := config.LoadFromViper()
+		// if err != nil {
+		// 	return fmt.Errorf("failed to load configuration: %w", err)
+		// }
+		// ctx = logging.WithExecutor(ctx, cfg.AgentConfig.ID)
+
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-		// Create the runtime
-		rt := runtime.New(cfg, log)
+
 		// Start server in a goroutine
 		errCh := make(chan error, 1)
 		go func() {
-			// Start the runtime with configuration
-			if err := rt.Start(); err != nil {
-				errCh <- fmt.Errorf("failed to start runtime: %w", err)
-			}
+
 		}()
 
 		// Wait for shutdown signal or error
@@ -77,7 +66,7 @@ func Execute(logger *logging.Logger) error {
 	log = logger
 
 	if !added {
-		rootCmd.AddCommand(initcmd.New(log))
+		// rootCmd.AddCommand(initcmd.New(log))
 		added = true
 	}
 	if err := rootCmd.Execute(); err != nil {
@@ -108,7 +97,7 @@ func initConfig() {
 	} else {
 		viper.AddConfigPath(".")
 		viper.SetConfigType("yaml")
-		viper.SetConfigName("smidr")
+		viper.SetConfigName("smidr-core")
 	}
 	viper.SetEnvPrefix("SMIDR")
 	viper.AutomaticEnv()

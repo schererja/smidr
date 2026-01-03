@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/intrik8-labs/smidr/internal/agent/client"
 	"github.com/intrik8-labs/smidr/internal/agent/job"
 	"github.com/intrik8-labs/smidr/internal/logging"
 )
@@ -38,10 +39,12 @@ type Poller struct {
 	maxConcurrentJobs   int
 	supportedPlugins    []string
 	jobQueue            []job.Job // Simulated job queue
+	demoMode            bool
+	client              *client.Client
 }
 
 // NewPoller creates a new job poller
-func NewPoller(agentID, controlPlaneURI string, pollInterval, maxJobs int, supportedPlugins []string) *Poller {
+func NewPoller(agentID, controlPlaneURI string, pollInterval, maxJobs int, supportedPlugins []string, demoMode bool) *Poller {
 	return &Poller{
 		agentID:             agentID,
 		controlPlaneURI:     controlPlaneURI,
@@ -49,6 +52,8 @@ func NewPoller(agentID, controlPlaneURI string, pollInterval, maxJobs int, suppo
 		maxConcurrentJobs:   maxJobs,
 		supportedPlugins:    supportedPlugins,
 		jobQueue:            []job.Job{}, // Start with empty queue
+		demoMode:            demoMode,
+		client:              client.NewClient(controlPlaneURI),
 	}
 }
 
@@ -71,8 +76,8 @@ func (p *Poller) Poll(ctx context.Context, activeJobs int) ([]job.Job, error) {
 		AvailableCapacity: availableCapacity,
 		SupportedPlugins:  p.supportedPlugins,
 		AgentCapabilities: AgentCapabilities{
-			Architecture: "amd64", // TODO: Detect actual architecture
-			OS:           "linux", // TODO: Detect actual OS
+			Architecture: "amd64",
+			OS:           "linux",
 			MaxJobs:      p.maxConcurrentJobs,
 			Features: []string{
 				"docker",
@@ -84,37 +89,40 @@ func (p *Poller) Poll(ctx context.Context, activeJobs int) ([]job.Job, error) {
 	log.DebugContext(ctx, "polling for jobs",
 		logging.Int("available_capacity", availableCapacity),
 		logging.Int("supported_plugins", len(req.SupportedPlugins)),
+		logging.Bool("demo_mode", p.demoMode),
 	)
 
-	// TODO: Replace with real HTTP call to control plane
-	// Example:
-	// resp, err := http.Post(
-	//     p.controlPlaneURI + "/v1/agents/poll",
-	//     "application/json",
-	//     marshal(req),
-	// )
+	if p.demoMode {
+		// Simulate poll in demo mode
+		resp, err := p.simulatePoll(ctx, req)
+		if err != nil {
+			return nil, fmt.Errorf("poll failed: %w", err)
+		}
 
-	// Simulate poll (remove when control plane is ready)
-	resp, err := p.simulatePoll(ctx, req)
+		if len(resp.Jobs) > 0 {
+			log.InfoContext(ctx, "received jobs from control plane (demo mode)",
+				logging.Int("job_count", len(resp.Jobs)),
+			)
+		}
+
+		return resp.Jobs, nil
+	}
+
+	// Real poll from control plane
+	jobs, err := p.client.PollJobs(ctx, p.agentID)
 	if err != nil {
 		return nil, fmt.Errorf("poll failed: %w", err)
 	}
 
-	if len(resp.Jobs) > 0 {
+	if len(jobs) > 0 {
 		log.InfoContext(ctx, "received jobs from control plane",
-			logging.Int("job_count", len(resp.Jobs)),
+			logging.Int("job_count", len(jobs)),
 		)
-		for _, job := range resp.Jobs {
-			log.InfoContext(ctx, "job available",
-				logging.String("job_id", job.ID),
-				logging.String("plugin_type", job.PluginType),
-				logging.String("tenant_id", job.TenantID),
-				logging.Int("timeout_seconds", job.TimeoutSeconds),
-			)
-		}
 	}
 
-	return resp.Jobs, nil
+	// Convert interface{} jobs to job.Job (placeholder)
+	// TODO: Implement proper unmarshaling of job objects
+	return []job.Job{}, nil
 }
 
 // simulatePoll mocks the control plane response

@@ -5,20 +5,21 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/intrik8-labs/smidr/internal/agent/client"
 	"github.com/intrik8-labs/smidr/internal/logging"
 )
 
 // HeartbeatRequest represents the agent status sent to control plane
 type HeartbeatRequest struct {
-	AgentID   string        `json:"agent_id"`
-	Status    AgentStatus   `json:"status"`
+	AgentID   string         `json:"agent_id"`
+	Status    AgentStatus    `json:"status"`
 	Resources AgentResources `json:"resources"`
-	Timestamp time.Time     `json:"timestamp"`
+	Timestamp time.Time      `json:"timestamp"`
 }
 
 // AgentStatus represents current agent state
 type AgentStatus struct {
-	State      string `json:"state"`       // "idle", "busy", "draining"
+	State      string `json:"state"` // "idle", "busy", "draining"
 	ActiveJobs int    `json:"active_jobs"`
 	Uptime     int64  `json:"uptime_seconds"`
 }
@@ -42,6 +43,8 @@ type Heartbeat struct {
 	intervalSeconds int
 	startTime       time.Time
 	cfg             *HeartbeatConfig
+	demoMode        bool
+	client          *client.Client
 }
 
 // HeartbeatConfig holds heartbeat configuration
@@ -51,11 +54,13 @@ type HeartbeatConfig struct {
 }
 
 // NewHeartbeat creates a new heartbeat manager
-func NewHeartbeat(interval int, cfg *HeartbeatConfig) *Heartbeat {
+func NewHeartbeat(interval int, cfg *HeartbeatConfig, demoMode bool) *Heartbeat {
 	return &Heartbeat{
 		intervalSeconds: interval,
 		startTime:       time.Now(),
 		cfg:             cfg,
+		demoMode:        demoMode,
+		client:          client.NewClient(cfg.ControlPlaneURI),
 	}
 }
 
@@ -83,39 +88,29 @@ func (hb *Heartbeat) Send(ctx context.Context, activeJobs int) error {
 		logging.String("state", req.Status.State),
 		logging.Int("active_jobs", req.Status.ActiveJobs),
 		logging.Int64("uptime", req.Status.Uptime),
+		logging.Bool("demo_mode", hb.demoMode),
 	)
 
-	// TODO: Replace with real HTTP call to control plane
-	// Example:
-	// resp, err := r.httpClient.Post(
-	//     hb.cfg.ControlPlaneURI + "/v1/agents/heartbeat",
-	//     "application/json",
-	//     marshal(req),
-	// )
+	if hb.demoMode {
+		// Simulate heartbeat in demo mode
+		resp, err := hb.simulateHeartbeat(ctx, req)
+		if err != nil {
+			return fmt.Errorf("heartbeat failed: %w", err)
+		}
 
-	// Simulate heartbeat (remove when control plane is ready)
-	resp, err := hb.simulateHeartbeat(ctx, req)
-	if err != nil {
+		if resp.Acknowledged {
+			log.DebugContext(ctx, "heartbeat acknowledged (demo mode)")
+		}
+
+		return nil
+	}
+
+	// Real heartbeat to control plane
+	if err := hb.client.Heartbeat(ctx, hb.cfg.AgentID, req.Status.State); err != nil {
 		return fmt.Errorf("heartbeat failed: %w", err)
 	}
 
-	if !resp.Acknowledged {
-		log.WarnContext(ctx, "heartbeat not acknowledged by control plane")
-	} else {
-		log.InfoContext(ctx, "heartbeat sent",
-			logging.String("state", req.Status.State),
-			logging.Int("active_jobs", req.Status.ActiveJobs),
-			logging.Int64("uptime", req.Status.Uptime),
-		)
-	}
-
-	// Process any commands from control plane
-	if len(resp.Commands) > 0 {
-		log.InfoContext(ctx, "received commands from control plane",
-			logging.Int("command_count", len(resp.Commands)),
-		)
-		// TODO: Process commands
-	}
+	log.DebugContext(ctx, "heartbeat sent successfully")
 
 	return nil
 }
@@ -130,7 +125,7 @@ func (hb *Heartbeat) determineState(activeJobs int) string {
 
 // simulateHeartbeat mocks the control plane response
 // TODO: Remove this when control plane API is ready
-func (hb *Heartbeat) simulateHeartbeat(ctx context.Context, req HeartbeatRequest) (*HeartbeatResponse, error) {
+func (hb *Heartbeat) simulateHeartbeat(ctx context.Context, req HeartbeatRequest) (HeartbeatResponse, error) {
 	log := logging.FromContext(ctx)
 
 	log.DebugContext(ctx, "simulating control plane heartbeat acknowledgment",
@@ -141,10 +136,9 @@ func (hb *Heartbeat) simulateHeartbeat(ctx context.Context, req HeartbeatRequest
 	// Simulate network delay
 	time.Sleep(50 * time.Millisecond)
 
-	return &HeartbeatResponse{
+	return HeartbeatResponse{
 		Acknowledged: true,
 		Commands:     []string{}, // No commands in simulation
 		Timestamp:    time.Now().UTC(),
 	}, nil
 }
-
