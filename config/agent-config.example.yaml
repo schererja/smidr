@@ -1,11 +1,11 @@
 agent:
-  id: ""  # Will be set per-agent or auto-generated. Leave empty for auto-generation.
+  id: "agent-001"  # Unique agent identifier. Set per-agent or auto-generate via hostname
   # id_file: /etc/smidr/agent-id  # Optional: Read ID from file
   demo: false  # Set to true for demo mode (no real control plane connection)
   heartbeat_interval: 30  # Seconds between heartbeats to control plane
 
 control_plane:
-  uri: "http://smidr-server.ik8labs.local:8080"  # Control plane endpoint
+  uri: "http://192.168.1.202:8080"  # Control plane endpoint
 
 runtime:
   work_dir: /var/lib/smidr/work  # Working directory for jobs, builds, artifacts

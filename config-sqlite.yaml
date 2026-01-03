@@ -1,0 +1,24 @@
+# Smidr Core Configuration - SQLite Backend
+agent_server:
+  host: "0.0.0.0"
+  port: 8080
+
+web_server:
+  host: "0.0.0.0"
+  port: 8081
+
+# Use SQLite for persistent storage
+store:
+  type: "sqlite"
+  sqlite_path: "/tmp/smidr.db"
+
+database:
+  type: "postgres"
+  host: "localhost"
+  port: 5432
+  database: "smidr"
+  user: "smidr"
+  password: "changeme"
+  ssl_mode: "disable"
+
+log_level: "debug"

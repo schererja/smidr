@@ -1,0 +1,28 @@
+# Smidr Core Configuration
+# Agent-facing API server configuration
+agent_server:
+  host: "0.0.0.0"
+  port: 8080
+
+# Web-facing API server configuration (UI, CLI, external integrations)
+web_server:
+  host: "0.0.0.0"
+  port: 8081
+
+# Agent store configuration (memory or sqlite)
+store:
+  type: "memory"  # Options: memory, sqlite
+  # sqlite_path: "smidr.db"  # Uncomment and set path to use SQLite
+
+# Database configuration (for future use - jobs, audit logs, etc)
+database:
+  type: "postgres"
+  host: "localhost"
+  port: 5432
+  database: "smidr"
+  user: "smidr"
+  password: "changeme"
+  ssl_mode: "disable"
+
+# Logging level: debug, info, warn, error
+log_level: "debug"

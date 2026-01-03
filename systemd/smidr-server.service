@@ -4,8 +4,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=smidr
-Group=smidr
+User=ik8ladmin
+Group=ik8ladmin
 ExecStart=/opt/smidr/bin/smidr-server -config /etc/smidr/config-server.yaml
 Restart=always
 RestartSec=5
