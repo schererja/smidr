@@ -7,7 +7,7 @@ PKG_SERVER := ./cmd/smidr-core      # or your server package
 GOFLAGS :=
 LDFLAGS :=
 
-.PHONY: all build test lint clean agent server run-agent run-server deploy-agent
+.PHONY: all build test lint clean agent server run-agent run-server deploy-agent deploy-server
 
 all: build
 
@@ -44,6 +44,14 @@ deploy-agent: agent
 	scp config/agent-config.example.yaml ik8ladmin@smidr-server.ik8labs.local:/tmp/agent-config.yaml
 	scp systemd/smidr-agent.service ik8ladmin@smidr-server.ik8labs.local:/tmp/smidr-agent.service
 	ssh -t ik8ladmin@smidr-server.ik8labs.local 'sudo mv /tmp/agent-config.yaml /etc/smidr/config-agent.yaml && sudo mv /tmp/smidr-agent.service /etc/systemd/system/smidr-agent.service && sudo systemctl daemon-reload && sudo systemctl enable --now smidr-agent'
+
+## Deploy server (copy to remote and restart)
+deploy-server: server
+	ssh -t ik8ladmin@192.168.1.201 'sudo mkdir -p /opt/smidr/bin /etc/smidr /var/lib/smidr/data && sudo chown ik8ladmin:ik8ladmin /opt/smidr/bin && sudo chown ik8ladmin:ik8ladmin /var/lib/smidr/data'
+	scp $(SERVER_BIN) ik8ladmin@192.168.1.201:/opt/smidr/bin/smidr-server
+	scp config/server-config.example.yaml ik8ladmin@192.168.1.201:/tmp/server-config.yaml
+	scp systemd/smidr-server.service ik8ladmin@192.168.1.201:/tmp/smidr-server.service
+	ssh -t ik8ladmin@192.168.1.201 'sudo mv /tmp/server-config.yaml /etc/smidr/config-server.yaml && sudo mv /tmp/smidr-server.service /etc/systemd/system/smidr-server.service && sudo systemctl daemon-reload && sudo systemctl enable --now smidr-server'
 
 ## Clean
 clean:
