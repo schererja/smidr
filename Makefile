@@ -7,6 +7,12 @@ PKG_SERVER := ./cmd/smidr-core      # or your server package
 GOFLAGS :=
 LDFLAGS :=
 
+# Deployment configuration - can be overridden via `make deploy-agent AGENT_USER=user AGENT_HOST=host`
+AGENT_USER ?= ik8ladmin
+AGENT_HOST ?= smidr-server.ik8labs.local
+SERVER_USER ?= ik8ladmin
+SERVER_HOST ?= smidr-server-agent.ik8labs.local
+
 .PHONY: all build test lint clean agent server run-agent run-server deploy-agent deploy-server agent-linux server-linux build-linux
 
 all: build
@@ -53,19 +59,21 @@ run-server: server
 
 ## Deploy agent (copy to remote and restart)
 deploy-agent: agent-linux
-	ssh -t ik8ladmin@smidr-server.ik8labs.local 'sudo mkdir -p /opt/smidr/bin /etc/smidr /var/lib/smidr/work && sudo chown ik8ladmin:ik8ladmin /opt/smidr/bin && sudo chown ik8ladmin:ik8ladmin /var/lib/smidr/work'
-	scp $(LINUX_AGENT_BIN) ik8ladmin@smidr-server.ik8labs.local:/opt/smidr/bin/smidr-agent
-	scp config/agent-config.example.yaml ik8ladmin@smidr-server.ik8labs.local:/tmp/agent-config.yaml
-	scp systemd/smidr-agent.service ik8ladmin@smidr-server.ik8labs.local:/tmp/smidr-agent.service
-	ssh -t ik8ladmin@smidr-server.ik8labs.local 'sudo mv /tmp/agent-config.yaml /etc/smidr/config-agent.yaml && sudo mv /tmp/smidr-agent.service /etc/systemd/system/smidr-agent.service && sudo systemctl daemon-reload && sudo systemctl enable --now smidr-agent'
+	@echo "Deploying agent to $(AGENT_USER)@$(AGENT_HOST)..."
+	ssh -t $(AGENT_USER)@$(AGENT_HOST) 'sudo mkdir -p /opt/smidr/bin /etc/smidr /var/lib/smidr/work && sudo chown $(AGENT_USER):$(AGENT_USER) /opt/smidr/bin && sudo chown $(AGENT_USER):$(AGENT_USER) /var/lib/smidr/work'
+	scp $(LINUX_AGENT_BIN) $(AGENT_USER)@$(AGENT_HOST):/opt/smidr/bin/smidr-agent
+	scp config/agent-config.example.yaml $(AGENT_USER)@$(AGENT_HOST):/tmp/agent-config.yaml
+	scp systemd/smidr-agent.service $(AGENT_USER)@$(AGENT_HOST):/tmp/smidr-agent.service
+	ssh -t $(AGENT_USER)@$(AGENT_HOST) 'sudo mv /tmp/agent-config.yaml /etc/smidr/config-agent.yaml && sudo mv /tmp/smidr-agent.service /etc/systemd/system/smidr-agent.service && sudo systemctl daemon-reload && sudo systemctl enable --now smidr-agent'
 
 ## Deploy server (copy to remote and restart)
 deploy-server: server-linux
-	ssh -t ik8ladmin@192.168.1.202 'sudo mkdir -p /opt/smidr/bin /etc/smidr /var/lib/smidr/data && sudo chown ik8ladmin:ik8ladmin /opt/smidr/bin && sudo chown ik8ladmin:ik8ladmin /var/lib/smidr/data'
-	scp $(LINUX_SERVER_BIN) ik8ladmin@192.168.1.202:/tmp/smidr-server
-	scp config/server-config.example.yaml ik8ladmin@192.168.1.202:/tmp/server-config.yaml
-	scp systemd/smidr-server.service ik8ladmin@192.168.1.202:/tmp/smidr-server.service
-	ssh -t ik8ladmin@192.168.1.202 'sudo mv /tmp/smidr-server /opt/smidr/bin/smidr-server && sudo chmod +x /opt/smidr/bin/smidr-server && sudo mv /tmp/server-config.yaml /etc/smidr/config-server.yaml && sudo mv /tmp/smidr-server.service /etc/systemd/system/smidr-server.service && sudo systemctl daemon-reload && sudo systemctl enable --now smidr-server'
+	@echo "Deploying server to $(SERVER_USER)@$(SERVER_HOST)..."
+	ssh -t $(SERVER_USER)@$(SERVER_HOST) 'sudo mkdir -p /opt/smidr/bin /etc/smidr /var/lib/smidr/data && sudo chown $(SERVER_USER):$(SERVER_USER) /opt/smidr/bin && sudo chown $(SERVER_USER):$(SERVER_USER) /var/lib/smidr/data'
+	scp $(LINUX_SERVER_BIN) $(SERVER_USER)@$(SERVER_HOST):/tmp/smidr-server
+	scp config/server-config.example.yaml $(SERVER_USER)@$(SERVER_HOST):/tmp/server-config.yaml
+	scp systemd/smidr-server.service $(SERVER_USER)@$(SERVER_HOST):/tmp/smidr-server.service
+	ssh -t $(SERVER_USER)@$(SERVER_HOST) 'sudo mv /tmp/smidr-server /opt/smidr/bin/smidr-server && sudo chmod +x /opt/smidr/bin/smidr-server && sudo mv /tmp/server-config.yaml /etc/smidr/config-server.yaml && sudo mv /tmp/smidr-server.service /etc/systemd/system/smidr-server.service && sudo systemctl daemon-reload && sudo systemctl enable --now smidr-server'
 
 ## Clean
 clean:

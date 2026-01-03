@@ -48,6 +48,7 @@ func NewAgentServer(addr string, store registry.Store, logger *logging.Logger) *
 	s.router.Use(middleware.RealIP)
 	s.router.Use(middleware.Logger)
 	s.router.Use(middleware.Recoverer)
+	s.router.Use(CORSMiddleware)
 
 	// Routes
 	s.setupRoutes()
@@ -64,10 +65,19 @@ func NewAgentServer(addr string, store registry.Store, logger *logging.Logger) *
 }
 
 func (s *AgentServer) setupRoutes() {
+	// CORS preflight handler
+	corsHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}
+
 	s.router.Get("/health", s.healthCheck)
+	s.router.Options("/health", corsHandler)
 	s.router.Post("/api/v1/register", s.register)
+	s.router.Options("/api/v1/register", corsHandler)
 	s.router.Post("/api/v1/heartbeat", s.heartbeat)
+	s.router.Options("/api/v1/heartbeat", corsHandler)
 	s.router.Get("/api/v1/jobs/poll", s.pollJobs)
+	s.router.Options("/api/v1/jobs/poll", corsHandler)
 }
 
 func (s *AgentServer) healthCheck(w http.ResponseWriter, r *http.Request) {

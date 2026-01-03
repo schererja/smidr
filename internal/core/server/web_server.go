@@ -33,6 +33,7 @@ func NewWebServer(addr string, store registry.Store, logger *logging.Logger) *We
 	s.router.Use(middleware.RealIP)
 	s.router.Use(middleware.Logger)
 	s.router.Use(middleware.Recoverer)
+	s.router.Use(CORSMiddleware)
 
 	// Routes
 	s.setupRoutes()
@@ -49,16 +50,26 @@ func NewWebServer(addr string, store registry.Store, logger *logging.Logger) *We
 }
 
 func (s *WebServer) setupRoutes() {
+	// CORS preflight handler
+	corsHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}
+
 	s.router.Get("/health", s.healthCheck)
+	s.router.Options("/health", corsHandler)
 
 	// Agent management endpoints
 	s.router.Get("/api/v1/agents", s.listAgents)
+	s.router.Options("/api/v1/agents", corsHandler)
 	s.router.Get("/api/v1/agents/{agentID}", s.getAgent)
+	s.router.Options("/api/v1/agents/{agentID}", corsHandler)
 
 	// Job management endpoints
 	s.router.Get("/api/v1/jobs", s.listJobs)
+	s.router.Options("/api/v1/jobs", corsHandler)
 	s.router.Post("/api/v1/jobs", s.createJob)
 	s.router.Get("/api/v1/jobs/{jobID}", s.getJob)
+	s.router.Options("/api/v1/jobs/{jobID}", corsHandler)
 }
 
 func (s *WebServer) healthCheck(w http.ResponseWriter, r *http.Request) {
