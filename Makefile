@@ -39,8 +39,10 @@ run-server: server
 
 ## Deploy agent (copy to remote and restart)
 deploy-agent: agent
-	scp $(AGENT_BIN) user@agent-host:/opt/smidr/bin/smidr-agent
-	ssh user@agent-host 'sudo systemctl restart smidr-agent'
+	ssh -t ik8ladmin@smidr-server.ik8labs.local 'sudo mkdir -p /opt/smidr/bin && sudo chown ik8ladmin:ik8ladmin /opt/smidr/bin'
+	scp $(AGENT_BIN) ik8ladmin@smidr-server.ik8labs.local:/opt/smidr/bin/smidr-agent
+	scp systemd/smidr-agent.service ik8ladmin@smidr-server.ik8labs.local:/tmp/smidr-agent.service
+	ssh -t ik8ladmin@smidr-server.ik8labs.local 'sudo mv /tmp/smidr-agent.service /etc/systemd/system/smidr-agent.service && sudo systemctl daemon-reload && sudo systemctl enable --now smidr-agent'
 
 ## Clean
 clean:
