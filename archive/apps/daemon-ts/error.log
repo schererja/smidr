@@ -1,2 +1,0 @@
-{"error":{"code":"ENOENT","errno":-2,"path":"/Users/schererja/src/github.com/schererja/smidr/apps/daemon-ts/protos/smidr_service.proto","syscall":"open"},"level":"error","message":"Failed to start server","service":"smidr-daemon","timestamp":"2025-12-10T03:39:37.521Z"}
-{"error":{"code":"ENOENT","errno":-2,"path":"/Users/schererja/src/github.com/schererja/smidr/apps/protos/smidr/v1/smidr_service.proto","syscall":"open"},"level":"error","message":"Failed to start server","service":"smidr-daemon","timestamp":"2025-12-10T03:40:40.056Z"}

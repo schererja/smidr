@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package smidr.v1;
+import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1";
+
+service AgentService {
+  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+enum AgentStatus {
+  AGENT_STATUS_UNSPECIFIED = 0;
+  AGENT_STATUS_UNKNOWN = 1;
+  AGENT_STATUS_IDLE = 2;
+  AGENT_STATUS_BUSY = 3;
+  AGENT_STATUS_OFFLINE = 4;
+}
+
+message AgentID {
+  string agent_id = 1;
+}
+
+
+message RegisterAgentRequest{
+  AgentID agent_id = 1;
+  string host_name = 2;
+}
+
+message RegisterAgentResponse{
+  AgentID agent_id = 1;
+  bool success = 2;
+}
+
+message HeartbeatRequest {
+  AgentID agent_id = 1;
+  google.protobuf.Timestamp event_time = 2;
+  AgentStatus status = 3;
+  Metrics metrics = 4;
+  string version = 5;
+}
+message HeartbeatResponse{
+
+}
+
+
+message Metric {
+  string name = 1;
+  google.protobuf.Any value = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message Metrics {
+  repeated Metric metrics = 1;
+}

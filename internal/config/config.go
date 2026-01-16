@@ -8,7 +8,17 @@ import (
 )
 
 type Config struct {
-	AgentPort int
+	AgentConfig  AgentConfig `json:"agent_config" yaml:"agent_config"`
+	ServerConfig ServerConfig
+}
+type AgentConfig struct {
+	AgentID           string `json:"agent_id" yaml:"agent_id"`
+	HostName          string `json:"host_name" yaml:"host_name"`
+	HeartbeatInterval int    `json:"heartbeat_interval" yaml:"heartbeat_interval"`
+}
+
+type ServerConfig struct {
+	ServerAddress string `json:"server_address" yaml:"server_address"`
 }
 
 func Load(path string) (*Config, error) {
@@ -37,10 +47,15 @@ func LoadFromBytes(data []byte) (*Config, error) {
 
 	return &cfg, nil
 }
-
 func (c *Config) Validate() error {
-	if c.AgentPort <= 0 || c.AgentPort > 65535 {
-		return fmt.Errorf("agent port must be between 1 and 65535")
+	if c.AgentConfig.AgentID == "" {
+		return fmt.Errorf("agent_id is required")
+	}
+	if c.AgentConfig.HeartbeatInterval <= 0 {
+		return fmt.Errorf("heartbeat_interval must be greater than 0")
+	}
+	if c.ServerConfig.ServerAddress == "" {
+		return fmt.Errorf("server_address is required")
 	}
 	return nil
 }
