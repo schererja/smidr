@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package smidr.v1;
-import "google/protobuf/any.proto";
+import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/schererja/smidr/sdks/pkg/smidr-sdk/v1;smidrv1";
@@ -47,7 +47,7 @@ message HeartbeatResponse{
 
 message Metric {
   string name = 1;
-  google.protobuf.Any value = 2;
+  google.protobuf.Struct value = 2;
   google.protobuf.Timestamp timestamp = 3;
 }
 

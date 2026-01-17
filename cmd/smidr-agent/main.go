@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/schererja/smidr/internal/agent/metrics"
 	pb "github.com/schererja/smidr/pkg/smidr-sdk/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -37,64 +38,52 @@ func main() {
 }
 
 func sendHeartbeat(client pb.AgentServiceClient, agentID string) {
+	var lastLatency int64
 	for {
 		ctx := context.Background()
+		start := time.Now()
 		_, err := client.Heartbeat(ctx, &pb.HeartbeatRequest{
 			AgentId:   &pb.AgentID{AgentId: agentID},
 			EventTime: timestamppb.New(time.Now()),
 			Status:    pb.AgentStatus_AGENT_STATUS_IDLE,
-			Metrics:   getMetrics(),
+			Metrics:   getMetrics(lastLatency),
 			Version:   "v1.0.0",
 		})
+		lastLatency = time.Since(start).Milliseconds()
 		if err != nil {
 			log.Fatalf("failed to send heartbeat: %v", err)
+			lastLatency = -1
+		} else {
+			fmt.Printf("Heartbeat latency: %d ms\n", lastLatency)
+			fmt.Printf("Heartbeat sent successfully\n")
 		}
-		fmt.Printf("Heartbeat sent successfully\n")
 		time.Sleep(10 * time.Second)
 	}
 }
-func getCpuUsage() float64 {
-	// Placeholder for actual CPU usage retrieval logic
-	return 42.0
-}
 
-func getMemoryUsage() float64 {
-	// Placeholder for actual Memory usage retrieval logic
-	return 73.5
-}
-
-func getMetrics() *pb.Metrics {
+func getMetrics(lastLatency int64) *pb.Metrics {
 	return &pb.Metrics{
 		Metrics: []*pb.Metric{
 			{
 				Name:      "cpu_usage",
-				Value:     getCpuUsage(),
+				Value:     metrics.GetCpuUsage(),
 				Timestamp: timestamppb.New(time.Now()),
 			},
 			{
-				Name:      "memory_usage",
-				Value:     getMemoryUsage(),
+				Name:      "memory",
+				Value:     metrics.GetMemoryUsage(),
 				Timestamp: timestamppb.New(time.Now()),
 			},
 			{
 				Name:      "network_latency",
-				Value:     getNetworkLatency(),
+				Value:     metrics.GetNetworkLatency(lastLatency),
 				Timestamp: timestamppb.New(time.Now()),
 			},
 			{
 				Name:      "disk_usage",
-				Value:     getDiskUsage(),
+				Value:     metrics.GetDiskUsage(),
 				Timestamp: timestamppb.New(time.Now()),
 			},
 		},
 	}
-}
-
-func getNetworkLatency() float64 {
-	// Placeholder for actual Network Latency retrieval logic
-	return 15.3
-}
-func getDiskUsage() float64 {
-	// Placeholder for actual Disk Usage retrieval logic
-	return 58.2
 }
