@@ -18,7 +18,14 @@ type controlPlaneServer struct {
 	address    string
 	port       string
 	logger     *logger.Logger
+	agents     map[string]*AgentInfo // Store registered agents
 	pb.UnimplementedAgentServiceServer
+}
+
+type AgentInfo struct {
+	ID              string
+	Compatibilities []string
+	Status          string
 }
 
 func NewControlPlaneServer(serverConfig *config.ServerConfig, logger *logger.Logger) (*controlPlaneServer, error) {
@@ -29,18 +36,18 @@ func NewControlPlaneServer(serverConfig *config.ServerConfig, logger *logger.Log
 
 	grpcServer := grpc.NewServer()
 
-	// Register the service
-	pb.RegisterAgentServiceServer(grpcServer, &controlPlaneServer{
-		logger: logger,
-	})
-
 	cps := &controlPlaneServer{
 		grpcServer: grpcServer,
 		listener:   lis,
 		address:    serverConfig.Address,
 		port:       serverConfig.Port,
 		logger:     logger,
+		agents:     make(map[string]*AgentInfo),
 	}
+
+	// Register the service
+	pb.RegisterAgentServiceServer(grpcServer, cps)
+
 	return cps, nil
 }
 
@@ -56,11 +63,15 @@ func (s *controlPlaneServer) Start() error {
 func (s *controlPlaneServer) Connect(stream pb.AgentService_ConnectServer) error {
 
 	var agentID string
+	var agentInfo *AgentInfo
 
 	// Receive messages from agent
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
+			if agentID != "" {
+				delete(s.agents, agentID)
+			}
 			s.logger.Info("Agent disconnected", slog.String("agent_id", agentID))
 			return nil
 		}
@@ -71,8 +82,22 @@ func (s *controlPlaneServer) Connect(stream pb.AgentService_ConnectServer) error
 
 		// Handle different message types
 		switch payload := msg.Payload.(type) {
-		case *pb.AgentMessage_Heartbeat:
+		case *pb.AgentMessage_Register:
 			agentID = msg.AgentId
+			agentInfo = &AgentInfo{
+				ID:              agentID,
+				Compatibilities: payload.Register.Compatibilities,
+				Status:          "online",
+			}
+			s.agents[agentID] = agentInfo
+			s.logger.Info("Agent registered",
+				slog.String("agent_id", agentID),
+				slog.Any("compatibilities", agentInfo.Compatibilities))
+
+		case *pb.AgentMessage_Heartbeat:
+			if agentInfo != nil {
+				agentInfo.Status = payload.Heartbeat.Status
+			}
 			s.logger.Debug("Heartbeat received",
 				slog.String("agent_id", agentID),
 				slog.String("status", payload.Heartbeat.Status))

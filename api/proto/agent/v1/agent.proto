@@ -24,9 +24,14 @@ message AgentMessage {
   int64 timestamp = 2;        // When was this sent?
 
   oneof payload {
+    Register register = 9;          // "Here's what I can do"
     Heartbeat heartbeat = 10;       // "I'm alive"
     TaskResult task_result = 11;    // "Task done, here's the result"
   }
+}
+
+message Register {
+  repeated string compatibilities = 1;  // List of capabilities (e.g., ["shell", "docker", "bitbake"])
 }
 
 message Heartbeat {

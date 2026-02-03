@@ -37,6 +37,21 @@ func (a *Agent) Start() error {
 
 	agentID := "agent" + time.Now().Format("20060102150405")
 
+	// Send registration with compatibilities
+	err = stream.Send(&pb.AgentMessage{
+		AgentId:   agentID,
+		Timestamp: time.Now().UnixMilli(),
+		Payload: &pb.AgentMessage_Register{
+			Register: &pb.Register{
+				Compatibilities: []string{"shell", "docker"},
+			},
+		},
+	})
+	if err != nil {
+		log.Fatalf("Failed to send registration: %v", err)
+	}
+	log.Printf("Registered agent %s with compatibilities: [shell, docker]", agentID)
+
 	// Send heartbeats
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)

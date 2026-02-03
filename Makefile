@@ -12,7 +12,7 @@ proto-gen:
 
 build-control-plane: proto-gen
 	@mkdir -p bin
-	go build -o bin/control-plane ./cmd/control-plane
+	go build -o bin/controlplane ./cmd/controlplane
 
 build-agent: proto-gen
 	@mkdir -p bin
@@ -21,7 +21,7 @@ build-agent: proto-gen
 build: build-control-plane build-agent
 
 run-control-plane: proto-gen
-	go run ./cmd/control-plane
+	go run ./cmd/controlplane
 
 run-agent: proto-gen
 	go run ./cmd/agent

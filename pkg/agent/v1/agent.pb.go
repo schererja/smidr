@@ -27,6 +27,7 @@ type AgentMessage struct {
 	Timestamp int64                  `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`           // When was this sent?
 	// Types that are valid to be assigned to Payload:
 	//
+	//	*AgentMessage_Register
 	//	*AgentMessage_Heartbeat
 	//	*AgentMessage_TaskResult
 	Payload       isAgentMessage_Payload `protobuf_oneof:"payload"`
@@ -85,6 +86,15 @@ func (x *AgentMessage) GetPayload() isAgentMessage_Payload {
 	return nil
 }
 
+func (x *AgentMessage) GetRegister() *Register {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentMessage_Register); ok {
+			return x.Register
+		}
+	}
+	return nil
+}
+
 func (x *AgentMessage) GetHeartbeat() *Heartbeat {
 	if x != nil {
 		if x, ok := x.Payload.(*AgentMessage_Heartbeat); ok {
@@ -107,6 +117,10 @@ type isAgentMessage_Payload interface {
 	isAgentMessage_Payload()
 }
 
+type AgentMessage_Register struct {
+	Register *Register `protobuf:"bytes,9,opt,name=register,proto3,oneof"` // "Here's what I can do"
+}
+
 type AgentMessage_Heartbeat struct {
 	Heartbeat *Heartbeat `protobuf:"bytes,10,opt,name=heartbeat,proto3,oneof"` // "I'm alive"
 }
@@ -115,9 +129,55 @@ type AgentMessage_TaskResult struct {
 	TaskResult *TaskResult `protobuf:"bytes,11,opt,name=task_result,json=taskResult,proto3,oneof"` // "Task done, here's the result"
 }
 
+func (*AgentMessage_Register) isAgentMessage_Payload() {}
+
 func (*AgentMessage_Heartbeat) isAgentMessage_Payload() {}
 
 func (*AgentMessage_TaskResult) isAgentMessage_Payload() {}
+
+type Register struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Compatibilities []string               `protobuf:"bytes,1,rep,name=compatibilities,proto3" json:"compatibilities,omitempty"` // List of capabilities (e.g., ["shell", "docker", "bitbake"])
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *Register) Reset() {
+	*x = Register{}
+	mi := &file_agent_v1_agent_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Register) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Register) ProtoMessage() {}
+
+func (x *Register) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1_agent_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Register.ProtoReflect.Descriptor instead.
+func (*Register) Descriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Register) GetCompatibilities() []string {
+	if x != nil {
+		return x.Compatibilities
+	}
+	return nil
+}
 
 type Heartbeat struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -128,7 +188,7 @@ type Heartbeat struct {
 
 func (x *Heartbeat) Reset() {
 	*x = Heartbeat{}
-	mi := &file_agent_v1_agent_proto_msgTypes[1]
+	mi := &file_agent_v1_agent_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -140,7 +200,7 @@ func (x *Heartbeat) String() string {
 func (*Heartbeat) ProtoMessage() {}
 
 func (x *Heartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_v1_agent_proto_msgTypes[1]
+	mi := &file_agent_v1_agent_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -153,7 +213,7 @@ func (x *Heartbeat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
 func (*Heartbeat) Descriptor() ([]byte, []int) {
-	return file_agent_v1_agent_proto_rawDescGZIP(), []int{1}
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Heartbeat) GetStatus() string {
@@ -175,7 +235,7 @@ type TaskResult struct {
 
 func (x *TaskResult) Reset() {
 	*x = TaskResult{}
-	mi := &file_agent_v1_agent_proto_msgTypes[2]
+	mi := &file_agent_v1_agent_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -187,7 +247,7 @@ func (x *TaskResult) String() string {
 func (*TaskResult) ProtoMessage() {}
 
 func (x *TaskResult) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_v1_agent_proto_msgTypes[2]
+	mi := &file_agent_v1_agent_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -200,7 +260,7 @@ func (x *TaskResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskResult.ProtoReflect.Descriptor instead.
 func (*TaskResult) Descriptor() ([]byte, []int) {
-	return file_agent_v1_agent_proto_rawDescGZIP(), []int{2}
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *TaskResult) GetTaskId() string {
@@ -245,7 +305,7 @@ type ControlPlaneMessage struct {
 
 func (x *ControlPlaneMessage) Reset() {
 	*x = ControlPlaneMessage{}
-	mi := &file_agent_v1_agent_proto_msgTypes[3]
+	mi := &file_agent_v1_agent_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -257,7 +317,7 @@ func (x *ControlPlaneMessage) String() string {
 func (*ControlPlaneMessage) ProtoMessage() {}
 
 func (x *ControlPlaneMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_v1_agent_proto_msgTypes[3]
+	mi := &file_agent_v1_agent_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -270,7 +330,7 @@ func (x *ControlPlaneMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ControlPlaneMessage.ProtoReflect.Descriptor instead.
 func (*ControlPlaneMessage) Descriptor() ([]byte, []int) {
-	return file_agent_v1_agent_proto_rawDescGZIP(), []int{3}
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ControlPlaneMessage) GetMessageId() string {
@@ -324,7 +384,7 @@ type Task struct {
 
 func (x *Task) Reset() {
 	*x = Task{}
-	mi := &file_agent_v1_agent_proto_msgTypes[4]
+	mi := &file_agent_v1_agent_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -336,7 +396,7 @@ func (x *Task) String() string {
 func (*Task) ProtoMessage() {}
 
 func (x *Task) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_v1_agent_proto_msgTypes[4]
+	mi := &file_agent_v1_agent_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -349,7 +409,7 @@ func (x *Task) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Task.ProtoReflect.Descriptor instead.
 func (*Task) Descriptor() ([]byte, []int) {
-	return file_agent_v1_agent_proto_rawDescGZIP(), []int{4}
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Task) GetTaskId() string {
@@ -377,15 +437,18 @@ var File_agent_v1_agent_proto protoreflect.FileDescriptor
 
 const file_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x14agent/v1/agent.proto\x12\x0esmidr.agent.v1\"\xcc\x01\n" +
+	"\x14agent/v1/agent.proto\x12\x0esmidr.agent.v1\"\x84\x02\n" +
 	"\fAgentMessage\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x1c\n" +
-	"\ttimestamp\x18\x02 \x01(\x03R\ttimestamp\x129\n" +
+	"\ttimestamp\x18\x02 \x01(\x03R\ttimestamp\x126\n" +
+	"\bregister\x18\t \x01(\v2\x18.smidr.agent.v1.RegisterH\x00R\bregister\x129\n" +
 	"\theartbeat\x18\n" +
 	" \x01(\v2\x19.smidr.agent.v1.HeartbeatH\x00R\theartbeat\x12=\n" +
 	"\vtask_result\x18\v \x01(\v2\x1a.smidr.agent.v1.TaskResultH\x00R\n" +
 	"taskResultB\t\n" +
-	"\apayload\"#\n" +
+	"\apayload\"4\n" +
+	"\bRegister\x12(\n" +
+	"\x0fcompatibilities\x18\x01 \x03(\tR\x0fcompatibilities\"#\n" +
 	"\tHeartbeat\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\"m\n" +
 	"\n" +
@@ -420,25 +483,27 @@ func file_agent_v1_agent_proto_rawDescGZIP() []byte {
 	return file_agent_v1_agent_proto_rawDescData
 }
 
-var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_agent_v1_agent_proto_goTypes = []any{
 	(*AgentMessage)(nil),        // 0: smidr.agent.v1.AgentMessage
-	(*Heartbeat)(nil),           // 1: smidr.agent.v1.Heartbeat
-	(*TaskResult)(nil),          // 2: smidr.agent.v1.TaskResult
-	(*ControlPlaneMessage)(nil), // 3: smidr.agent.v1.ControlPlaneMessage
-	(*Task)(nil),                // 4: smidr.agent.v1.Task
+	(*Register)(nil),            // 1: smidr.agent.v1.Register
+	(*Heartbeat)(nil),           // 2: smidr.agent.v1.Heartbeat
+	(*TaskResult)(nil),          // 3: smidr.agent.v1.TaskResult
+	(*ControlPlaneMessage)(nil), // 4: smidr.agent.v1.ControlPlaneMessage
+	(*Task)(nil),                // 5: smidr.agent.v1.Task
 }
 var file_agent_v1_agent_proto_depIdxs = []int32{
-	1, // 0: smidr.agent.v1.AgentMessage.heartbeat:type_name -> smidr.agent.v1.Heartbeat
-	2, // 1: smidr.agent.v1.AgentMessage.task_result:type_name -> smidr.agent.v1.TaskResult
-	4, // 2: smidr.agent.v1.ControlPlaneMessage.task:type_name -> smidr.agent.v1.Task
-	0, // 3: smidr.agent.v1.AgentService.Connect:input_type -> smidr.agent.v1.AgentMessage
-	3, // 4: smidr.agent.v1.AgentService.Connect:output_type -> smidr.agent.v1.ControlPlaneMessage
-	4, // [4:5] is the sub-list for method output_type
-	3, // [3:4] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	1, // 0: smidr.agent.v1.AgentMessage.register:type_name -> smidr.agent.v1.Register
+	2, // 1: smidr.agent.v1.AgentMessage.heartbeat:type_name -> smidr.agent.v1.Heartbeat
+	3, // 2: smidr.agent.v1.AgentMessage.task_result:type_name -> smidr.agent.v1.TaskResult
+	5, // 3: smidr.agent.v1.ControlPlaneMessage.task:type_name -> smidr.agent.v1.Task
+	0, // 4: smidr.agent.v1.AgentService.Connect:input_type -> smidr.agent.v1.AgentMessage
+	4, // 5: smidr.agent.v1.AgentService.Connect:output_type -> smidr.agent.v1.ControlPlaneMessage
+	5, // [5:6] is the sub-list for method output_type
+	4, // [4:5] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_agent_v1_agent_proto_init() }
@@ -447,10 +512,11 @@ func file_agent_v1_agent_proto_init() {
 		return
 	}
 	file_agent_v1_agent_proto_msgTypes[0].OneofWrappers = []any{
+		(*AgentMessage_Register)(nil),
 		(*AgentMessage_Heartbeat)(nil),
 		(*AgentMessage_TaskResult)(nil),
 	}
-	file_agent_v1_agent_proto_msgTypes[3].OneofWrappers = []any{
+	file_agent_v1_agent_proto_msgTypes[4].OneofWrappers = []any{
 		(*ControlPlaneMessage_Task)(nil),
 	}
 	type x struct{}
@@ -459,7 +525,7 @@ func file_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_v1_agent_proto_rawDesc), len(file_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
