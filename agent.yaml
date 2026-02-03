@@ -1,0 +1,6 @@
+name: my-smidr-project
+description: "Smidr Agent"
+version: "0.1.0"
+agentConfig:
+  listenAddress: "0.0.0.0:50052"
+  controlPlaneAddress: "localhost:50053"

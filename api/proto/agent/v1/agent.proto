@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package smidr.agent.v1;
+
+option go_package = "github.com/yourusername/smidr/proto/agent/v1;agentv1";
+
+// ============================================================================
+// SERVICE: What control plane offers, what agent calls
+// ============================================================================
+
+service AgentService {
+  // Agent connects and keeps connection open
+  // Agent sends heartbeats and task results
+  // Control plane sends tasks
+  rpc Connect(stream AgentMessage) returns (stream ControlPlaneMessage);
+}
+
+// ============================================================================
+// AGENT SENDS THESE TO CONTROL PLANE
+// ============================================================================
+
+message AgentMessage {
+  string agent_id = 1;        // Who is sending this?
+  int64 timestamp = 2;        // When was this sent?
+
+  oneof payload {
+    Heartbeat heartbeat = 10;       // "I'm alive"
+    TaskResult task_result = 11;    // "Task done, here's the result"
+  }
+}
+
+message Heartbeat {
+  string status = 1;          // "online", "busy", "idle"
+}
+
+message TaskResult {
+  string task_id = 1;         // Which task is this for?
+  bool success = 2;           // Did it work?
+  string output = 3;          // What was the output?
+  string error = 4;           // What was the error (if any)?
+}
+
+// ============================================================================
+// CONTROL PLANE SENDS THESE TO AGENT
+// ============================================================================
+
+message ControlPlaneMessage {
+  string message_id = 1;      // Unique message ID
+  int64 timestamp = 2;        // When was this sent?
+
+  oneof payload {
+    Task task = 10;           // "Do this work"
+  }
+}
+
+message Task {
+  string task_id = 1;         // Unique task ID
+  string command = 2;         // What to run (e.g., "whoami")
+  int32 timeout_seconds = 3;  // Max time to run (0 = no limit)
+}
