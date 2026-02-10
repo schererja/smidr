@@ -1,0 +1,24 @@
+{
+  "universe_usage_history": [
+    {
+      "assignment_id": "2026-02-10T19:54:23-smidr",
+      "universe": "Alien",
+      "timestamp": "2026-02-10T19:54:23Z"
+    }
+  ],
+  "assignment_cast_snapshots": {
+    "2026-02-10T19:54:23-smidr": {
+      "universe": "Alien",
+      "agent_map": {
+        "ripley": "Ripley",
+        "kane": "Kane",
+        "dallas": "Dallas",
+        "ash": "Ash",
+        "lambert": "Lambert",
+        "parker": "Parker",
+        "brett": "Brett"
+      },
+      "created_at": "2026-02-10T19:54:23Z"
+    }
+  }
+}
