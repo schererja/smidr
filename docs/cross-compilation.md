@@ -1,5 +1,7 @@
 # Cross-Compilation Guide
 
+Smidr is the build/agent + control-plane component of the larger Yggdrasil project. This repository will evolve into Yggdrasil; other Norse‑named components and the business application layer (C# WebAPI + Next.js) are planned to live alongside Smidr in the same repo and integrate via internal APIs.
+
 ## Overview
 
 Smidr uses SQLite for build persistence, which requires CGO. Cross-compiling with CGO is more complex than pure Go builds.

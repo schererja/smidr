@@ -1,5 +1,7 @@
 # Smidr MVP - TODO List
 
+Smidr is the build/agent + control-plane component of the larger Yggdrasil project. This repository will evolve into Yggdrasil; other Norse‑named components and the business application layer (C# WebAPI + Next.js) are planned to live alongside Smidr in the same repo and integrate via internal APIs.
+
 ## Daemon (gRPC) – Initial Interface Priorities
 
 Tracked priorities for making the daemon interface production‑ready. Items reflect current status and next concrete steps.
@@ -11,7 +13,7 @@ Tracked priorities for making the daemon interface production‑ready. Items ref
     - [ ] Include size (from metadata) and checksum (compute on demand or precompute)
     - [ ] Error handling for non‑completed builds and missing artifact sets
   - [ ] CLI: add download support (DownloadArtifact RPC) and `smidr client download`
-  - [ ] Web UI: add download links once RPC is available
+  - [ ] Yggdrasil web application: add download links once RPC is available
 
 - [ ] Priority 2: Improve Build Cancellation
   - [ ] Ensure context cancellation fully propagates through Runner and bitbake executor
@@ -34,7 +36,7 @@ Tracked priorities for making the daemon interface production‑ready. Items ref
 - [ ] Concurrent build queue with max‑parallel limit and fair scheduling
 - [ ] Health/metrics endpoints (gRPC health; Prometheus metrics)
 - [ ] Retention policy in daemon for artifact store (reuse artifacts package policies)
-- [ ] Better error surfaces and log categorization in client and Web UI
+  - [ ] Better error surfaces and log categorization in client and Yggdrasil web application
 
 ## Phase 1: Project Setup & Foundation
 
@@ -152,7 +154,7 @@ Tracked priorities for making the daemon interface production‑ready. Items ref
 
 ## Future Enhancements (Post-MVP)
 
-- [ ] Web UI for build management
+- [ ] Yggdrasil web application for build management
 - [ ] Advanced caching strategies (deduplication, compression)
 - [ ] CI/CD integration for automated builds
 - [ ] Support for additional BSPs and vendors

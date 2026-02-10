@@ -10,4 +10,5 @@ type Config struct {
 type AgentConfig struct {
 	ListenAddress       string `mapstructure:"listenAddress"`
 	ControlPlaneAddress string `mapstructure:"controlPlaneAddress"`
+	PluginsDirectory    string `mapstructure:"pluginsDirectory"`
 }

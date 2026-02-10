@@ -1,5 +1,7 @@
 # Concurrent BitBake Builds with Shared Caches
 
+Smidr is the build/agent + control-plane component of the larger Yggdrasil project. This repository will evolve into Yggdrasil; other Norse‑named components and the business application layer (C# WebAPI + Next.js) are planned to live alongside Smidr in the same repo and integrate via internal APIs.
+
 Smidr is designed from the ground up to support **multiple concurrent BitBake builds** while **maximizing disk efficiency** through shared caches. This document explains how it works and how to configure it correctly.
 
 ---

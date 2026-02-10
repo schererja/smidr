@@ -1,6 +1,8 @@
 # Smidr Daemon (gRPC Server)
 
-The Smidr daemon is a planned gRPC service that exposes Smidr’s build orchestration and artifact management over a network API. This enables remote automation, CI/CD integration, and future web UI clients.
+Smidr is the build/agent + control-plane component of the larger Yggdrasil project. This repository will evolve into Yggdrasil; other Norse‑named components and the business application layer (C# WebAPI + Next.js) are planned to live alongside Smidr in the same repo and integrate via internal APIs.
+
+The Smidr daemon is a planned gRPC service that exposes Smidr’s build orchestration and artifact management over a network API. This enables remote automation, CI/CD integration, and the Yggdrasil business application (C# WebAPI + Next.js) to consume Smidr capabilities.
 
 ## Overview
 
@@ -50,4 +52,4 @@ smidr client build --target core-image-minimal --follow
 ## Roadmap
 
 - Initial release: local builds, log streaming, artifact listing
-- Future: remote layer management, build queueing, user authentication, web UI integration
+- Future: remote layer management, build queueing, user authentication, Yggdrasil web application integration

@@ -182,3 +182,14 @@ func (l *Logger) With(attrs ...slog.Attr) *Logger {
 	}
 	return &Logger{Logger: l.Logger.With(args...)}
 }
+
+// WithComponent creates a new Logger with a component attribute for consistent scoping.
+func (l *Logger) WithComponent(component string) *Logger {
+	if l == nil || l.Logger == nil {
+		return nil
+	}
+	if component == "" {
+		return l
+	}
+	return l.With(slog.String("component", component))
+}

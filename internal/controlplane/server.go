@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"sync"
 
 	config "github.com/schererja/smidr/internal/config/controlplane"
 	pb "github.com/schererja/smidr/pkg/agent/v1"
@@ -19,6 +20,7 @@ type controlPlaneServer struct {
 	port       string
 	logger     *logger.Logger
 	agents     map[string]*AgentInfo // Store registered agents
+	agentsMu   sync.RWMutex
 	pb.UnimplementedAgentServiceServer
 }
 
@@ -70,7 +72,9 @@ func (s *controlPlaneServer) Connect(stream pb.AgentService_ConnectServer) error
 		msg, err := stream.Recv()
 		if err == io.EOF {
 			if agentID != "" {
+				s.agentsMu.Lock()
 				delete(s.agents, agentID)
+				s.agentsMu.Unlock()
 			}
 			s.logger.Info("Agent disconnected", slog.String("agent_id", agentID))
 			return nil
@@ -89,14 +93,18 @@ func (s *controlPlaneServer) Connect(stream pb.AgentService_ConnectServer) error
 				Compatibilities: payload.Register.Compatibilities,
 				Status:          "online",
 			}
+			s.agentsMu.Lock()
 			s.agents[agentID] = agentInfo
+			s.agentsMu.Unlock()
 			s.logger.Info("Agent registered",
 				slog.String("agent_id", agentID),
 				slog.Any("compatibilities", agentInfo.Compatibilities))
 
 		case *pb.AgentMessage_Heartbeat:
 			if agentInfo != nil {
+				s.agentsMu.Lock()
 				agentInfo.Status = payload.Heartbeat.Status
+				s.agentsMu.Unlock()
 			}
 			s.logger.Debug("Heartbeat received",
 				slog.String("agent_id", agentID),

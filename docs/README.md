@@ -1,6 +1,6 @@
 # Documentation
 
-Smidr streamlines Yocto/BitBake builds with containerized execution, shared caches, and clear configuration.
+Smidr is the build/agent + control-plane component of the larger Yggdrasil project. This repository will evolve into Yggdrasil; other Norse‑named components and the business application layer (C# WebAPI + Next.js) are planned to live alongside Smidr in the same repo and integrate via internal APIs.
 
 ## Key topics
 
@@ -27,6 +27,8 @@ Smidr streamlines Yocto/BitBake builds with containerized execution, shared cach
 
 ## References
 
+- [Architecture Overview](architecture/README.md)
+- [Plugin Architecture](architecture/plugin-architecture.md)
 - [Cache & Source Management](cache.md)
 - [Concurrent Builds](concurrent-builds.md) — Running multiple builds with shared caches
 - [Container Backend Design](container-backend-design.md)

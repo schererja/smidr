@@ -21,6 +21,7 @@ func NewAgent(config *config.AgentConfig) *Agent {
 	}
 }
 func (a *Agent) Start() error {
+	// Initialize and gather plugins from PluginsDirectory
 
 	// Start agent logic
 	userConn, err := grpc.Dial(a.agentConfig.ControlPlaneAddress, grpc.WithInsecure())

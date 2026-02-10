@@ -1,5 +1,7 @@
 # Troubleshooting
 
+Smidr is the build/agent + control-plane component of the larger Yggdrasil project. This repository will evolve into Yggdrasil; other Norse‑named components and the business application layer (C# WebAPI + Next.js) are planned to live alongside Smidr in the same repo and integrate via internal APIs.
+
 Common issues and how to resolve them when using Smidr with Yocto/BitBake.
 
 ## Duplicate BBFILE_COLLECTIONS or meta-layer collisions

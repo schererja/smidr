@@ -1,5 +1,7 @@
 # Cache & Source Management
 
+Smidr is the build/agent + control-plane component of the larger Yggdrasil project. This repository will evolve into Yggdrasil; other Norse‑named components and the business application layer (C# WebAPI + Next.js) are planned to live alongside Smidr in the same repo and integrate via internal APIs.
+
 Smidr's source management subsystem provides persistent caching and robust download behavior.
 
 Key points:
