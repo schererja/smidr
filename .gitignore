@@ -39,3 +39,14 @@ certs/local/
 coverage/
 *.coverprofile
 .nyc_output/
+
+# Squad AI team state (local development only)
+.ai-team/
+.ai-team-templates/
+
+# Temporary diagnostic and test files
+image.png
+*diagnostic*.sh
+*diagnostic*.ps1
+test-*.sh
+test-*.ps1
