@@ -106,11 +106,10 @@ func TestCollectProcessCount(t *testing.T) {
 	}
 }
 
-
 // TestCollectResilience verifies that Collect returns partial data even if some collectors fail
 func TestCollectResilience(t *testing.T) {
 	snap, err := Collect()
-	
+
 	// Even with errors, we should get a snapshot with a timestamp
 	if snap.Timestamp.IsZero() {
 		t.Error("expected snapshot with timestamp even if collectors fail")
@@ -119,11 +118,11 @@ func TestCollectResilience(t *testing.T) {
 	// If there were errors, they should be joined
 	if err != nil {
 		errStr := err.Error()
-		if !strings.Contains(errStr, "uptime") && 
-		   !strings.Contains(errStr, "load") && 
-		   !strings.Contains(errStr, "memory") && 
-		   !strings.Contains(errStr, "disk") && 
-		   !strings.Contains(errStr, "process") {
+		if !strings.Contains(errStr, "uptime") &&
+			!strings.Contains(errStr, "load") &&
+			!strings.Contains(errStr, "memory") &&
+			!strings.Contains(errStr, "disk") &&
+			!strings.Contains(errStr, "process") {
 			t.Logf("error message format looks good: %v", err)
 		}
 	}

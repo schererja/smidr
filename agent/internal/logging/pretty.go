@@ -61,7 +61,7 @@ func (h *PrettyHandler) Handle(ctx context.Context, r slog.Record) error {
 
 	// Attributes
 	attrs := make([]string, 0)
-	
+
 	// Add handler's base attributes
 	for _, attr := range h.attrs {
 		attrs = append(attrs, h.formatAttr(attr))
@@ -87,7 +87,7 @@ func (h *PrettyHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	newAttrs := make([]slog.Attr, len(h.attrs)+len(attrs))
 	copy(newAttrs, h.attrs)
 	copy(newAttrs[len(h.attrs):], attrs)
-	
+
 	return &PrettyHandler{
 		opts:   h.opts,
 		output: h.output,
@@ -100,7 +100,7 @@ func (h *PrettyHandler) WithGroup(name string) slog.Handler {
 	newGroups := make([]string, len(h.groups)+1)
 	copy(newGroups, h.groups)
 	newGroups[len(h.groups)] = name
-	
+
 	return &PrettyHandler{
 		opts:   h.opts,
 		output: h.output,
@@ -135,7 +135,7 @@ func (h *PrettyHandler) formatAttr(a slog.Attr) string {
 	}
 
 	value := a.Value.String()
-	
+
 	// Special formatting for certain types
 	switch a.Value.Kind() {
 	case slog.KindTime:

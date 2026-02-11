@@ -101,3 +101,5 @@
 - One baseline per metric name per agent (no composite keys, no dimensions)
 - This design makes per-drive baselines straightforward: use metric names like "DiskUsedPct:/" and "DiskUsedPct:/data"
 - But requires schema change: heartbeats would need per-mount storage (separate table or JSON column)
+
+📌 Team update (2026-02-11): Git tracking exclusions — .ai-team/ and diagnostic files excluded from git per user directive — decided by Jason Scherer

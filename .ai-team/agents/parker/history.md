@@ -182,3 +182,5 @@ cd ui && npm test
 ```
 
 
+
+📌 Team update (2026-02-11): Git tracking exclusions — .ai-team/ and diagnostic files excluded from git per user directive — decided by Jason Scherer

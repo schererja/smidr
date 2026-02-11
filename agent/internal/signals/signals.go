@@ -9,7 +9,7 @@ import (
 
 // Snapshot represents all collected system signals at a point in time.
 type Snapshot struct {
-	Timestamp    time.Time `json:"timestamp"`
+	Timestamp     time.Time `json:"timestamp"`
 	UptimeSeconds float64   `json:"uptimeSeconds"`
 	LoadAverage1m float64   `json:"loadAverage1m"`
 	MemoryUsedPct float64   `json:"memoryUsedPct"`

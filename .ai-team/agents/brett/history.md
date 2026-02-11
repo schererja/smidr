@@ -112,3 +112,5 @@
 - Team members know where to add docs as features ship
 - Clear standards prevent documentation sprawl
 - README links to detailed docs prevent information overload
+
+📌 Team update (2026-02-11): Git tracking exclusions — .ai-team/ and diagnostic files excluded from git per user directive — decided by Jason Scherer

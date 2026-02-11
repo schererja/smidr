@@ -134,3 +134,30 @@
 - Lambert verified UI is prepared for OS icons when backend provides data
 - Ash reviewed certificate validation architecture and 404 semantics
 - Registration debugging identified silent retry loops (now fixed by Dallas)
+
+### Automatic Certificate Re-enrollment (2026-02-10)
+- **Problem:** Agent with stale certificate (from wiped control plane database) required manual reset-enrollment command and daemon restart
+- **Solution:** Implemented automatic re-enrollment when agent detects 404 from control plane
+- **Flow:** Agent detects 404 → deletes stale cert files → generates new agent ID + key + CSR → re-enrolls → restarts heartbeat loop
+- **Safety:** Max 3 re-enrollment attempts per daemon run to prevent infinite loops
+- **Config persistence:** New agent ID is persisted to config file after successful re-enrollment
+- **User experience:** Agent recovers automatically from database resets without manual intervention
+- **Files modified:** `agent/internal/agent/daemon.go` (lines 64-140), `agent/internal/agent/reset.go` (added DeleteEnrollmentFiles function), `agent/cmd/agent/main.go` (added configPath parameter)
+- **Key insight:** Heartbeat config must be rebuilt with new agent ID after re-enrollment, not reused from initial setup
+- **Testing:** Verified agent automatically re-enrolls when deleted from database, generates new ID, and continues heartbeat loop successfully
+
+### Build System (2026-02-11)
+- **Makefile:** Created comprehensive Makefile with 20+ targets for building, testing, linting, and development
+- **Cross-compilation:** Support for Linux (amd64), macOS (amd64, arm64) via `build-linux`, `build-darwin`, `build-all` targets
+- **Testing:** Multiple test targets: `test` (with race detector), `test-verbose`, `test-coverage`, `test-coverage-html`
+- **Code quality:** Targets for `fmt`, `fmt-check`, `vet`, `lint` (requires golangci-lint)
+- **Development workflows:** `dev` target (clean+deps+fmt+vet+test+build), `ci` target (deps+fmt-check+vet+test-coverage)
+- **Version info:** Build embeds version, commit hash, and build date via ldflags (extractable from git)
+- **Binary naming:** Default binary is OS-specific (`smidr-agent`), cross-compiled binaries include OS/arch suffix (`smidr-agent-linux-amd64`)
+- **Helper targets:** `deps` (download/tidy), `clean` (remove artifacts), `install` (install to /usr/local/bin), `run-init`, `run-daemon`
+- **Help system:** `make help` shows all targets with descriptions
+- **File:** `agent/Makefile`
+
+📌 Team update (2026-02-11): Makefile build system for agent — comprehensive build tooling with 20+ targets, cross-platform support — decided by Kane
+
+📌 Team update (2026-02-11): Git tracking exclusions — .ai-team/ and diagnostic files excluded from git per user directive — decided by Jason Scherer

@@ -180,6 +180,25 @@
 - **Resolution**: Agent will now show actual registration errors in logs instead of silently retrying forever
 - **Key debugging insight**: Silent retry loops mask root cause - errors logged as warnings with infinite retries make debugging impossible. Always distinguish fatal (4xx) from retryable (5xx) errors, set max retry limits, and log fatal errors at ERROR level.
 
+### Docker Containerization (2026-02-11)
+- Created multi-stage Dockerfile for control plane: restore → build → publish → runtime
+- Uses `mcr.microsoft.com/dotnet/sdk:8.0` for build, `mcr.microsoft.com/dotnet/aspnet:8.0` for runtime
+- Runtime image includes PostgreSQL client for connection testing
+- Control plane exposes HTTPS on port 5001 in container (same as dev)
+- Created docker-compose.yml orchestrating PostgreSQL, control plane, and UI:
+  - PostgreSQL 16 Alpine with health checks, persistent volume
+  - Control plane configured for PostgreSQL via environment variable
+  - HTTPS certificate mounted from host `certs/` directory
+  - UI depends on control-plane health check before starting
+  - All services on shared `smidr-network` bridge network
+- Created `.dockerignore` files to exclude build artifacts and dev files from Docker context
+- Created `scripts/generate-dev-cert.sh` to generate development HTTPS certificates for Docker
+- Created `README-DOCKER.md` with setup instructions, troubleshooting, and production considerations
+- Control plane migrations apply automatically on container startup via `db.Database.Migrate()` in Program.cs
+- Certificate setup required: `dotnet dev-certs https -ep certs/aspnetapp.pfx -p development`
+- UI Dockerfile responsibility delegated to Lambert (frontend dev)
+- Coordinated with Lambert: UI should expose port 3000, connect to `https://control-plane:5001` internally
+
 ## 2026-02-11: Merged Decisions from Team Debug Session
 
 **Merged from inbox decisions:** dallas-diagnostic-scripts.md, dallas-heartbeat-404-orphaned-cert-analysis.md, dallas-migrate-not-ensurecreated.md, dallas-migration-application.md, dallas-migration-recovery.md, dallas-os-field.md, dallas-registration-debugging.md, and related ash/kane decisions
@@ -215,3 +234,7 @@
 - Kane fixed agent-side registration error handling
 - Lambert verified UI is prepared for OS field data
 - All team members have diagnostic tools available
+
+📌 Team update (2026-02-11): Docker Compose Setup for Full Stack — Control plane Dockerfile, docker-compose with PostgreSQL, health checks, volume persistence — decided by Dallas
+
+📌 Team update (2026-02-11): Git tracking exclusions — .ai-team/ and diagnostic files excluded from git per user directive — decided by Jason Scherer

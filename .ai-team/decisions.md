@@ -899,3 +899,84 @@ await _db.SaveChangesAsync(cancellationToken);
 ### 1. Keep Current Error Code (404) ✅
 
 **No change needed.** The current implementation is semantically correct and the agent already handles it gracefully.
+### 2026-02-11: User directive — Git tracking exclusions
+**By:** Jason Scherer (via Copilot)
+**What:** Exclude `.ai-team/` directory and diagnostic/test files (like `image.png`, test scripts) from git tracking. These are development artifacts and internal squad state, not part of the project deliverables.
+**Why:** User request — keep the repo clean and focused on production code, not development tooling or temporary debugging files.
+
+
+### 2026-02-11: Docker Compose Setup for Full Stack
+
+**By:** Dallas
+
+**What:** Created Docker containerization for control plane and docker-compose orchestration for PostgreSQL, control plane, and UI
+
+**Why:** 
+- Enables "just run docker-compose up" development experience
+- Standardizes environment across team (no more "works on my machine")
+- PostgreSQL replaces SQLite in containerized environment (production-like)
+- Health checks ensure proper startup order (DB → control plane → UI)
+- Persistent volumes protect data across container restarts
+
+**Details:**
+- Control plane Dockerfile: Multi-stage build (SDK for build, ASP.NET for runtime)
+- HTTPS certificate mounted from host `certs/` directory (generated via script)
+- PostgreSQL 16 Alpine with health checks and persistent volume
+- docker-compose services: `postgres`, `control-plane`, `ui`
+- Networking: Shared bridge network for inter-service communication
+- UI connects to `https://control-plane:5001` via internal DNS
+- Certificate generation script: `scripts/generate-dev-cert.sh`
+- Documentation: `README-DOCKER.md` with setup, troubleshooting, production notes
+
+**Coordination:**
+- Lambert responsible for creating UI Dockerfile
+- UI should expose port 3000, accept `VITE_API_BASE_URL` environment variable
+
+**Files:**
+- `control-plane/Dockerfile` - Multi-stage .NET build
+- `docker-compose.yml` - Service orchestration
+- `scripts/generate-dev-cert.sh` - Certificate generation
+- `README-DOCKER.md` - Docker deployment guide
+- `.dockerignore`, `control-plane/.dockerignore` - Build context exclusions
+
+
+### 2026-02-11: Makefile build system for agent
+
+**By:** Kane
+
+**What:** Created comprehensive Makefile for the Go agent with 20+ targets covering build, test, lint, and development workflows. Supports cross-compilation to Linux (production target) and macOS (development).
+
+**Why:** Developer experience improvement requested by Jason. Go projects benefit from standardized build tooling, especially when targeting different platforms. The agent runs on Linux x86_64 in production but developers may work on macOS. Makefile provides consistent interface for building, testing, and validating code across different environments.
+
+**Key features:**
+- Cross-platform builds: `build-linux`, `build-darwin`, `build-all`
+- Testing with race detector: `test`, `test-coverage`, `test-coverage-html`
+- Code quality: `fmt`, `vet`, `lint` (golangci-lint), `check`
+- Development workflows: `dev` (full workflow), `ci` (CI/CD workflow)
+- Version embedding via ldflags (git describe, commit hash, build date)
+- Help system with descriptions for all targets
+- Clean separation of native builds vs cross-compiled builds (naming convention)
+
+**Impact:** Simplifies onboarding and reduces friction in development workflow. Developers no longer need to remember go build incantations or test flags.
+
+
+### 2026-02-11: Docker Production Build for UI
+
+**By:** Lambert
+**What:** Created multi-stage Dockerfile with nginx serving, plus nginx.conf and .dockerignore
+**Why:** Jason requested docker-compose setup for one-command deployment. UI needs production build that can be served in containers alongside Dallas's control plane service.
+
+**Technical Details:**
+- Multi-stage: Node 22 Alpine (build) → nginx Alpine (serve)
+- API URL configured at build time via VITE_API_BASE_URL build arg
+- nginx config supports React Router client-side routing
+- Health check endpoint at /health for docker-compose
+- Port 80 exposed (map to 3000 on host for dev consistency)
+
+**Challenge:** Vite bakes env vars at build time, not runtime. Solution: Pass API URL as Docker build arg pointing to control-plane service name.
+
+**Files:**
+- ui/Dockerfile
+- ui/nginx.conf  
+- ui/.dockerignore
+- ui/DOCKER.md (documentation for Dallas)

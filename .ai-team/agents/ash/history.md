@@ -86,3 +86,5 @@
 - Dallas verified database lookup behavior and HTTP status codes
 - Kane verified agent-side 404 detection and user guidance
 - All team members now understand the orphaned cert scenario and why 404 is correct
+
+📌 Team update (2026-02-11): Git tracking exclusions — .ai-team/ and diagnostic files excluded from git per user directive — decided by Jason Scherer

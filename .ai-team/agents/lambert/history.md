@@ -741,3 +741,157 @@ If we need a separate "Agents" view in the future with different functionality (
 - Avoid route duplication even if backend supports it
 
 
+
+## 2026-02-11: Production Dockerfile for UI
+
+### Context
+Jason requested Docker setup so he can "just run build and up" to get UI and control plane running together. Coordinated with Dallas (backend dev) who's creating the docker-compose.yml.
+
+### Changes Made
+Created production-ready Docker setup for React UI:
+
+**Files Created:**
+1. `ui/Dockerfile` - Multi-stage build (Node 22 Alpine → nginx Alpine)
+2. `ui/nginx.conf` - Custom nginx config with client-side routing, gzip, security headers
+3. `ui/.dockerignore` - Excludes node_modules, dist, .env from build context
+4. `ui/DOCKER.md` - Complete documentation for Dallas
+
+**Files Modified:**
+1. `ui/.env.example` - Added Docker build-time comments
+
+### Architecture Decisions
+
+#### Multi-Stage Docker Build
+- **Stage 1 (build):** Node 22 Alpine, pnpm for fast installs, Vite production build
+- **Stage 2 (serve):** nginx 1.27 Alpine, serves static files from /usr/share/nginx/html
+- Image size: ~50MB (nginx Alpine base is tiny, build artifacts discarded)
+
+#### API URL Configuration Challenge
+**The Issue:** Vite bakes environment variables into the JS bundle at **build time** (not runtime). This means `VITE_API_BASE_URL` must be known when `docker build` runs, not when `docker run` starts the container.
+
+**Solution:** Docker compose passes API URL as build arg:
+```yaml
+build:
+  context: ./ui
+  args:
+    - VITE_API_BASE_URL=https://control-plane:5001
+```
+
+**Why Not Runtime Config?**
+- React SPA is static files after build
+- No server-side rendering
+- Can't inject env vars at container startup (JS already bundled)
+- Alternative (complex): nginx envsubst script to rewrite built JS (not worth the fragility)
+
+#### nginx Configuration
+**Client-side routing:** `try_files $uri $uri/ /index.html;` - Serves index.html for all routes so React Router handles navigation
+
+**Performance optimizations:**
+- Gzip compression (text/css/js)
+- Aggressive caching for static assets (1 year) with immutable flag
+- Vite's content hashing prevents stale cache (e.g., `main-abc123.js`)
+
+**Security headers:**
+- X-Frame-Options: SAMEORIGIN (prevents clickjacking)
+- X-Content-Type-Options: nosniff (prevents MIME sniffing)
+- X-XSS-Protection: 1; mode=block (legacy XSS protection)
+
+**Health check endpoint:** `/health` returns "healthy" for docker-compose health checks
+
+#### Port Strategy
+- Container exposes port 80 (nginx default)
+- Docker compose maps `3000:80` on host (Vite dev server uses 3000, so consistent for developers)
+
+### Learnings
+
+#### Vite Environment Variables in Docker
+- `VITE_*` prefixed variables are **build-time only**
+- No runtime injection possible for static SPAs
+- Must pass env vars as build args in Dockerfile or docker-compose
+- Alternative approaches:
+  - Server-side rendering (Next.js) - overkill for this project
+  - Runtime config via nginx envsubst - fragile, hard to maintain
+  - API gateway that proxies and rewrites URLs - adds complexity
+- Build args are the cleanest solution for small number of env vars
+
+#### Docker .dockerignore Best Practices
+**Always exclude:**
+- `node_modules/` (rebuilt in container)
+- `dist/` (built in container)
+- `.env` and `.env.local` (secrets, dev config)
+- `.git/` (not needed in image)
+- `*.md` (documentation not needed at runtime)
+- `.DS_Store` (macOS cruft)
+
+**Why it matters:**
+- Faster builds (smaller context uploaded to Docker daemon)
+- Smaller images (less garbage in final image)
+- Security (no accidental secret leaks)
+
+#### nginx for React SPAs
+**Essential nginx config for SPAs:**
+1. `try_files $uri $uri/ /index.html;` - Client-side routing support
+2. Gzip compression - Smaller JS/CSS transfers
+3. Cache-Control headers - Static asset caching
+4. Security headers - Basic hardening
+
+**React Router caveat:**
+- Direct URL access (e.g., `/systems/agent-123`) hits nginx first
+- Without `try_files`, nginx returns 404 (no file at that path)
+- `try_files` falls back to index.html, then React Router takes over
+
+**Development vs Production:**
+- Dev: Vite dev server handles routing automatically
+- Prod: nginx must be configured for client-side routing
+- Many developers forget this and see 404s on page refresh
+
+#### Multi-Stage Build Pattern
+**Benefits:**
+- Final image only contains runtime dependencies (nginx, not Node.js)
+- Build tools and intermediate files discarded
+- Dramatically smaller images (50MB vs 500MB)
+
+**Pattern:**
+```dockerfile
+FROM node:22-alpine AS build
+# ... install deps, build app ...
+
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+```
+
+**Naming stages:**
+- `AS build` names the stage
+- `--from=build` references named stage
+- Can have multiple stages (test, build, production)
+
+### Coordination with Dallas
+
+**What Dallas needs from this:**
+- Service name in docker-compose: `ui`
+- Build context: `./ui`
+- Build arg: `VITE_API_BASE_URL=https://control-plane:5001`
+- Port mapping: `3000:80`
+- Depends on: `control-plane` service
+- Health check: `curl http://localhost/health`
+
+**HTTPS API URL:** UI expects control plane on HTTPS (port 5001). Dallas's control plane uses self-signed cert in dev. Docker network allows internal HTTPS communication.
+
+**Service discovery:** Docker compose networking resolves `control-plane` hostname to the container IP. This is why build arg uses service name, not localhost.
+
+### Files for Reference
+- `ui/Dockerfile` - Production build definition
+- `ui/nginx.conf` - Web server configuration
+- `ui/.dockerignore` - Build context exclusions
+- `ui/DOCKER.md` - Complete documentation with examples
+- `ui/.env.example` - Updated with Docker comments
+
+### User Preference
+Jason wants simple "docker compose up" workflow, indicating preference for:
+- Containerized development/demo environments
+- Minimal local setup (no manual npm installs, no multiple terminal windows)
+- One command to start entire system
+
+📌 Team update (2026-02-11): Docker Production Build for UI — Multi-stage Dockerfile with nginx, React Router support, health checks — decided by Lambert
+
+📌 Team update (2026-02-11): Git tracking exclusions — .ai-team/ and diagnostic files excluded from git per user directive — decided by Jason Scherer
