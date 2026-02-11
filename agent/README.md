@@ -209,6 +209,36 @@ sudo journalctl -u smidr-agent -f
 
 ### Building
 
+The agent includes a comprehensive Makefile for building, testing, and development workflows:
+
+```bash
+# Show all available targets
+make help
+
+# Build for current platform
+make build
+
+# Build for Linux (production target)
+make build-linux
+
+# Build for all platforms
+make build-all
+
+# Run tests with race detector
+make test
+
+# Run tests with coverage report
+make test-coverage
+
+# Format code and run checks
+make fmt vet
+
+# Full development workflow (clean, deps, fmt, vet, test, build)
+make dev
+```
+
+Or use Go commands directly:
+
 ```bash
 go build -o smidr-agent ./cmd/agent
 ```
@@ -221,6 +251,9 @@ go run ./cmd/agent daemon --config /tmp/test-config.yaml
 
 # Or run a specific test
 go test ./internal/signals/...
+
+# Or use Makefile
+make test
 ```
 
 ## Security
