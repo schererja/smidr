@@ -1,69 +1,52 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-# Test binary, built with `go test -c`
-*.test
-
-# Code coverage profiles and other test artifacts
-*.out
-coverage.*
-*.coverprofile
-profile.cov
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
-go.work
-go.work.sum
-
-# env file
-.env
-
-# Editor/IDE
-# .idea/
-.vscode/
-/build/
-/apps/daemon/build/
-meta-smidr-custom/
-
-# macOS junk
+# OS files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
 
-# Yocto/Smidr generated config and output
-conf/
-confbackup/
-deploy/
-tmp/
-downloads/
-sstate-cache/
-sources/
-
-# Test and coverage artifacts
-integration_test_output.txt
-coverage.out
-
-# Backups and env
-*.bak
+# Editor files
+.vscode/
+.idea/
 *.swp
-.env.local
-PR*.md
-# Web UI
-gui/node_modules/
-gui/*.log
+*.swo
+*.swn
+*.bak
+.project
+.classpath
+.settings/
 
-# C# build artifacts
-bin/
-obj/
-*.dll
-*.pdb
-*.cache
-*.user
-*.suo
+# Local environment and secrets
+*.local
+.env.local
+.env.*.local
+*.key
+*.pem
+*.crt
+*.csr
+secrets/
+certs/local/
+
+# Build artifacts (top-level)
+*.log
+*.tmp
+*.temp
+
+# Testing
+coverage/
+*.coverprofile
+.nyc_output/
+
+# Squad AI team state (local development only)
+.ai-team/
+.ai-team-templates/
+
+# Temporary diagnostic and test files
+image.png
+*diagnostic*.sh
+*diagnostic*.ps1
+test-*.sh
+test-*.ps1
