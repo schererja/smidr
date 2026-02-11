@@ -1,0 +1,29 @@
+[Unit]
+Description=Smidr Agent - System Monitoring and Infrastructure Delivery & Response
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=smidr
+Group=smidr
+ExecStart=/usr/local/bin/smidr-agent daemon --config /etc/smidr/agent.yaml
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/smidr
+ReadOnlyPaths=/proc
+
+# Resource limits
+LimitNOFILE=1024
+TasksMax=10
+
+[Install]
+WantedBy=multi-user.target
