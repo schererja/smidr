@@ -48,6 +48,15 @@
 - GET /agents: Lists all registered agents
 - POST /agents/{id}/revoke: Revokes agent certificate
 
+### OS Field Implementation
+- Added optional `OS` property to Agent entity model (string, nullable for backward compatibility)
+- Created migration 20260211000000_AddOSToAgent to add database column
+- Updated RegisterAgentRequest to accept optional OS parameter from agent
+- Included OS in both AgentListDto and AgentDetailDto API responses
+- Existing agents without OS data have null values (graceful degradation)
+
+📌 Team update (2026-02-11): OS field implementation complete across agent/control plane/UI — decided by Kane, Dallas, Lambert
+
 ### Key Files
 - `Models/`: Agent, Heartbeat, AgentBaseline, HealthState domain models
 - `Controllers/AgentsController.cs`: Enrollment and agent management endpoints
@@ -87,3 +96,122 @@
 - Updated `ApiAgentResponse` and `ApiAgentDetailResponse` interfaces to include `revokedAt` and `sampleCount`
 - UI `.env` must point to https://localhost:5001 (HTTPS with self-signed cert)
 - UI dev server typically runs on port 3000 or 5173 depending on availability
+
+### OS Field Support
+- Agent model includes optional `OS` property (nullable string) for operating system identification
+- OS field accepted in registration request body, stored in database
+- OS field included in both AgentListDto and AgentDetailDto API responses
+- Migration 20260211000000_AddOSToAgent adds OS column to Agents table (nullable TEXT type)
+- Null OS values handled gracefully for existing agents without OS data
+- **Migration must be applied**: Run `dotnet ef database update` in control-plane directory to add OS column to SQLite database
+
+### Common Issues
+- **"no such column: a.OS" error**: Indicates AddOSToAgent migration exists but hasn't been applied to database
+  - Solution: Run `dotnet ef database update` from control-plane directory
+  - Verify with: `dotnet ef migrations list` to see applied migrations
+- SQLite database location: `control-plane/data/controlplane.db` (UsePostgres=false in appsettings.json)
+
+### Orphaned Certificate Behavior (Database Reset Scenario)
+- **Symptom**: Agent with valid certificate receives "404: Agent not registered" on heartbeat
+- **Root Cause**: Database was reset/recreated but agent still has certificate signed before reset
+- **Certificate State**: Cryptographically valid (signed by CA, not expired, chain validates)
+- **Database State**: Agent record doesn't exist (wiped during reset)
+- **Control Plane Behavior**:
+  - mTLS middleware validates certificate successfully (Stage 1: cryptographic validation)
+  - HeartbeatController database lookup fails (Stage 2: registration check)
+  - Returns `404 Not Found` with message "Agent {id} not registered"
+- **Why 404 is correct**: The agent resource literally doesn't exist in database (semantically accurate per RFC 9110)
+- **Agent Detection**: Agent code detects 404, terminates daemon, logs clear instructions to run `reset-enrollment`
+- **Recovery**: User runs `smidr-agent reset-enrollment` to delete old cert, then restarts daemon to re-enroll
+- **Key Architecture Point**: mTLS validation and database registration are separate concerns:
+  - **Cryptographic validity**: "Is this cert signed by our CA and not expired?" (middleware)
+  - **Registration validity**: "Does this agent exist in our database?" (controller)
+- **Code References**:
+  - Middleware: `Middleware/MtlsAuthenticationMiddleware.cs:43-48`
+  - Validation Service: `Services/MtlsValidationService.cs:14-55`
+  - Heartbeat Controller: `Controllers/HeartbeatController.cs:39-45`
+  - Agent ID Extraction: `Services/MtlsValidationService.cs:57-63` (extracts CN from certificate Subject)
+  - Agent CSR Generation: `agent/internal/agent/certificates.go:136-138` (sets CN=AgentID)
+
+### Database Migration Corruption Recovery
+- **Symptom**: `SQLite Error 1: 'table "X" already exists'` when running migrations
+- **Root cause**: `__EFMigrationsHistory` table out of sync with actual schema
+- **Solution**: Delete database and re-run all migrations for clean slate
+  - Delete: `data/controlplane.db`, `data/controlplane.db-shm`, `data/controlplane.db-wal`
+  - Run: `dotnet ef database update` to apply all migrations in order
+  - Verify: `dotnet ef migrations list` should show all migrations as applied
+- **Script**: `control-plane/fix-migrations.sh` automates this process
+- **When safe**: Development environments only; production requires backup and manual schema reconciliation
+
+### Agent Registration Flow
+- **Flow**: Agent starts → checks for cert → if no cert, calls registration → receives signed cert → starts heartbeat loop
+- **Registration endpoint**: `POST /api/agents/register` (no auth required, pre-enrollment)
+- **Registration request**: AgentID, Hostname, Token (optional), CSR PEM, OS
+- **Registration response**: Signed certificate PEM
+- **Agent persists certificate** to disk, then uses it for mTLS on all heartbeat calls
+- **Heartbeat endpoint**: `POST /v0/agents/heartbeat` (requires mTLS with agent certificate)
+- **Common failure**: "Agent not registered" 404 on heartbeat means agent never completed registration or was deleted from database
+- **Troubleshooting**: Use `control-plane/check-database.sh` to verify agent exists, `test-registration.sh` to test endpoint
+
+### Program.cs Database Initialization
+- **Changed**: `EnsureCreated()` → `Migrate()` in Program.cs startup
+- **Reason**: `EnsureCreated()` creates schema but doesn't run migrations; causes "column not found" errors when migrations add new fields
+- **Effect**: Control plane now automatically applies pending migrations on startup
+- **Benefit**: No manual `dotnet ef database update` needed when schema changes
+- **Migration**: Still use EF Core migrations for schema changes, but they apply automatically on app start
+
+### Registration Debugging (2026-02-11)
+- **Issue**: Agent fails heartbeat with 404 "Agent not registered" 
+- **Root cause found by Kane**: Agent's `enrollAgent()` function retries registration indefinitely, logging errors as warnings
+- **Control plane status**: Registration endpoint works correctly at `/api/agents/register`
+- **Database status**: All migrations applied correctly including OS column (20260211000000_AddOSToAgent)
+- **Problem location**: `agent/internal/agent/daemon.go` lines 75-93 - infinite retry loop with warning logs
+- **Fix implemented by Kane**: 
+  - Added max retry limit of 10 attempts (was infinite)
+  - Distinguish 4xx (fatal) vs 5xx (retryable) HTTP errors
+  - Fatal errors logged at ERROR level and exit immediately
+  - Retryable errors logged at WARN level and retry up to max attempts
+  - Error messages include HTTP status codes for debugging
+- **Control plane verification**: 
+  - `AgentsController.RegisterAgent()` correctly validates input and signs certificates
+  - `HeartbeatController.Heartbeat()` correctly returns 404 if agent not found in database
+  - `MtlsAuthenticationMiddleware` correctly allows public access to `/api/agents/register`
+  - All endpoint URLs and payload contracts match between agent and control plane
+- **Resolution**: Agent will now show actual registration errors in logs instead of silently retrying forever
+- **Key debugging insight**: Silent retry loops mask root cause - errors logged as warnings with infinite retries make debugging impossible. Always distinguish fatal (4xx) from retryable (5xx) errors, set max retry limits, and log fatal errors at ERROR level.
+
+## 2026-02-11: Merged Decisions from Team Debug Session
+
+**Merged from inbox decisions:** dallas-diagnostic-scripts.md, dallas-heartbeat-404-orphaned-cert-analysis.md, dallas-migrate-not-ensurecreated.md, dallas-migration-application.md, dallas-migration-recovery.md, dallas-os-field.md, dallas-registration-debugging.md, and related ash/kane decisions
+
+**Key consolidated decisions:**
+
+### Orphaned Certificate Analysis (Deep Dive)
+- Two-stage authentication: mTLS validation (cryptographic) vs database registration (enrollment state)
+- 404 is semantically correct when cert is valid but agent record doesn't exist
+- Detailed flow analysis and root cause documented
+- Authors: Dallas, Ash, Kane
+
+### OS Field Implementation (Complete)
+- Control plane side: Added optional OS field to Agent model, migration, and API responses
+- All integration points covered (registration, heartbeat, list, detail endpoints)
+- Backward compatible with nullable field
+- Authors: Kane, Dallas, Lambert
+
+### Database Migration Management
+- Changed Program.cs: `EnsureCreated()` → `Migrate()` for automatic migration application
+- Migration corruption recovery: delete database and re-run migrations
+- `fix-migrations.sh` script automates recovery
+- All migrations tracked in `__EFMigrationsHistory`
+
+### Diagnostic Infrastructure
+- Created `check-database.sh` for database inspection
+- Created `test-registration.sh` for endpoint testing
+- Created `TROUBLESHOOTING-REGISTRATION.md` for debugging guide
+- Enables team to quickly verify registration flow
+
+**Coordination outcomes:**
+- Ash verified 404 vs 403 distinction and certificate validation architecture
+- Kane fixed agent-side registration error handling
+- Lambert verified UI is prepared for OS field data
+- All team members have diagnostic tools available

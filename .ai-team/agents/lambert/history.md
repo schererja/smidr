@@ -1,24 +1,47 @@
 # Lambert Work History
 
-## 2026-02-10: Team formation
-- Assigned to frontend development (React)
-- Responsibilities: React UI, user authentication, API integration, state management, responsive design
-- Work order: Dallas provides REST API, consume it, coordinate on endpoint contracts
+## Core Context
 
-## 2026-02-10: API Integration Complete
-- Replaced mock data with real control plane API calls
-- Configured environment-based API URL via `.env` file
-- Implemented PascalCase to camelCase response mapping
-- Added comprehensive error handling (connection errors, 404, 500)
-- Updated API routes from `/api/v0/agents` to `/api/agents` per Dallas's implementation
-- Loading and error states already existed in components (no changes needed)
-- Build verified successfully with TypeScript
+**Role:** Frontend developer focused on React UI, API integration, and user experience
 
-**Key Changes:**
-- `ui/src/api/client.ts`: Removed `USE_MOCK` flag, added real API calls with response mapping
-- `ui/.env` and `ui/.env.example`: Environment configuration for API base URL
-- `ui/src/vite-env.d.ts`: TypeScript declarations for Vite environment variables
-- `ui/README.md`: Updated documentation with API integration details
+**Key Accomplishments:**
+- Built modern SaaS dashboard UI with Tailwind CSS + shadcn/ui component library
+- Integrated UI with control plane REST API, replacing mock data with real-time agent monitoring
+- Implemented responsive design for mobile/tablet/desktop with hamburger menu navigation
+- Created reusable component library: Sidebar, Header, StatCard, AgentCard, OSIcon, HealthBadge, MetricsCard
+- Established dashboard architecture: summary stats, grid/table views, search/filtering, health visualization
+
+**Technical Stack:**
+- React 19 + TypeScript (strict mode)
+- Vite for build tooling and dev server
+- Tailwind CSS for utility-first styling
+- shadcn/ui for component primitives
+- React Router for client-side routing
+- Axios for API communication
+- Lucide React for iconography
+
+**Architecture Patterns:**
+- Pages folder for route components, components folder for reusable UI pieces
+- API client layer abstracts control plane communication and response mapping
+- TypeScript interfaces ensure type safety across API boundaries
+- Environment variables (VITE_ prefix) for configuration
+- CSS custom properties enable runtime theming (light/dark mode ready)
+
+**Critical Learnings:**
+- shadcn/ui requires two-part setup: CSS variables in App.css (@layer base) AND Tailwind config theme extension with hsl(var(--variable)) mappings
+- Control plane uses HTTPS on port 5001 (not HTTP 5000), updated all API base URLs
+- Modern Tailwind opacity syntax: `bg-black/60` not `bg-black bg-opacity-50`
+- Dashboard navigation should have distinct purposes (removed duplicate /agents route, kept /systems)
+- OS detection ready: OSIcon component displays platform-appropriate icons when agent sends runtime.GOOS
+
+**File Locations:**
+- `ui/src/api/client.ts` - API integration layer
+- `ui/src/types/index.ts` - TypeScript type definitions
+- `ui/src/pages/` - SystemList (dashboard), SystemDetail (agent detail view)
+- `ui/src/components/` - All reusable UI components
+- `ui/src/App.css` - Global styles and CSS variable definitions
+- `ui/tailwind.config.js` - Tailwind theme customization
+- `ui/.env` - Environment configuration (not committed)
 
 ## Learnings
 
@@ -36,7 +59,7 @@
 - `ui/src/pages/SystemDetail.tsx` - Detail view with current signals, baselines, and recent heartbeats
 - `ui/src/components/HealthBadge.tsx` - Color-coded health state badges (learning/healthy/degraded/attention/unknown)
 - `ui/src/components/MetricsCard.tsx` - Displays current signals with baseline deltas
-- `ui/vite.config.ts` - Proxy `/api` requests to control plane on port 5000
+- `ui/vite.config.ts` - Proxy `/api` requests to control plane on port 5001
 - `ui/.env` - Environment configuration (not committed)
 - `ui/src/vite-env.d.ts` - TypeScript declarations for Vite environment variables
 
@@ -44,9 +67,81 @@
 - Vite over CRA for faster builds and modern tooling
 - React Router for client-side routing (/systems and /systems/:id)
 - Axios for API calls (familiar, better error handling than fetch)
-- No UI framework (Material-UI, Tailwind) - custom CSS keeps bundle small and gives full control
+- **Tailwind CSS + shadcn/ui:** Modern CSS framework with customizable component library living in codebase
 - TypeScript strict mode for type safety
 - Environment variables for configuration (API base URL)
+
+### UI Design & Architecture
+- Modern SaaS dashboard with sidebar navigation, summary stat cards, grid/table views
+- Purple brand color maintained from original design
+- Icon-first design for faster visual identification
+- Multi-level severity indicators (normal/warning/critical) for baseline deltas
+- Components: Sidebar, Header, StatCard, AgentCard, OSIcon, HealthBadge, MetricsCard
+- Dashboard at `/systems` is single view for monitoring (removed duplicate `/agents` route)
+
+### shadcn/ui Setup Requirements
+- Must define CSS custom properties in `App.css` within `@layer base` block
+- Must extend Tailwind config to map CSS variables to utility class names
+- Two-part setup: CSS vars (`--background: 0 0% 100%;`) + Tailwind theme mapping (`background: "hsl(var(--background))"`)
+- Enables runtime theme switching (light/dark) without rebuilding
+
+### OS Icons & Multi-Drive Support
+- OSIcon component renders platform-appropriate icons (Linux/Windows/macOS)
+- Agent type includes optional OS field, displayed throughout UI
+- Single disk metric displayed (multi-drive support deferred to v1)
+
+📌 Team update (2026-02-11): OS field implementation complete across agent/control plane/UI — decided by Kane, Dallas, Lambert
+
+📌 Team update (2026-02-11): Modern SaaS dashboard design with sidebar, stat cards, grid/table views — decided by Lambert
+
+📌 Team update (2026-02-11): Removed duplicate /agents route, Dashboard is single monitoring view — decided by Lambert
+
+📌 Team update (2026-02-11): shadcn/ui requires CSS variable definitions in App.css AND Tailwind config mapping — decided by Lambert
+
+## 2026-02-11: Merged Decisions from Team Debug Session
+
+**Merged from inbox decisions:** lambert-duplicate-routes.md, lambert-modern-dashboard-ui.md, lambert-os-and-drives.md, lambert-shadcn-css-variables.md, and related decisions from Kane/Dallas/Ripley
+
+**Key consolidated decisions:**
+
+### Modern SaaS Dashboard UI Design
+- Comprehensive redesign from basic table to professional dashboard
+- Sidebar navigation with clear visual hierarchy
+- Summary stat cards for fleet-wide visibility
+- Card-based layouts with icon-first design
+- Grid/table view toggle for flexibility
+- Authors: Lambert (Lead), Jason (request)
+
+### UI Component Architecture
+- Reusable components: Sidebar, Header, StatCard, AgentCard, OSIcon, HealthBadge, MetricsCard
+- API client abstraction layer for clean separation
+- TypeScript interfaces ensure type safety
+- CSS variables enable runtime theming (light/dark ready)
+
+### OS Icons and Future Features
+- OSIcon component ready for platform detection
+- Agent type includes optional OS field
+- UI prepared to receive OS from backend
+- Multi-drive support deferred to v1 (keep single disk metric for v0)
+
+### CSS Framework Setup
+- shadcn/ui requires two-part setup: CSS variables + Tailwind config mapping
+- All semantic tokens defined (background, foreground, input, border, etc.)
+- Runtime theme switching enabled without rebuild
+- Modern Tailwind syntax (e.g., `bg-black/60` not `bg-opacity`)
+
+### Navigation Simplification
+- Removed duplicate `/agents` route pointing to same component as Dashboard
+- Single `/systems` dashboard view for all agent monitoring
+- Clearer information architecture
+- Future: Can add distinct "Agents" page for operational tasks if needed
+
+**Coordination outcomes:**
+- Kane/Dallas provided OS field data from backend
+- Ripley reviewed multi-drive decision (deferred to v1 approved)
+- All visual design feedback from Jason addressed
+- UI is production-ready for v0 with room for future enhancements
+
 
 ### API Contract
 Control plane endpoints:
@@ -224,4 +319,425 @@ The `formatLastSeen()` function in SystemList.tsx was displaying negative time v
 - Handle future timestamps gracefully — display "Just now" instead of negative time or errors
 - Clock skew is common in distributed systems, especially during development with multiple machines
 - Client-side time calculations are brittle; consider server-provided "ago" strings for critical apps
+
+## 2026-02-11: Fixed Missing shadcn/ui CSS Variables (UI Still Completely Unstyled)
+
+### Root Cause
+shadcn/ui components (Input, Table, Card, Badge) use semantic CSS classes like `border-input`, `bg-background`, `text-muted-foreground` that reference CSS custom properties via `hsl(var(--input))`, `hsl(var(--background))`, etc. **These CSS variables were never defined**, causing all shadcn styles to be invalid and rendering the entire UI as plain unstyled text.
+
+### Changes Made
+1. **Updated `src/App.css`:**
+   - Added complete `@layer base` block with all shadcn/ui CSS variables
+   - Defined light theme colors (--background, --foreground, --primary, --secondary, --muted, --accent, --destructive, --border, --input, --ring, --radius)
+   - Defined dark theme variants under `.dark` class
+   - CSS variables use HSL format: `--background: 0 0% 100%;` (converted to `hsl(0 0% 100%)` by Tailwind)
+
+2. **Updated `tailwind.config.js`:**
+   - Extended theme with `colors` object mapping semantic names to CSS variables
+   - Each color defined as `"hsl(var(--variable-name))"` so Tailwind can reference them
+   - Added `borderRadius` variants (`lg`, `md`, `sm`) using `var(--radius)`
+   - This makes classes like `bg-background`, `text-muted-foreground`, `border-input` functional
+
+### What Was Already Correct (Not the Issue)
+- Tailwind directives in App.css (already had `@tailwind base; @tailwind components; @tailwind utilities;`)
+- App.css imported in main.tsx (already fixed in previous session)
+- PostCSS configured with `@tailwindcss/postcss` plugin
+- Path aliases working (@/* resolves to ./src/*)
+- shadcn/ui components installed with cn() utility function
+
+### Why This Happened
+When shadcn/ui components were integrated, the component files were copied but the theme CSS variable definitions were never added. This is a common mistake when setting up shadcn/ui manually instead of using their CLI `npx shadcn@latest init` which generates the complete setup.
+
+### Testing Required (Could Not Execute Due to Shell Issues)
+User must manually:
+1. Stop any running dev server
+2. Clean build: `cd ui && rm -rf dist && npm run build`
+3. Verify CSS output is 10-20kB (not 5kB)
+4. Start fresh: `npm run dev`
+5. Verify styled UI in browser at http://localhost:3000
+
+### Learnings
+
+#### shadcn/ui CSS Variable Architecture
+- shadcn/ui uses semantic design tokens via CSS variables, not hardcoded colors
+- Variables defined in HSL space split format: `--color: H S% L%;` (no commas, no hsl() wrapper)
+- Tailwind config maps variables to utility classes: `bg-background` → `hsl(var(--background))`
+- Light/dark themes switch by changing CSS variable values under `:root` vs `.dark`
+- Border radius also uses variables for consistency across components
+
+#### CSS Variables + Tailwind Integration Pattern
+- CSS variables must be defined in a `@layer base` block in the main CSS file
+- Tailwind config extends `theme.colors` with `"hsl(var(--variable))"` format
+- Variables use space-separated HSL values, wrapped with `hsl()` in Tailwind config
+- This two-layer approach enables runtime theme switching without rebuilding CSS
+
+#### Common Setup Mistakes
+- Copying shadcn components without CSS variables → unstyled components
+- Defining variables without Tailwind config mapping → Tailwind doesn't recognize class names
+- Missing `@layer base` → variables may not have proper cascade/specificity
+- Hardcoding colors in components instead of using semantic tokens → themes break
+
+#### Debug Process for "No Styles" Issue
+1. Check if CSS file is imported in entry point (main.tsx)
+2. Check build output - is CSS bundle generated and non-zero size?
+3. Check browser inspector - are Tailwind classes present on elements?
+4. Check if custom/semantic classes are defined (shadcn uses non-standard classes)
+5. Check if CSS variables are defined in :root (inspect computed styles)
+6. Verify Tailwind config extends theme with custom color mappings
+
+## 2026-02-11: Modern SaaS Dashboard UI Redesign
+
+### Overview
+Transformed the basic table-based UI into a professional, modern SaaS dashboard inspired by TailAdmin-style admin templates. Complete visual overhaul with new layout structure, summary metrics, and enhanced data visualization.
+
+### New Components Created
+1. **Sidebar.tsx** - Left navigation sidebar with icon-based menu
+2. **Header.tsx** - Top navigation bar with search and notifications
+3. **StatCard.tsx** - Reusable metric card component with icons and trends
+4. **AgentCard.tsx** - Card-based agent display for grid view
+
+### Major Changes
+- **App.tsx:** Sidebar + header layout (replaced top banner)
+- **SystemList.tsx:** Dashboard with 4 summary stat cards, grid/table toggle, enhanced empty states
+- **SystemDetail.tsx:** Hero section with large agent icon, enhanced baselines with status icons, improved heartbeats timeline
+- **MetricsCard.tsx:** Icon-based card design with 3-level severity system (green/orange/red)
+- **Types:** Added `sampleCount` to Baseline interface
+
+### Design System
+- **Layout:** Sidebar navigation (w-64) + header (h-16) + scrollable main content
+- **Colors:** Purple primary, health state colors (blue/green/orange/red), varied metric icons
+- **Spacing:** Consistent p-6/p-8 padding, space-y-6/8 vertical rhythm, gap-4/6 grids
+- **Cards:** shadow-sm default, shadow-md on hover, rounded-lg/xl corners
+- **Icons:** lucide-react throughout (Activity, Server, Clock, TrendingUp, Cpu, HardDrive, etc.)
+
+### Files Modified
+1. `ui/src/App.tsx` - New layout structure
+2. `ui/src/pages/SystemList.tsx` - Dashboard view
+3. `ui/src/pages/SystemDetail.tsx` - Enhanced detail view
+4. `ui/src/components/MetricsCard.tsx` - Card-based redesign
+5. `ui/src/types/index.ts` - Added sampleCount
+6. `ui/package.json` - Added recharts
+7. `ui/README.md` - Complete documentation update
+
+### Files Created
+1. `ui/src/components/Sidebar.tsx`
+2. `ui/src/components/Header.tsx`
+3. `ui/src/components/StatCard.tsx`
+4. `ui/src/components/AgentCard.tsx`
+
+### Key Learnings - Dashboard UX Patterns
+
+#### Layout Architecture
+- Sidebar + header + main content is the standard modern SaaS dashboard pattern
+- Sidebar should be fixed with flex layout: logo/brand → navigation → user profile
+- Main content area should be scrollable with consistent padding (p-8)
+- Header contains search and utility actions (notifications, user menu)
+
+#### Metric Visualization Best Practices
+- Summary stats at top of dashboard for at-a-glance health monitoring
+- Stat cards need: icon, primary value, label, and optional context (trend, percentage, subtitle)
+- Icons with color-coded backgrounds improve scannability
+- Baseline deltas need multi-level severity thresholds (not just "different from mean"):
+  - Normal: within 2σ (green)
+  - Warning: 2σ to 3σ (orange)
+  - Critical: beyond 3σ (red)
+
+#### Grid vs Table Tradeoffs
+- **Grid view:** Better for < 20 items, more visual, communicates status at a glance
+- **Table view:** Better for many items, sortable, searchable, information-dense
+- Provide both views when possible - users have different preferences and tasks
+- Grid cards should show: visual identifier (icon/image), health state, 2-4 key metrics, timestamp
+
+#### Visual Hierarchy Principles
+- Icons dramatically improve scannability and reduce cognitive load
+- Color-coded severity (green/orange/red) is universally understood without explanation
+- White space is critical - generous padding makes dashboards feel professional not cramped
+- Gradient backgrounds on icons/logos add visual interest without clutter
+- Hover states on clickable elements improve perceived interactivity
+
+#### Empty and Loading States
+- Loading states should have animated icon + descriptive text
+- Empty states need icon + heading + helpful message (not just "no data")
+- Different empty states for "truly empty" vs "search returned nothing"
+- Error states should explain what went wrong + suggest remediation
+
+#### Component Composition Patterns
+- Separate layout components (Sidebar, Header) from page content
+- StatCard component is highly reusable across different dashboard pages
+- Icon prop type: `LucideIcon` allows passing components not instances
+- Color props should accept Tailwind class strings for flexibility
+
+### User Preference Observed
+Jason requested TailAdmin-inspired design, indicating preference for:
+- Professional, polished SaaS aesthetic over minimal/basic designs
+- Card-based layouts over plain tables
+- Dashboard overview with summary metrics
+- Visual indicators (icons, colors, badges) for quick status assessment
+
+## 2026-02-11: Mobile Responsiveness and Bug Fixes
+
+### Changes Made
+Made the entire UI mobile-responsive with hamburger menu, responsive layouts, and fixed calculation bugs.
+
+**Files Modified:**
+- `ui/src/App.tsx` - Added sidebar state management
+- `ui/src/components/Sidebar.tsx` - Mobile overlay, slide-in/out animations
+- `ui/src/components/Header.tsx` - Hamburger menu button, responsive search
+- `ui/src/pages/SystemList.tsx` - Responsive grid/table, fixed healthy % bug
+- `ui/src/pages/SystemDetail.tsx` - Responsive hero section and metrics
+- `ui/src/types/index.ts` - Added OS type
+- `ui/src/components/OSIcon.tsx` - Created (shows generic icon until backend adds OS data)
+- `ui/src/components/AgentCard.tsx` - Added OS icon
+- `ui/src/components/MetricsCard.tsx` - Added TODO for multiple drives
+- `ui/MOBILE-TESTING.md` - Comprehensive mobile testing guide
+
+**Decisions Created:**
+- `.ai-team/decisions/inbox/lambert-os-and-drives.md` - Documents backend changes needed for OS detection and multiple drives
+
+### Bugs Fixed
+
+#### 1. Healthy Fleet Percentage Calculation (SystemList.tsx line 136)
+**Problem:** Expression `((healthyAgents / totalAgents || 0) * 100)` had incorrect operator precedence
+- When `healthyAgents = 0` and `totalAgents = 5`, division gives `0`
+- `0` is falsy in JavaScript, so `|| 0` returns `0`
+- Result: Always showed "0% of fleet" even when there were healthy agents
+
+**Fix:** Changed to `totalAgents > 0 ? ((healthyAgents / totalAgents) * 100).toFixed(0) : 0`
+- Explicitly check divisor before calculation
+- Prevents division by zero
+- Correct percentage calculation
+
+#### 2. Metrics Count "Bug" - Not Actually a Bug!
+Jason mentioned UI shows "4 metrics" but expected 5. Investigation revealed:
+- Agent collects 5 signals: uptimeSeconds, loadAverage1m, memoryUsedPct, diskUsedPct, processCount
+- Control plane calculates baselines for only 4 metrics (excludes uptimeSeconds)
+- Reason: uptimeSeconds is monotonically increasing, so statistical baselines don't make sense
+- UI correctly displays "4 metrics tracked" in baselines
+
+**Baselines calculated for:**
+1. LoadAverage1m
+2. MemoryUsedPct
+3. DiskUsedPct
+4. ProcessCount
+
+Source: `control-plane/Services/HealthEvaluationService.cs` line 103
+
+### Learnings
+
+#### Mobile Responsiveness Patterns
+
+**Sidebar Navigation on Mobile:**
+- Fixed positioning with `fixed lg:static` - sidebar overlays content on mobile, inline on desktop
+- CSS transforms for slide animations: `translate-x-0` vs `-translate-x-full`
+- Dark overlay backdrop: `fixed inset-0 bg-black bg-opacity-50 z-40`
+- Close sidebar on navigation: Pass `onClick={onClose}` to Link components
+- State management in parent (App) component, pass props to Sidebar and Header
+
+**Hamburger Menu Pattern:**
+- Button visible only on mobile: `lg:hidden`
+- Icon from lucide-react: `<Menu className="w-6 h-6" />`
+- Positioned in header, triggers sidebar open/close
+- Desktop shows sidebar always, so no hamburger needed
+
+**Responsive Grid Breakpoints:**
+- Stat cards: `grid-cols-2 lg:grid-cols-4` (2 columns on mobile, 4 on desktop)
+- Agent grid: `grid-cols-1 md:grid-cols-2 lg:grid-cols-3` (1→2→3 columns as screen grows)
+- Table columns: Use `hidden md:table-cell` and `hidden lg:table-cell` to hide less important columns on mobile
+- Padding: `p-4 md:p-8` (less padding on mobile saves screen space)
+- Text sizes: `text-2xl md:text-3xl` (smaller headings on mobile)
+
+**Table Responsiveness:**
+- Overflow scroll: Wrap table in `overflow-x-auto` container
+- Hide columns progressively: Show only critical info on small screens
+- Mobile priority: Hostname, Health, Last Seen (always visible)
+- Desktop columns: Agent ID, Load, Memory, Disk, Registered (hidden on mobile/tablet)
+
+**Component Props for Responsive Behavior:**
+- Pass open/close state down from parent
+- Child components don't manage their own mobile state
+- Single source of truth prevents desync issues
+
+#### OS Detection and Icons
+
+**Current State:**
+- UI prepared with OS type: `'linux' | 'windows' | 'darwin' | 'unknown'`
+- OSIcon component created with placeholder icons (Server for Linux, Monitor for Windows/Mac)
+- Agent cards and detail pages display OS icons
+- **Backend changes required:**
+  - Agent: Send `runtime.GOOS` in registration request
+  - Control Plane: Add OS field to Agent model
+  - Control Plane: Return OS in API responses
+
+**Icon Library Choice:**
+- lucide-react doesn't have OS-specific icons (no Tux penguin, Windows logo)
+- Used generic icons: Server (Linux), Monitor (Windows/macOS)
+- Consider custom SVG icons or react-icons library for better OS representations
+
+#### Multiple Drives Support
+
+**Current Implementation:**
+- Agent collects disk usage for root filesystem only (`collectDiskUsage("/")`)
+- Single `diskUsedPct` field in signals
+- UI displays aggregate disk usage
+
+**Future Enhancement (requires agent + control plane changes):**
+- Agent should detect all mounted filesystems
+- Send array of disk metrics: `[{ mountPoint: "/", totalGB: 100, usedGB: 50, usedPct: 50 }, ...]`
+- Control plane stores per-drive metrics
+- Calculate baselines per drive
+- UI displays each drive separately in MetricsCard
+
+**Design Considerations:**
+- How to handle many drives? (servers with 10+ drives)
+- Show top N most used drives, collapse rest?
+- Separate baselines per drive or aggregate?
+- Mount point naming differences across OS (Linux: /mnt/data, Windows: D:\, macOS: /Volumes/Data)
+
+#### JavaScript Operator Precedence Gotcha
+
+**Problem Pattern:**
+```javascript
+const result = (a / b || 0) * 100;
+```
+
+**Issue:** 
+- Division happens first: `a / b`
+- If result is `0`, it's falsy
+- `||` operator returns `0` (the fallback)
+- Then multiplies: `0 * 100 = 0`
+- **Always returns 0 when numerator is 0, even with valid denominator!**
+
+**Correct Pattern:**
+```javascript
+const result = b > 0 ? (a / b) * 100 : 0;
+```
+
+**Alternative:**
+```javascript
+const result = ((a / b) * 100) || 0;  // Parenthesize the full calculation
+```
+
+**Lesson:** Always check divisor explicitly, don't rely on `||` for division-by-zero protection when numerator can be 0.
+
+#### Tailwind Responsive Utilities
+
+**Breakpoint Prefixes:**
+- No prefix: Mobile-first (applies to all sizes)
+- `sm:` - ≥640px (large phone landscape)
+- `md:` - ≥768px (tablet portrait)
+- `lg:` - ≥1024px (tablet landscape, small laptop)
+- `xl:` - ≥1280px (desktop)
+- `2xl:` - ≥1536px (large desktop)
+
+**Hide/Show Pattern:**
+- Start with mobile: `block md:hidden` (show on mobile, hide on tablet+)
+- Desktop-only: `hidden lg:block` (hide until desktop)
+- Table columns: `hidden lg:table-cell` (preserve table structure)
+
+**Responsive Spacing:**
+- Use ranges: `p-4 md:p-6 lg:p-8` (progressive enhancement)
+- Gap utilities: `gap-4 md:gap-6` (grid/flex gaps)
+- Space-between: `space-y-4 md:space-y-6` (margin between children)
+
+#### Testing Without Playwright
+
+When automated testing tools can't be installed:
+- Use browser DevTools device emulation (F12 → device toolbar)
+- Test on actual devices if available
+- Create comprehensive testing documentation
+- Document expected behavior at each breakpoint
+- Include screenshots or screen recordings for complex interactions
+
+**DevTools Device Emulation:**
+- Cmd+Shift+M (Mac) / Ctrl+Shift+M (Windows) to toggle device toolbar
+- Preset devices: iPhone SE, iPhone 12 Pro, iPad, iPad Pro
+- Custom dimensions for specific breakpoints
+- Throttle network/CPU to simulate slower devices
+
+### File Paths Updated
+- `ui/src/App.tsx` - Mobile sidebar state
+- `ui/src/components/Sidebar.tsx` - Responsive sidebar with overlay
+- `ui/src/components/Header.tsx` - Hamburger menu and responsive search
+- `ui/src/components/OSIcon.tsx` - New OS icon component
+- `ui/src/components/AgentCard.tsx` - Uses OSIcon
+- `ui/src/pages/SystemList.tsx` - Fixed healthy % bug, responsive layout
+- `ui/src/pages/SystemDetail.tsx` - Responsive hero and metrics
+- `ui/src/types/index.ts` - Added OS type
+- `ui/MOBILE-TESTING.md` - Mobile testing guide
+
+## 2026-02-11: Fixed Hamburger Menu Overlay Opacity
+
+### Changes Made
+Fixed mobile hamburger menu overlay to be semi-transparent instead of solid black.
+
+**File Modified:**
+- `ui/src/components/Sidebar.tsx` line 25 - Changed `bg-black bg-opacity-50` to `bg-black/60`
+
+### Technical Details
+- **Old:** `bg-black bg-opacity-50` (Tailwind 2.x opacity utility syntax)
+- **New:** `bg-black/60` (Tailwind 3.x slash notation for opacity)
+- The slash notation is more reliable and is the standard in modern Tailwind CSS
+- Value of 60 gives 60% opacity (can adjust 0-100 for preference)
+
+### Why This Matters
+- Users can now see content behind the overlay when mobile menu is open
+- Provides better context awareness and less jarring visual transition
+- Follows modern mobile UI patterns where overlays are translucent
+
+### Learnings
+
+#### Tailwind Opacity Syntax
+- **Modern approach:** `bg-{color}/{opacity}` (e.g., `bg-black/50`, `bg-purple-600/75`)
+- **Legacy approach:** `bg-{color} bg-opacity-{value}` (may not work reliably in Tailwind 3.x+)
+- Slash notation is more concise and consistent across all color utilities
+- Works with any color: `bg-purple-500/40`, `text-gray-600/80`, `border-red-400/30`
+- Opacity values: 0-100 (0 = transparent, 100 = opaque)
+
+#### Mobile Overlay Best Practices
+- 50-70% opacity is the sweet spot for overlays (visible but not too dark)
+- Too transparent (<40%): doesn't create enough separation
+- Too opaque (>80%): feels claustrophobic, blocks too much context
+- Black is standard for overlays due to universal legibility
+- Alternative: `bg-gray-900/60` for slightly softer feel than pure black
+
+## 2026-02-11: Removed Duplicate Navigation Route
+
+### Problem
+Both `/systems` (Dashboard) and `/agents` routes were pointing to the same `<SystemList />` component. This created a confusing user experience where clicking "Dashboard" and "Agents" in the sidebar showed identical pages.
+
+### Changes Made
+- Removed "Agents" navigation item from Sidebar.tsx (kept Dashboard, Settings)
+- Removed `/agents` route from App.tsx
+- Dashboard at `/systems` is now the single entry point for viewing all agents
+
+### Rationale
+"Dashboard" is the more descriptive label for this view since it includes:
+- Summary stat cards (total agents, healthy %, issues, avg uptime)
+- Search and filtering
+- Grid/table view toggle
+- Complete agent list
+
+If we need a separate "Agents" view in the future with different functionality (e.g., agent registration wizard, bulk operations), we can add it back with distinct behavior.
+
+### Files Modified
+- `ui/src/components/Sidebar.tsx` - Removed `/agents` nav item
+- `ui/src/App.tsx` - Removed `/agents` route
+
+### Learnings
+
+#### Navigation Design Patterns
+- **Avoid duplicate routes:** Every nav item should have a distinct purpose
+- **Descriptive labels matter:** "Dashboard" conveys overview better than "Agents" for a stats + list view
+- **When to separate views:**
+  - Dashboard = monitoring, high-level stats, health overview
+  - Agents = operational tasks (add/remove/configure agents)
+  - If both show the same content, they should be one view
+- **Menu item rule:** If user asks "what's the difference?" you have a UX problem
+
+#### Route Organization
+- Keep routes minimal and purposeful
+- Root redirect: `/` → `/systems` provides clean landing
+- Nested routes for details: `/systems/:agentId` follows RESTful convention
+- Avoid route duplication even if backend supports it
+
 

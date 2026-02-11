@@ -179,6 +179,9 @@ smidr-agent init [--config PATH] [--force]
 # Run daemon (normally run via systemd)
 smidr-agent daemon [--config PATH]
 
+# Reset enrollment state (deletes cert/key/csr and clears agent ID)
+smidr-agent reset-enrollment [--config PATH]
+
 # Help
 smidr-agent help
 ```
@@ -252,9 +255,9 @@ sudo journalctl -u smidr-agent -n 50
 # Check if cert already exists
 ls -la /etc/smidr/*.pem
 
-# Re-enroll (delete cert and restart)
+# Re-enroll using reset command (recommended)
 sudo systemctl stop smidr-agent
-sudo rm /etc/smidr/agent.crt.pem
+sudo smidr-agent reset-enrollment
 sudo systemctl start smidr-agent
 ```
 
@@ -264,11 +267,17 @@ sudo systemctl start smidr-agent
 # Check if enrolled (cert exists)
 sudo ls -la /etc/smidr/agent.crt.pem
 
-# Test connectivity
-curl -v https://your-control-plane.example.com/v0/agents/heartbeat
-
 # Check mTLS cert validity
 openssl x509 -in /etc/smidr/agent.crt.pem -noout -text
+
+# If cert is for wrong agent ID (after control plane database reset):
+# This happens when the control plane database was recreated but agent still has old cert
+sudo systemctl stop smidr-agent
+sudo smidr-agent reset-enrollment
+sudo systemctl start smidr-agent
+
+# Test connectivity
+curl -v https://your-control-plane.example.com/v0/agents/heartbeat
 ```
 
 ## Integration Points for Dallas (Control Plane)

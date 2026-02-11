@@ -22,281 +22,193 @@ v0 prioritizes:
 
 ---
 
-## 2. Non-Goals (v0)
+## Architecture
 
-The following are **explicitly out of scope** for v0:
+```
+┌─────────────────┐         ┌─────────────────┐         ┌──────────┐
+│  Linux Systems  │         │ Control Plane   │         │    UI    │
+│   (Go Agent)    │─HTTPS──▶│   (C# API)      │◀─HTTPS──│  React   │
+│                 │  mTLS   │                 │         │          │
+└─────────────────┘         └────────┬────────┘         └──────────┘
+                                     │
+                                ┌────▼─────┐
+                                │PostgreSQL│
+                                └──────────┘
+```
 
-- No integrations (Slack, email, PagerDuty, etc.)
-- No inbound agent connections
-- No remote command execution
-- No container-only abstraction
-- No Windows or non-x86 architectures
-- No user-configurable alert rules
-- No multi-tenant UI or auth
-- No dashboards or graphs
-- No AI/ML beyond basic statistics
+**Components:**
+- **Agent**: Lightweight Go daemon collecting system signals
+- **Control Plane**: ASP.NET Core API managing enrollment, learning, and evaluation
+- **CA Service**: Internal certificate authority for mTLS
+- **UI**: React web app for viewing system health
+- **Database**: PostgreSQL (production) or SQLite (development)
 
----
-
-## 3. Target Environment
-
-### Agents
-
-- OS: Linux
-- Architecture: x86_64
-- Execution: systemd service
-- Language: Go
-- Network: outbound HTTPS only
-
-### Control Plane
-
-- Single-tenant (v0)
-- Self-hosted or SaaS
-- HTTPS + mutual TLS
-- Centralized policy and learning
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for complete architecture details.
 
 ---
 
-## 4. Core Design Principles
+## Tech Stack
 
-1. Agents report facts, not opinions
-2. Policy and learning live centrally
-3. Silence is a signal
-4. Defaults must be safe and boring
-5. Behavior must be explainable
-6. One tenant now, many later
-
----
-
-## 5. Agent Identity
-
-### Canonical Identity
-
-- Each agent has a UUID (`agent_id`)
-- Generated once on first start
-- Persisted locally
-- Never changes
-
-### Friendly Metadata
-
-- Hostname
-- OS / kernel version
-- Agent version
-
-UUID is authoritative.
-Hostname is informational.
+- **Agent:** Go 1.21+, systemd integration
+- **Control Plane:** C# / .NET 8, ASP.NET Core, Entity Framework Core
+- **UI:** React 19, TypeScript, Vite, Tailwind CSS
+- **Database:** PostgreSQL (production), SQLite (development)
+- **Auth:** Mutual TLS (mTLS) with internal CA
+- **Build:** GoReleaser (agent), GitHub Actions (CI/CD)
 
 ---
 
-## 6. Authentication & Trust Model
+## v0 Scope and Non-Goals
 
-### Mutual TLS (mTLS)
+### In Scope (v0)
+- ✅ Agent enrollment and heartbeat over mTLS
+- ✅ Baseline learning and anomaly detection
+- ✅ Health state transitions
+- ✅ Minimal UI for viewing system status
+- ✅ Single-tenant deployment
 
-- Control plane generates a Certificate Authority (CA)
-- Agent generates its own keypair on first start
-- Agent submits CSR for enrollment
-- Control plane signs and returns agent certificate
-- All future communication uses mTLS
-
-No API tokens are used.
-
----
-
-## 7. Agent Lifecycle
-
-### 7.1 First Start
-
-1. Generate UUID
-2. Generate private key
-3. Generate CSR
-4. Register with control plane
-5. Receive signed certificate
-6. Persist identity material locally
-
-### 7.2 Normal Operation
-
-- Agent runs indefinitely
-- Collects system signals at fixed interval
-- Sends heartbeat payloads
-- Does not evaluate health
-- Does not store historical data beyond transient buffering
-
-### 7.3 Failure Modes
-
-- If control plane unreachable, agent retries on next interval
-- Agent never blocks system startup
-- Agent failure does not affect host operation
+### Out of Scope (v0)
+- ❌ Integrations (Slack, email, PagerDuty)
+- ❌ Inbound agent connections or remote commands
+- ❌ Windows or non-x86 architectures
+- ❌ User-configurable alert rules
+- ❌ Multi-tenant support
+- ❌ Dashboards, graphs, or charts
+- ❌ User authentication (use reverse proxy)
 
 ---
 
-## 8. Agent Data Collection (v0)
+## Development
 
-Collected metrics:
+### Prerequisites
+- Go 1.21+ (agent)
+- .NET 8.0 SDK (control plane)
+- Node.js 18+ and npm (UI)
+- PostgreSQL 14+ (production) or SQLite (development)
 
-- uptime (seconds)
-- load average (1m)
-- memory used percentage
-- disk used percentage (root filesystem)
-- process count
+### Local Development
 
-Metrics are raw and unaggregated.
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for complete setup instructions.
 
----
+**Quick commands:**
 
-## 9. Communication Model
+```bash
+# Build agent
+cd agent && go build -o bin/smidr-agent ./cmd/agent
 
-- Direction: Push-only (agent → control plane)
-- Transport: HTTPS + JSON
-- Authentication: mTLS
-- Default cadence: 60 seconds
+# Run control plane
+cd control-plane && dotnet run
 
----
+# Run UI dev server
+cd ui && npm install && npm run dev
 
-## 10. API Endpoints (v0)
-
-### POST /v0/agents/register
-
-Purpose: Agent enrollment
-Input: CSR, agent UUID, hostname, OS metadata
-Output: Signed agent certificate, CA chain
-
-### POST /v0/agents/heartbeat
-
-Purpose: Periodic state reporting
-Authenticated via mTLS
-Payload includes metrics and metadata
+# Run tests
+cd agent && go test ./...
+cd control-plane && dotnet test
+```
 
 ---
 
-## 11. Learning & Baseline Model
+## API Examples
 
-### Learning Phase
+### Enroll Agent
 
-- New agents start in `learning`
-- Default window: 24–72 hours
-- No alerts generated
+```bash
+curl -X POST https://localhost:5001/agents/register \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "agentId": "550e8400-e29b-41d4-a716-446655440000",
+    "hostname": "web-server-01",
+    "csrPem": "-----BEGIN CERTIFICATE REQUEST-----\n..."
+  }'
+```
 
-### Baseline Computation
+### Send Heartbeat (requires mTLS)
 
-Per-metric:
+```bash
+curl -X POST https://localhost:5001/v0/agents/heartbeat \
+  --cert agent.crt.pem --key agent.key.pem \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "agentId": "550e8400-e29b-41d4-a716-446655440000",
+    "timestamp": "2024-02-10T15:04:05Z",
+    "uptimeSeconds": 86400.5,
+    "loadAverage1m": 1.23,
+    "memoryUsedPct": 45.6,
+    "diskUsedPct": 67.8,
+    "processCount": 156
+  }'
+```
 
-- mean
-- standard deviation
-- trimmed min/max
-
-### Threshold Derivation
-
-- Warning and critical thresholds
-- Derived centrally
-- Explainable and inspectable
-
----
-
-## 12. Health Evaluation
-
-Health is evaluated only in the control plane.
-
-### States
-
-- learning
-- healthy
-- degraded
-- attention
-- unknown
-
-### Transitions
-
-- Threshold crossings
-- Missing heartbeats
-- Context captured on change
+See [docs/API.md](docs/API.md) for complete API reference.
 
 ---
 
-## 13. Context Capture (v0 Lite)
+## Security
 
-On state transition:
+- **mTLS Authentication:** All agent communication uses mutual TLS
+- **Internal CA:** Self-signed CA for agent certificate issuance
+- **Agent Isolation:** Runs as unprivileged user with systemd hardening
+- **Key Management:** Private keys never leave their host systems
+- **Certificate Rotation:** Agents can re-enroll to renew certificates
 
-- Last known good state
-- Current state
-- Computed deltas
-
----
-
-## 14. Storage Model (Conceptual)
-
-All entities include `tenant_id` (fixed in v0).
-
-Core entities:
-
-- agents
-- heartbeats
-- baselines
-- thresholds
-- health events
+See [control-plane/README-CRYPTO.md](control-plane/README-CRYPTO.md) for cryptographic implementation details.
 
 ---
 
-## 15. UI (v0)
+## Design Principles
 
-Minimal UI:
-
-- System list
-- System detail view
-
-Displayed:
-
-- Hostname
-- Health state
-- Last heartbeat
-- Recent events
-- Baseline vs current
-
-No charts or dashboards.
+1. **Agents report facts, not opinions** - All decision-making happens in the control plane
+2. **Silence is a signal** - Missing heartbeats indicate problems
+3. **Defaults must be safe and boring** - No surprises, no magic
+4. **Behavior must be explainable** - Every health state change has a reason
+5. **One tenant now, many later** - Architecture supports future multi-tenancy
 
 ---
 
-## 16. Deployment Model
+## Roadmap
 
-### Self-Hosted
+**v0 (Current):**
+- ✅ Core agent, control plane, and UI
+- ✅ mTLS enrollment and authentication
+- ✅ Baseline learning and anomaly detection
+- ✅ SQLite and PostgreSQL support
 
-- Single binary control plane
-- Local CA generation
-- Agent install script
-
-### SaaS
-
-- Same codebase
-- Same protocol
-- Same behavior
-
----
-
-## 17. Future Expansion (Not v0)
-
-- Multi-tenant support
-- Per-tenant CAs
-- Integrations
-- Diagnostics plugins
-- Event streaming
-- gRPC transport
-- Remote commands
-- Policy customization
+**v1 (Future):**
+- Multi-tenant support with per-tenant CAs
+- User authentication for UI
+- Integrations (Slack, email, webhooks)
+- Certificate rotation automation
+- gRPC/WebSocket transport
+- Extended signal collection
 
 ---
 
-## 18. Guiding Rule
+## Contributing
 
-> **Agents report facts.
-> Control plane decides meaning.**
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for development setup and contribution guidelines.
+
+**Key areas for contribution:**
+- Unit and integration tests (Parker)
+- Extended signal collectors (Kane)
+- UI enhancements (Lambert)
+- Security hardening (Ash)
+- Documentation improvements (Brett)
 
 ---
 
-## 19. Success Criteria
+## License
 
-v0 is successful if:
+(Add license information here)
+
+---
+
+## Success Criteria
+
+Smidr v0 succeeds if:
 
 - Agent installs in under 5 minutes
-- Runs unattended for days
-- Detects deviations without noise
-- Health decisions are explainable
-- Users feel less need to check manually
+- Runs unattended for days without intervention
+- Detects deviations without alert noise
+- Health decisions are explainable to operators
+- Users feel less need to manually check system status

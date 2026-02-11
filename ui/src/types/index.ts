@@ -1,4 +1,5 @@
 export type HealthState = 'learning' | 'healthy' | 'degraded' | 'attention' | 'unknown';
+export type OS = 'linux' | 'windows' | 'darwin' | 'unknown';
 
 export interface Agent {
   agentId: string;
@@ -6,6 +7,7 @@ export interface Agent {
   lastHeartbeat: string;
   healthState: HealthState;
   registeredAt: string;
+  os?: OS; // Optional for now, will be added by agent in future
   signals?: Signals;
 }
 
@@ -33,6 +35,7 @@ export interface Baseline {
   stdDev: number;
   min: number;
   max: number;
+  sampleCount: number;
 }
 
 export interface AgentDetail extends Agent {

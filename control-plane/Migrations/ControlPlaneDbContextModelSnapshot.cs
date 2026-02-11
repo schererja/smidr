@@ -36,6 +36,9 @@ namespace controlplane.Migrations
                     b.Property<DateTime?>("LastHeartbeatAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OS")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("RegisteredAt")
                         .HasColumnType("TEXT");
 

@@ -49,6 +49,16 @@
 - **Custom mTLS middleware pattern:** When using custom middleware for authentication instead of ASP.NET's built-in authentication, return `StatusCode(403)` directly from controllers instead of `Forbid()`
 - **File locations:** `control-plane/Controllers/HeartbeatController.cs` handles heartbeat endpoint, checks agent ID from cert vs payload
 
+### OS Detection
+- Agent sends OS information using `runtime.GOOS` in both registration and heartbeat payloads
+- Control plane stores OS in Agent model (nullable string for backward compatibility)
+- Field flows agent → control plane → UI for OS-specific icon display
+- Files: `agent/internal/agent/daemon.go`, `agent/internal/heartbeat/client.go`
+
+📌 Team update (2026-02-11): OS field implementation complete across agent/control plane/UI — decided by Kane, Dallas, Lambert
+
+📌 Team update (2026-02-11): Multi-drive disk metrics deferred to v1 (keep root-only for v0) — decided by Ripley
+
 ### mTLS Certificate Lifecycle
 - **Agent ID in certificate:** Control plane validates that agent ID in certificate CN matches agent ID in heartbeat payload (HeartbeatController.cs line 34)
 - **CSR regeneration:** `EnsureKeyAndCSR()` only regenerates CSR if key was just generated OR CSR doesn't exist; changing agent_id in config requires deleting CSR+cert to trigger regeneration
@@ -61,3 +71,66 @@
 - **Two-layer validation:** TLS layer accepts any client cert (`ClientCertificateValidation = (cert, chain, errors) => true`), then middleware validates against internal CA
 - **Middleware extracts agent ID:** `MtlsValidationService.ExtractAgentId()` parses certificate subject's CN field
 - **Agent ID validation flow:** Middleware extracts CN → stores in `HttpContext.Items["AgentId"]` → HeartbeatController compares to request payload's agentId
+
+### Payload Structure
+- **OS detection:** Use `runtime.GOOS` to report operating system ("linux", "darwin", "windows") in registration and heartbeat payloads
+- **Registration payload:** Includes agentId, hostname, token, csrPem, and os fields
+- **Heartbeat payload:** Includes agentId, timestamp, signals (uptime, load, memory, disk, processes), and os field
+- **JSON field naming:** Go struct fields use PascalCase, JSON tags use camelCase (e.g., `AgentID string json:"agentId"`)
+
+### Enrollment Reset
+- **Reset command:** `smidr-agent reset-enrollment` clears all enrollment state and allows re-enrollment
+- **What it deletes:** Certificate file (cert_path), CSR file (csr_path), private key file (key_path)
+- **Config updates:** Clears agent_id, key_path, csr_path, cert_path fields in config file
+- **Use case:** When control plane database is reset and agent has stale certificate for non-existent agent ID
+- **Re-enrollment flow:** After reset, agent daemon will auto-generate new ID, new keypair, new CSR, and re-enroll
+- **Files:** `agent/internal/agent/reset.go`, `agent/internal/agent/reset_test.go`, `agent/cmd/agent/main.go`
+- **Safety:** Only deletes enrollment artifacts, preserves control_plane_url, hostname, token, and heartbeat_interval
+
+### Certificate Validation on Startup
+- **Problem:** After database reset, agent with existing cert believes it's enrolled but gets 404 errors
+- **Solution:** First heartbeat validates certificate; daemon detects 404 and provides clear remediation steps
+- **Error detection:** `ErrAgentNotRegistered` exported from heartbeat package, wrapped around 404 responses
+- **Fail fast:** Daemon exits immediately on certificate validation failure instead of retrying indefinitely
+- **User guidance:** Clear error messages explain the issue and direct user to run `reset-enrollment` command
+- **Files:** `agent/internal/heartbeat/client.go` (line 84, 96, 109, 157), `agent/internal/agent/daemon.go` (line 64-69)
+- **Coordination required:** Dallas verifies 404 responses, Ash verifies certificate validation
+- **Testing:** See `.ai-team/agents/kane/TEAM-VERIFICATION.md` for verification checklist
+
+### Certificate Validation and Error Handling (2026-02-11)
+- **Enrollment check:** Agent only checks if certificate file exists, does NOT validate with control plane at startup (`daemon.go` lines 26-38)
+- **First validation:** Happens when first heartbeat is sent, control plane may return 404 if agent not registered
+- **404 error handling:** Heartbeat client returns `ErrAgentNotRegistered`, daemon logs error and exits with guidance to run reset-enrollment
+- **No auto-recovery:** Current implementation requires manual intervention (reset-enrollment + daemon restart)
+- **Agent ID storage:** Persisted in config file (not extracted from certificate); certificate CN contains copy of agent ID
+- **Recommendation:** Add automatic re-enrollment on 404 for self-healing behavior (see kane-agent-404-analysis.md decision)
+- **Control plane coordination needed:** Distinguish 404 (unknown agent, should re-enroll) from 403 (revoked agent, should not re-enroll)
+
+## 2026-02-11: Merged Decisions from Team Debug Session
+
+**Merged from inbox decisions:** ash-certificate-investigation-summary.md, ash-orphaned-cert-analysis.md, kane-agent-404-analysis.md, kane-agent-os-field.md, kane-enrollment-validation.md, kane-reset-enrollment-command.md, and related Dallas/Lambert decisions
+
+**Key consolidated decisions:**
+
+### Agent Enrollment and Certificate Validation (Consolidated)
+- Comprehensive flow covering orphaned certs, 404 handling, and reset command
+- Authors: Kane, Dallas
+- Validates certificates on first heartbeat
+- Detects stale certificates and provides clear recovery instructions
+
+### OS Field Implementation (Complete)
+- Full end-to-end: Agent sends `runtime.GOOS` → Control Plane stores in DB → UI displays with icons
+- Authors: Kane, Dallas, Lambert
+- Agent implementation: Added OS field to both registration and heartbeat payloads
+- Backward compatible: field is optional
+
+### Multi-drive Disk Metrics Decision
+- Deferred to v1; keep root-only for v0
+- Author: Ripley
+- Comprehensive analysis with fallback plan if needed later
+
+**Coordination outcomes:**
+- Dallas verified database schema and migration handling
+- Lambert verified UI is prepared for OS icons when backend provides data
+- Ash reviewed certificate validation architecture and 404 semantics
+- Registration debugging identified silent retry loops (now fixed by Dallas)

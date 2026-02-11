@@ -2,14 +2,47 @@
 name: "efcore-migration-sync"
 description: "Synchronizing EF Core entity models with existing databases that have schema drift"
 domain: "database"
-confidence: "low"
+confidence: "high"
 source: "earned"
 ---
 
 ## Context
-When working with EF Core, entity models and database schemas can drift apart if the database was manually created or modified outside of migrations. This causes runtime errors like "no such column" when EF Core tries to query or insert data. This skill covers how to synchronize the schema and establish migration tracking.
+When working with EF Core, entity models and database schemas can drift apart if the database was manually created or modified outside of migrations. This causes runtime errors like "no such column" when EF Core tries to query or insert data. This skill covers how to synchronize the schema, establish migration tracking, and ensure automatic migration application.
 
 ## Patterns
+
+### Automatic Migration Application on Startup
+**RECOMMENDED**: Use `Database.Migrate()` in application startup to automatically apply pending migrations. This ensures the database schema always matches the entity models.
+
+```csharp
+// Program.cs or Startup.cs
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<YourDbContext>();
+    db.Database.Migrate();  // CORRECT: Applies pending migrations
+}
+```
+
+**AVOID**: Using `Database.EnsureCreated()` which creates schema but ignores migrations:
+
+```csharp
+// DON'T DO THIS
+db.Database.EnsureCreated();  // WRONG: Ignores migrations, causes drift
+```
+
+**Why Migrate() is better:**
+- Applies all pending migrations automatically
+- Keeps schema in sync with code changes
+- Idempotent (safe to run multiple times)
+- No manual intervention needed when schema changes
+- Works for both new databases (applies all) and existing databases (applies only pending)
+
+**When EnsureCreated() causes problems:**
+1. Database created with `EnsureCreated()` before migration exists
+2. New migration added for schema change (e.g., add column)
+3. Code expects new column, but database doesn't have it
+4. Runtime error: "no such column"
+5. **Solution**: Switch to `Migrate()` and restart application
 
 ### Detecting Schema Drift
 Check if columns expected by the entity model exist in the database using SQLite pragma or SQL information schema queries.
@@ -105,11 +138,49 @@ kill 12345
 ```
 
 ## Anti-Patterns
+- **Using EnsureCreated() in production code** — Ignores migrations, causes schema drift when new migrations are added
 - **Ignoring migrations** — Creates drift between environments, makes deployments unpredictable
-- **Deleting and recreating database** — Loses data, not viable for production
+- **Deleting and recreating database** — Loses data, not viable for production (but acceptable for dev when migration history is corrupted)
 - **Running migrations without backup** — Risk of data loss if migration fails
 - **Not verifying schema after changes** — May miss additional drift
 - **Using generic migration names** — Makes history unclear (e.g., "Migration1", "UpdateDb")
+
+## Recovery from Corrupted Migration State
+When `__EFMigrationsHistory` is out of sync with actual schema (tables exist but aren't marked as migrated), you may see errors like "table X already exists".
+
+### Development Environment
+For SQLite databases in development, the fastest solution is a clean slate:
+
+```bash
+# Delete database files
+rm -f data/database.db data/database.db-shm data/database.db-wal
+
+# Re-run all migrations
+dotnet ef database update
+
+# Verify all migrations applied
+dotnet ef migrations list
+```
+
+### Production Environment
+For production, requires careful manual reconciliation:
+1. Backup database first
+2. Compare `__EFMigrationsHistory` table with actual schema
+3. Either manually add missing migration records, or manually apply missing schema changes
+4. Verify schema matches model before marking migration as applied
+5. Test thoroughly in staging environment first
+
+### Automation Script
+Create a `fix-migrations.sh` script for repeatable recovery in development:
+
+```bash
+#!/bin/bash
+cd "$(dirname "$0")"
+rm -f data/database.db data/database.db-shm data/database.db-wal
+dotnet ef database update
+dotnet ef migrations list
+echo "Done! Database recreated with all migrations applied."
+```
 
 ## Benefits
 - **Environment consistency**: Same schema across dev, staging, prod

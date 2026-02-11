@@ -50,3 +50,39 @@
 - Middleware runs before controllers, validates certificate and extracts agent ID
 - Controllers access agent ID via HttpContext.Items["AgentId"]
 - Kestrel ConfigureHttpsDefaults used for TLS settings (not app.UseHttps)
+
+### Orphaned Certificate Scenario
+- "Orphaned certificates" occur when database is reset but agent still has valid certificate
+- mTLS validation succeeds (certificate cryptographically valid) but database lookup fails (agent record doesn't exist)
+- Control plane returns 404 "Agent not registered" - semantically correct per RFC 9110
+- Agent detects 404, logs clear recovery instructions, terminates gracefully
+- 404 (not in database) vs 403 (explicitly revoked) distinction allows agent to know when re-enrollment is safe
+- Current v0 behavior: Manual recovery (reset-enrollment + restart)
+- Future v1 option: Auto-re-enrollment on 404 (self-healing)
+- Two-stage authentication: (1) mTLS validates cryptographic integrity, (2) Database enforces enrollment state
+
+## 2026-02-11: Merged Decisions from Team Debug Session
+
+**Merged from inbox decisions:** ash-certificate-investigation-summary.md, ash-orphaned-cert-analysis.md
+
+**Key consolidated decisions:**
+
+### Orphaned Certificate Analysis and Security Review
+- Comprehensive analysis of orphaned certificate scenario
+- Two independent perspectives: Cryptographic validity vs Database registration
+- 404 vs 403 semantics clarified
+- Security properties validated: mTLS integrity, enrollment enforcement, revocation respect
+- Certificate flow analysis: enrollment → heartbeat auth → error handling
+- Authors: Ash, Dallas, Kane
+
+**Findings verified:**
+- Current implementation is correct and secure
+- 404 error is semantically accurate for orphaned certs
+- Agent error handling is excellent (clear recovery instructions)
+- No security vulnerabilities in two-stage authentication design
+- 404 vs 403 distinction allows safe auto-re-enrollment in v1 (if needed)
+
+**Coordination outcomes:**
+- Dallas verified database lookup behavior and HTTP status codes
+- Kane verified agent-side 404 detection and user guidance
+- All team members now understand the orphaned cert scenario and why 404 is correct

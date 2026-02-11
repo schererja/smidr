@@ -48,7 +48,8 @@ public sealed class AgentsController : ControllerBase
                     latestHeartbeat.MemoryUsedPct,
                     latestHeartbeat.DiskUsedPct,
                     latestHeartbeat.ProcessCount
-                ) : null
+                ) : null,
+                agent.OS
             ));
         }
 
@@ -112,7 +113,8 @@ public sealed class AgentsController : ControllerBase
                 latestHeartbeat.ProcessCount
             ) : null,
             baselineDtos,
-            heartbeatDtos
+            heartbeatDtos,
+            agent.OS
         );
 
         return Ok(agentDto);
@@ -161,6 +163,7 @@ public sealed class AgentsController : ControllerBase
                 CertificatePem = certPem,
                 RevokedAt = null,
                 RegisteredAt = DateTime.UtcNow,
+                OS = request.OS
             };
             _db.Agents.Add(existing);
         }
@@ -171,6 +174,7 @@ public sealed class AgentsController : ControllerBase
             existing.CertificatePem = certPem;
             existing.RevokedAt = null;
             existing.RegisteredAt = DateTime.UtcNow;
+            existing.OS = request.OS;
         }
 
         await _db.SaveChangesAsync(cancellationToken);
@@ -194,7 +198,7 @@ public sealed class AgentsController : ControllerBase
     }
 }
 
-public sealed record RegisterAgentRequest(string AgentId, string Hostname, string? Token, string CsrPem);
+public sealed record RegisterAgentRequest(string AgentId, string Hostname, string? Token, string CsrPem, string? OS);
 
 public sealed record RegisterAgentResponse(string CertPem);
 
@@ -213,7 +217,8 @@ public sealed record AgentListDto(
     DateTime? LastHeartbeatAt,
     string CurrentHealth,
     DateTime? RevokedAt,
-    SignalValuesDto? LatestSignals
+    SignalValuesDto? LatestSignals,
+    string? OS
 );
 
 public sealed record BaselineDto(
@@ -243,5 +248,6 @@ public sealed record AgentDetailDto(
     DateTime? RevokedAt,
     SignalValuesDto? LatestSignals,
     IReadOnlyList<BaselineDto> Baselines,
-    IReadOnlyList<HeartbeatDto> RecentHeartbeats
+    IReadOnlyList<HeartbeatDto> RecentHeartbeats,
+    string? OS
 );

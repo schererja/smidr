@@ -32,7 +32,8 @@ Enrolls a new agent by signing its CSR.
   "agentId": "550e8400-e29b-41d4-a716-446655440000",
   "hostname": "web-server-01",
   "token": "optional-enrollment-token",
-  "csrPem": "-----BEGIN CERTIFICATE REQUEST-----\n..."
+  "csrPem": "-----BEGIN CERTIFICATE REQUEST-----\n...",
+  "os": "linux"
 }
 ```
 
@@ -102,6 +103,69 @@ Revokes an agent certificate.
 }
 ```
 
+### Database Migrations
+
+Migrations are automatically applied on startup via `db.Database.Migrate()`.
+
+**Create new migration:**
+```bash
+dotnet ef migrations add MigrationName
+```
+
+**List migrations:**
+```bash
+dotnet ef migrations list
+```
+
+**Manually apply (usually not needed):**
+```bash
+dotnet ef database update
+```
+
+**Reset database (development only):**
+```bash
+./fix-migrations.sh
+```
+
+## Troubleshooting
+
+### Orphaned Certificates (Database Reset)
+
+**Symptom:** Agent with valid certificate gets "404: Agent not registered" error
+
+**Cause:** Database was reset but agent still has old certificate
+
+**Recovery:**
+```bash
+# On agent machine:
+smidr-agent reset-enrollment
+systemctl restart smidr-agent
+```
+
+**Why this happens:** Certificate is cryptographically valid (signed by CA) but agent record no longer exists in database. This is expected after database recreation during development.
+
+See [docs/ORPHANED-CERTIFICATES.md](docs/ORPHANED-CERTIFICATES.md) for detailed explanation.
+
+### Agent Registration Issues
+
+If agent fails with "Agent not registered" error, see the comprehensive troubleshooting guide:
+```bash
+cat docs/TROUBLESHOOTING-REGISTRATION.md
+```
+
+**Quick diagnostics:**
+```bash
+./check-database.sh     # Inspect database state
+./test-registration.sh  # Test registration endpoint
+```
+
+**Common fixes:**
+- Database missing migrations: Control plane now auto-applies on startup
+- Agent never registered: Delete agent cert and restart agent
+- Database corrupted: Run `./fix-migrations.sh` (dev only)
+
+See `docs/REGISTRATION-INVESTIGATION.md` for detailed investigation notes.
+
 ## Certificate Authority
 
 CA keypair generated on first start:
@@ -127,6 +191,15 @@ dotnet test
 dotnet ef migrations add InitialCreate
 dotnet ef database update
 ```
+
+### Troubleshooting Scripts
+
+Make scripts executable:
+```bash
+chmod +x *.sh
+```
+
+**Note:** Scripts require `sqlite3`, `openssl`, `curl`, and `jq` to be installed.
 
 ## Integration with Agent
 

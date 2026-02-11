@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -79,6 +80,9 @@ func New(cfg Config, log *logging.Logger) (*Client, error) {
 	}, nil
 }
 
+// ErrAgentNotRegistered is returned when the control plane returns 404 for an agent
+var ErrAgentNotRegistered = errors.New("agent not registered in control plane")
+
 // Run starts the heartbeat loop. Blocks until context is canceled.
 func (c *Client) Run(ctx context.Context) error {
 	c.log.Info("heartbeat loop started", "interval", c.cfg.Interval)
@@ -86,8 +90,12 @@ func (c *Client) Run(ctx context.Context) error {
 	ticker := time.NewTicker(c.cfg.Interval)
 	defer ticker.Stop()
 
-	// Send first heartbeat immediately
+	// Send first heartbeat immediately to validate enrollment
 	if err := c.sendOnce(ctx); err != nil {
+		// If we get a 404, the agent is not registered - fail fast
+		if errors.Is(err, ErrAgentNotRegistered) {
+			return err
+		}
 		c.log.Warn("initial heartbeat failed", "error", err)
 	}
 
@@ -98,6 +106,9 @@ func (c *Client) Run(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 			if err := c.sendOnce(ctx); err != nil {
+				if errors.Is(err, ErrAgentNotRegistered) {
+					return err
+				}
 				c.log.Warn("heartbeat failed", "error", err)
 			}
 		}
@@ -118,6 +129,7 @@ func (c *Client) sendOnce(ctx context.Context) error {
 		MemoryUsedPct: snap.MemoryUsedPct,
 		DiskUsedPct:   snap.DiskUsedPct,
 		ProcessCount:  snap.ProcessCount,
+		OS:            runtime.GOOS,
 	}
 
 	body, err := json.Marshal(payload)
@@ -140,6 +152,10 @@ func (c *Client) sendOnce(ctx context.Context) error {
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		snippet := readResponseSnippet(resp.Body)
+		// Detect 404 as "agent not registered" - this indicates stale certificate
+		if resp.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("%w: %s", ErrAgentNotRegistered, snippet)
+		}
 		return fmt.Errorf("heartbeat failed with status %d: %s", resp.StatusCode, snippet)
 	}
 
@@ -162,6 +178,7 @@ type heartbeatRequest struct {
 	MemoryUsedPct float64   `json:"memoryUsedPct"`
 	DiskUsedPct   float64   `json:"diskUsedPct"`
 	ProcessCount  int       `json:"processCount"`
+	OS            string    `json:"os"`
 }
 
 func buildTLSConfig(cfg Config) (*tls.Config, error) {

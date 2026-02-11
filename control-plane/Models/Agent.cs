@@ -10,4 +10,5 @@ public sealed class Agent
     public DateTime RegisteredAt { get; set; }
     public DateTime? LastHeartbeatAt { get; set; }
     public HealthStatus CurrentHealth { get; set; } = HealthStatus.Learning;
+    public string? OS { get; set; }
 }
