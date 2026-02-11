@@ -1,0 +1,32 @@
+# Compiled binaries
+agent
+agent.exe
+smidr-agent
+smidr-agent.exe
+*.exe
+*.test
+*.out
+
+# Build artifacts
+bin/
+dist/
+build/
+
+# Go workspace
+vendor/
+
+# Coverage and test files
+*.coverprofile
+coverage.txt
+coverage.html
+*.test
+
+# Go build cache
+go.build/
+.cache/
+
+# Local development
+*.local
+.env.local
+dev-config.json
+test-certs/

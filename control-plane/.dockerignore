@@ -1,0 +1,36 @@
+# Git
+.git/
+.gitignore
+
+# Build artifacts
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+
+# Development files
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Scripts (not needed in container)
+*.sh
+
+# Documentation
+README*.md
+docs/
+
+# OS
+.DS_Store
+Thumbs.db
